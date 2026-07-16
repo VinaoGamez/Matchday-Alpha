@@ -1,0 +1,37 @@
+MATCHDAY FOOTBALL - VERSAO LOCAL DE TESTE
+
+Forma recomendada no Windows:
+1. Extraia toda a pasta.
+2. Clique duas vezes em INICIAR-JOGO.bat.
+3. O navegador abrira a pagina inicial tematica:
+   http://127.0.0.1:5080/home.html
+4. Use o botao NOVO JOGO para criar uma carreira.
+5. Mantenha a janela preta aberta enquanto estiver jogando.
+6. Para encerrar o servidor, feche a janela ou pressione Ctrl+C.
+
+Compartilhar na rede local:
+- Ao iniciar o servidor, o arquivo LINK-COMPARTILHAMENTO.txt
+  sera criado com os enderecos deste PC e da rede Wi-Fi/LAN.
+- Outros dispositivos na mesma rede podem abrir esse link e jogar.
+- Exemplo: http://192.168.x.x:5080/home.html
+
+Neste PC:
+- http://127.0.0.1:5080/home.html  (pagina inicial)
+- http://127.0.0.1:5080/index.html (jogo direto)
+
+Alternativa:
+Abra home.html diretamente no navegador, mas o servidor local e
+recomendado para evitar restricoes do navegador e permitir compartilhamento.
+
+Desenvolvimento modular (Alpha 02):
+- npm install
+- npm run dev     (Vite, porta 5080)
+- npm run build   (gera pasta dist/ para testers)
+
+Os dados da carreira ficam salvos no localStorage do navegador.
+
+Documentacao tecnica completa:
+- Pasta docs/
+- Arquivo principal: docs/DOCUMENTACAO-COMPLETA.md
+- Indice: docs/INDICE.md
+- Para PDF: abra o .md no Cursor/VS Code e exporte, ou use Pandoc.

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Matchday Validation</title>
+</head>
+<body>
+  <p id="status">Running…</p>
+  <iframe id="game" src="about:blank" style="width:0;height:0;border:0"></iframe>
+  <pre id="out"></pre>
+  <script>
+    const status = document.getElementById('status');
+    const out = document.getElementById('out');
+    const iframe = document.getElementById('game');
+    const results = { checks: [], ok: true };
+
+    const check = (name, pass, detail = '') => {
+      results.checks.push({ name, pass, detail });
+      if (!pass) results.ok = false;
+    };
+
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+
+    function frameDoc() {
+      return iframe.contentDocument || iframe.contentWindow.document;
+    }
+
+    function frameWin() {
+      return iframe.contentWindow;
+    }
+
+    function frameCheck(fn) {
+      const doc = frameDoc();
+      const win = frameWin();
+      const $ = s => doc.querySelector(s);
+      const $$ = s => [...doc.querySelectorAll(s)];
+      return fn({ doc, win, $, $$ });
+    }
+
+    async function load(url) {
+      iframe.src = url;
+      await new Promise((resolve, reject) => {
+        iframe.onload = () => resolve();
+        iframe.onerror = reject;
+        setTimeout(() => reject(new Error('iframe load timeout: ' + url)), 25000);
+      });
+      await wait(3000);
+    }
+
+    async function main() {
+      // 1) Boot demo (sem save)
+      await load('index.html');
+      const boot1 = frameCheck(({ doc, $, $$ }) => ({
+        bootError: doc.documentElement.dataset.bootError || null,
+        welcome: !!$('#careerWelcome'),
+        dashboardActive: $('#dashboard')?.classList.contains('active'),
+        dashboardTables: $$('.dashboard-tables .card').length,
+        messagesNav: !!$('[data-view="messages"]'),
+        formations: $$('#formations button').length,
+        playerList: $$('#playerList > div').length,
+        calendarDays: $$('#calendarDays > *').length,
+      }));
+      check('Boot sem save — sem bootError', !boot1.bootError, boot1.bootError || 'ok');
+      check('Welcome screen', boot1.welcome, String(boot1.welcome));
+      check('Dashboard ativo', boot1.dashboardActive, '');
+      check('Dashboard 4 cards', boot1.dashboardTables >= 4, 'count=' + boot1.dashboardTables);
+      check('Nav Mensagens', boot1.messagesNav, '');
+
+      // 2) Carreira salva
+      const career = {
+        seed: 42424242,
+        clubName: 'Vinas FC',
+        managerName: 'Ricardo Teste',
+        division: 'A',
+        clubStatus: { environment: 72, support: 70, board: 68, finances: 65 },
+        createdAt: new Date().toISOString(),
+        version: 4
+      };
+      frameWin().localStorage.setItem('matchday-new-game', JSON.stringify(career));
+      frameWin().localStorage.removeItem('matchday-season');
+
+      await load('index.html');
+      const boot2 = frameCheck(({ doc, $, $$ }) => {
+        const messagesBadge = $('#messagesBadge');
+        return {
+          bootError: doc.documentElement.dataset.bootError || null,
+          clubName: $('.club strong')?.textContent?.trim(),
+          squadRows: $$('#playerList > div').length,
+          formations: $$('#formations button').length,
+          pitchPlayers: $$('#pitchPlayers > div, #pitchPlayers .player').length,
+          tacticStarters: $$('#tacticStarters > div').length,
+          calendarDays: $$('#calendarDays > *').length,
+          calendarAgendaLen: ($('#calendarDayAgenda')?.innerHTML || '').length,
+          calendarRoutineLen: ($('#calendarRoutineSummary')?.innerHTML || '').length,
+          miniTableRows: $$('#miniTable > div').length,
+          dashboardFeedLen: ($('#dashboardMessagesFeed')?.innerHTML || '').length,
+          environmentCard: !!$('.environment-card'),
+          medicalButtons: $$('#medicalPrograms button').length,
+          modalHidden: $('#newGameModal')?.classList.contains('hidden'),
+          navViews: $$('.nav[data-view]').length,
+          nextMatchHome: ($('#nextMatchHome')?.textContent || '').trim(),
+          playMatch: !!$('#playMatch'),
+        };
+      });
+      check('Boot com carreira — sem bootError', !boot2.bootError, boot2.bootError || 'ok');
+      check('Clube = Vinas FC', boot2.clubName === 'Vinas FC', boot2.clubName);
+      check('Elenco ≥15 jogadores', boot2.squadRows >= 15, 'rows=' + boot2.squadRows);
+      check('Formações ≥4', boot2.formations >= 4, 'count=' + boot2.formations);
+      check('Campo ≥11 jogadores', boot2.pitchPlayers >= 11, 'count=' + boot2.pitchPlayers);
+      check('Titulares táticos ≥11', boot2.tacticStarters >= 11, 'count=' + boot2.tacticStarters);
+      check('Calendário ≥28 células', boot2.calendarDays >= 28, 'count=' + boot2.calendarDays);
+      check('Agenda calendário', boot2.calendarAgendaLen > 20, 'len=' + boot2.calendarAgendaLen);
+      check('Rotina calendário', boot2.calendarRoutineLen > 20, 'len=' + boot2.calendarRoutineLen);
+      check('Mini tabela top 4', boot2.miniTableRows === 4, 'rows=' + boot2.miniTableRows);
+      check('Card ambiente', boot2.environmentCard, '');
+      check('3 botões médicos', boot2.medicalButtons >= 3, 'count=' + boot2.medicalButtons);
+      check('Modal carreira fechado', boot2.modalHidden, '');
+      check('7 abas nav', boot2.navViews >= 7, 'count=' + boot2.navViews);
+      check('Próxima partida preenchida', boot2.nextMatchHome.length > 2, boot2.nextMatchHome);
+      check('Botão Jogar Partida', boot2.playMatch, '');
+
+      // 3) View Mensagens
+      frameCheck(({ $ }) => { $('[data-view="messages"]')?.click(); });
+      await wait(400);
+      const messagesView = frameCheck(({ $, $$ }) => ({
+        active: $('#messages')?.classList.contains('active'),
+        listLen: ($('#messagesList')?.innerHTML || '').length,
+        filters: $$('#messageFilters button').length,
+        badge: ($('#messagesBadge')?.textContent || '').trim(),
+      }));
+      check('View Mensagens ativa', messagesView.active, '');
+      check('Lista mensagens', messagesView.listLen > 10, 'len=' + messagesView.listLen);
+      check('Filtros ≥5', messagesView.filters >= 5, 'count=' + messagesView.filters);
+
+      // 4) View Táticas
+      frameCheck(({ $ }) => { $('[data-view="tactics"]')?.click(); });
+      await wait(300);
+      const tacticsView = frameCheck(({ $, $$ }) => ({
+        active: $('#tactics')?.classList.contains('active'),
+        formations: $$('#formations button').length,
+        pitch: $$('#pitchPlayers > div, #pitchPlayers .player').length,
+        starters: $$('#tacticStarters > div').length,
+        bench: $$('#tacticBench > div').length,
+      }));
+      check('View Táticas ativa', tacticsView.active, '');
+      check('Táticas — formações', tacticsView.formations >= 4, 'count=' + tacticsView.formations);
+      check('Táticas — campo', tacticsView.pitch >= 11, 'count=' + tacticsView.pitch);
+      check('Táticas — reservas', tacticsView.bench >= 1, 'count=' + tacticsView.bench);
+
+      // 5) View Calendário
+      frameCheck(({ $ }) => { $('[data-view="calendar"]')?.click(); });
+      await wait(300);
+      const calView = frameCheck(({ $, $$ }) => ({
+        active: $('#calendar')?.classList.contains('active'),
+        days: $$('#calendarDays > *').length,
+        monthLabel: ($('#calendarMonthLabel')?.textContent || '').length,
+        trainingRules: $$('#trainingRules button, .training-rules button').length,
+      }));
+      check('View Calendário ativa', calView.active, '');
+      check('Calendário — mês label', calView.monthLabel > 3, calView.monthLabel);
+      check('Calendário — regras treino', calView.trainingRules >= 1, 'count=' + calView.trainingRules);
+
+      // 6) Fluxo ?novo=1
+      frameWin().localStorage.removeItem('matchday-new-game');
+      frameWin().localStorage.removeItem('matchday-season');
+      await load('index.html?novo=1');
+      const novoFlow = frameCheck(({ doc, $ }) => ({
+        bootError: doc.documentElement.dataset.bootError || null,
+        modalOpen: $('#newGameModal') && !$('#newGameModal').classList.contains('hidden'),
+        confirmBtn: !!$('#confirmNewGame'),
+        shellUnlocked: !doc.body.classList.contains('career-locked'),
+      }));
+      check('?novo=1 — sem bootError', !novoFlow.bootError, novoFlow.bootError || 'ok');
+      check('?novo=1 — modal aberto', novoFlow.modalOpen, '');
+      check('?novo=1 — shell desbloqueado', novoFlow.shellUnlocked, '');
+
+      // 7) Simular Criar Carreira
+      frameCheck(({ $ }) => {
+        $('#careerClubName').value = 'Teste FC';
+        $('#careerManagerName').value = 'Coach Silva';
+        $('#confirmNewGame')?.click();
+      });
+      await wait(3500);
+      const afterCreate = frameCheck(({ doc, $, $$ }) => ({
+        bootError: doc.documentElement.dataset.bootError || null,
+        hasSave: !!frameWin().localStorage.getItem('matchday-new-game'),
+        modalHidden: $('#newGameModal')?.classList.contains('hidden'),
+        clubName: $('.club strong')?.textContent?.trim(),
+        squadRows: $$('#playerList > div').length,
+        urlHasNovo: frameWin().location.search.includes('novo=1'),
+      }));
+      check('Criar Carreira — sem bootError', !afterCreate.bootError, afterCreate.bootError || 'ok');
+      check('Criar Carreira — save criado', afterCreate.hasSave, '');
+      check('Criar Carreira — modal fechado', afterCreate.modalHidden, '');
+      check('Criar Carreira — clube atualizado', afterCreate.clubName === 'Teste FC', afterCreate.clubName);
+      check('Criar Carreira — elenco gerado', afterCreate.squadRows >= 15, 'rows=' + afterCreate.squadRows);
+      check('Criar Carreira — URL sem ?novo=1', !afterCreate.urlHasNovo, afterCreate.urlHasNovo);
+
+      status.textContent = results.ok ? 'VALIDATION_OK' : 'VALIDATION_FAIL';
+      out.textContent = JSON.stringify(results, null, 2);
+    }
+
+    main().catch(error => {
+      results.ok = false;
+      results.error = String(error?.stack || error);
+      status.textContent = 'VALIDATION_ERROR';
+      out.textContent = JSON.stringify(results, null, 2);
+    });
+  </script>
+</body>
+</html>

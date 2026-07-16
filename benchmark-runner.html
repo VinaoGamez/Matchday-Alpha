@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Matchday Engine Benchmark</title>
+</head>
+<body>
+  <p id="status">Inicializando motor…</p>
+  <pre id="output"></pre>
+  <iframe id="game" src="index.html?engineTest" style="display:none;width:0;height:0;border:0" title="Game engine"></iframe>
+  <script>
+    const SAMPLE = Number(new URLSearchParams(location.search).get('n')) || 5000;
+    const MODE = new URLSearchParams(location.search).get('mode') || 'career';
+    if (MODE === 'career') {
+      localStorage.setItem('matchday-new-game', JSON.stringify({
+        seed: 42424242,
+        clubName: 'Atlético Fênix',
+        managerName: 'Ricardo Teste',
+        division: 'A',
+        clubStatus: { environment: 75, support: 70, board: 72, finances: 68 },
+        season: 2026,
+        version: 4,
+        createdAt: new Date().toISOString()
+      }));
+      localStorage.removeItem('matchday-season');
+      localStorage.removeItem('matchday-live-match');
+    } else {
+      localStorage.removeItem('matchday-new-game');
+      localStorage.removeItem('matchday-season');
+    }
+    const status = document.getElementById('status');
+    const output = document.getElementById('output');
+    const iframe = document.getElementById('game');
+
+    function percentile(sorted, p) {
+      const index = (sorted.length - 1) * p;
+      const lower = Math.floor(index);
+      const upper = Math.ceil(index);
+      if (lower === upper) return sorted[lower];
+      return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+    }
+
+    function analyzeDetailed(win, count) {
+      const engineExports = win.__matchdayEngineExports || {};
+      const clubs = engineExports.clubs || {};
+      const clubNames = Object.keys(clubs);
+      const fixtures = [];
+      for (let i = 0; i < count; i++) {
+        const home = clubNames[i % clubNames.length];
+        const away = clubNames[(i * 7 + 3) % clubNames.length];
+        if (home === away) continue;
+        fixtures.push({ home, away });
+      }
+      const simulate = engineExports.simulateRoundMatch;
+      if (typeof simulate !== 'function') throw new Error('simulateRoundMatch indisponível');
+
+      const scoreDist = {};
+      const totals = {
+        matches: 0,
+        goals: 0,
+        homeGoals: 0,
+        awayGoals: 0,
+        draws: 0,
+        homeWins: 0,
+        awayWins: 0,
+        scoreless: 0,
+        over25: 0,
+        over35: 0,
+        over45: 0,
+        maxGoals: 0,
+        shots: 0,
+        onTarget: 0,
+        fouls: 0,
+        yellows: 0,
+        reds: 0,
+        corners: 0,
+        offsides: 0,
+        penalties: 0,
+        injuries: 0,
+        subs: 0,
+        xg: 0,
+        goalsFromXgGap: 0
+      };
+      const goalsPerMatch = [];
+      const shotsPerMatch = [];
+      const xgPerMatch = [];
+      const homePossession = [];
+      const powerGapBuckets = { even: { n: 0, homeWins: 0, goals: 0 }, slight: { n: 0, homeWins: 0, goals: 0 }, strong: { n: 0, homeWins: 0, goals: 0 } };
+
+      fixtures.slice(0, count).forEach(({ home, away }) => {
+        const result = simulate(home, away);
+        const d = result.data || {};
+        const hg = result.homeGoals;
+        const ag = result.awayGoals;
+        const tg = hg + ag;
+        const key = `${hg}-${ag}`;
+        scoreDist[key] = (scoreDist[key] || 0) + 1;
+
+        totals.matches++;
+        totals.goals += tg;
+        totals.homeGoals += hg;
+        totals.awayGoals += ag;
+        totals.draws += hg === ag ? 1 : 0;
+        totals.homeWins += hg > ag ? 1 : 0;
+        totals.awayWins += ag > hg ? 1 : 0;
+        totals.scoreless += tg === 0 ? 1 : 0;
+        totals.over25 += tg >= 3 ? 1 : 0;
+        totals.over35 += tg >= 4 ? 1 : 0;
+        totals.over45 += tg >= 5 ? 1 : 0;
+        totals.maxGoals = Math.max(totals.maxGoals, tg);
+        totals.shots += (d.homeShots || 0) + (d.awayShots || 0);
+        totals.onTarget += (d.homeOnTarget || 0) + (d.awayOnTarget || 0);
+        totals.fouls += (d.homeFouls || 0) + (d.awayFouls || 0);
+        totals.yellows += (d.homeYellow || 0) + (d.awayYellow || 0);
+        totals.reds += (d.homeRed || 0) + (d.awayRed || 0);
+        totals.corners += (d.homeCorners || 0) + (d.awayCorners || 0);
+        totals.offsides += (d.homeOffsides || 0) + (d.awayOffsides || 0);
+        totals.penalties += (d.homePenalties || 0) + (d.awayPenalties || 0);
+        totals.injuries += (result.injuries?.home?.length || 0) + (result.injuries?.away?.length || 0);
+        totals.subs += (result.substitutions?.home || 0) + (result.substitutions?.away || 0);
+        const matchXg = (d.homeXg || 0) + (d.awayXg || 0);
+        totals.xg += matchXg;
+        totals.goalsFromXgGap += tg - matchXg;
+
+        goalsPerMatch.push(tg);
+        shotsPerMatch.push((d.homeShots || 0) + (d.awayShots || 0));
+        xgPerMatch.push(matchXg);
+        homePossession.push(d.homePossession || 50);
+
+        const homePower = clubs[home]?.power || 75;
+        const awayPower = clubs[away]?.power || 75;
+        const gap = homePower - awayPower;
+        const bucket = Math.abs(gap) <= 2 ? 'even' : Math.abs(gap) <= 6 ? 'slight' : 'strong';
+        powerGapBuckets[bucket].n++;
+        powerGapBuckets[bucket].goals += tg;
+        powerGapBuckets[bucket].homeWins += hg > ag ? 1 : 0;
+      });
+
+      goalsPerMatch.sort((a, b) => a - b);
+      shotsPerMatch.sort((a, b) => a - b);
+      xgPerMatch.sort((a, b) => a - b);
+      homePossession.sort((a, b) => a - b);
+
+      const topScores = Object.entries(scoreDist)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 12)
+        .map(([score, n]) => ({ score, count: n, pct: Number((n / totals.matches * 100).toFixed(2)) }));
+
+      const n = totals.matches;
+      return {
+        sampleSize: n,
+        builtIn: typeof win.__matchdayEngineBenchmark === 'function' ? win.__matchdayEngineBenchmark(Math.min(n, 1000)) : null,
+        totals,
+        rates: {
+          goalsPerMatch: Number((totals.goals / n).toFixed(3)),
+          homeGoalsPerMatch: Number((totals.homeGoals / n).toFixed(3)),
+          awayGoalsPerMatch: Number((totals.awayGoals / n).toFixed(3)),
+          drawRate: Number((totals.draws / n * 100).toFixed(2)),
+          homeWinRate: Number((totals.homeWins / n * 100).toFixed(2)),
+          awayWinRate: Number((totals.awayWins / n * 100).toFixed(2)),
+          scorelessRate: Number((totals.scoreless / n * 100).toFixed(2)),
+          over25Rate: Number((totals.over25 / n * 100).toFixed(2)),
+          over35Rate: Number((totals.over35 / n * 100).toFixed(2)),
+          over45Rate: Number((totals.over45 / n * 100).toFixed(2)),
+          shotsPerMatch: Number((totals.shots / n).toFixed(2)),
+          onTargetPerMatch: Number((totals.onTarget / n).toFixed(2)),
+          onTargetPct: Number((totals.onTarget / Math.max(1, totals.shots) * 100).toFixed(2)),
+          conversionPct: Number((totals.goals / Math.max(1, totals.onTarget) * 100).toFixed(2)),
+          foulsPerMatch: Number((totals.fouls / n).toFixed(2)),
+          yellowsPerMatch: Number((totals.yellows / n).toFixed(2)),
+          redsPerMatch: Number((totals.reds / n).toFixed(2)),
+          cornersPerMatch: Number((totals.corners / n).toFixed(2)),
+          offsidesPerMatch: Number((totals.offsides / n).toFixed(2)),
+          penaltiesPerMatch: Number((totals.penalties / n).toFixed(2)),
+          injuriesPerMatch: Number((totals.injuries / n).toFixed(2)),
+          subsPerMatch: Number((totals.subs / n).toFixed(2)),
+          xgPerMatch: Number((totals.xg / n).toFixed(3)),
+          xgToGoalsRatio: Number((totals.goals / Math.max(0.001, totals.xg)).toFixed(3))
+        },
+        percentiles: {
+          goals: {
+            p10: percentile(goalsPerMatch, 0.1),
+            p25: percentile(goalsPerMatch, 0.25),
+            p50: percentile(goalsPerMatch, 0.5),
+            p75: percentile(goalsPerMatch, 0.75),
+            p90: percentile(goalsPerMatch, 0.9)
+          },
+          shots: {
+            p50: percentile(shotsPerMatch, 0.5),
+            p90: percentile(shotsPerMatch, 0.9)
+          },
+          xg: {
+            p50: percentile(xgPerMatch, 0.5),
+            p90: percentile(xgPerMatch, 0.9)
+          },
+          homePossession: {
+            p25: percentile(homePossession, 0.25),
+            p50: percentile(homePossession, 0.5),
+            p75: percentile(homePossession, 0.75)
+          }
+        },
+        topScores,
+        powerGapBuckets: Object.fromEntries(Object.entries(powerGapBuckets).map(([k, v]) => [k, {
+          matches: v.n,
+          homeWinRate: v.n ? Number((v.homeWins / v.n * 100).toFixed(2)) : 0,
+          goalsPerMatch: v.n ? Number((v.goals / v.n).toFixed(3)) : 0
+        }])),
+        references: {
+          brasileiraoSerieA: { goalsPerMatch: '2.45–2.55', drawRate: '24–27%', homeWinRate: '45–48%', shotsPerMatch: '22–28', foulsPerMatch: '24–30' },
+          topLeagues: { goalsPerMatch: '2.6–2.9', drawRate: '22–26%', homeWinRate: '44–46%' }
+        }
+      };
+    }
+
+    function waitForEngine(win, attempts = 80) {
+      return new Promise((resolve, reject) => {
+        const tick = () => {
+          if (win.__matchdayEngineExports?.simulateRoundMatch) return resolve();
+          if (attempts-- <= 0) return reject(new Error('Motor não inicializou a tempo'));
+          setTimeout(tick, 100);
+        };
+        tick();
+      });
+    }
+
+    iframe.addEventListener('load', () => {
+      const win = iframe.contentWindow;
+      waitForEngine(win).then(() => {
+        status.textContent = `Rodando ${SAMPLE} simulações…`;
+        const started = performance.now();
+        const report = analyzeDetailed(win, SAMPLE);
+        const engineExports = win.__matchdayEngineExports || {};
+        report.elapsedMs = Math.round(performance.now() - started);
+        report.mode = engineExports.savedNewGame ? 'career' : 'demo';
+        report.division = engineExports.userDivision || 'A';
+        report.timestamp = new Date().toISOString();
+        output.textContent = JSON.stringify(report, null, 2);
+        status.textContent = 'Concluído';
+        document.title = 'BENCHMARK_DONE';
+      }).catch(error => {
+        status.textContent = 'Erro: ' + error.message;
+        output.textContent = String(error.stack || error);
+        document.title = 'BENCHMARK_ERROR';
+      });
+    });
+  </script>
+</body>
+</html>

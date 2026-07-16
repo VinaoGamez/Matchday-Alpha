@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Matchday — Diagnóstico de Save</title>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:920px;margin:24px auto;padding:0 16px;background:#0b1a22;color:#e8f4f3}
+    h1{font-size:1.4rem} h2{font-size:1rem;color:#63d9ff;margin-top:1.5rem}
+    pre{background:#102b35;padding:12px;border-radius:8px;overflow:auto;font-size:12px;border:1px solid #28505b}
+    .ok{color:#b6ff38}.warn{color:#ffc94f}.err{color:#ff8a8a}
+    button{background:#1d5a6d;color:#fff;border:1px solid #63d9ff;border-radius:6px;padding:8px 14px;cursor:pointer;margin:4px 4px 4px 0}
+    table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+    th,td{border:1px solid #28505b;padding:6px 8px;text-align:left}
+    th{background:#123843;color:#63d9ff}
+    .card{padding:12px;border:1px solid #28505b;border-radius:8px;margin:10px 0;background:#0f2430}
+  </style>
+</head>
+<body>
+  <h1>Diagnóstico de save — Copa do Brasil</h1>
+  <p>Abra esta página <strong>no mesmo navegador e endereço</strong> em que você joga (ex.: <code>http://127.0.0.1:5080/inspect-save.html</code>).</p>
+  <button type="button" id="run">Analisar save atual</button>
+  <button type="button" id="export">Exportar JSON do save</button>
+  <div id="out"></div>
+  <script>
+    const KEYS = { career: 'matchday-new-game', season: 'matchday-season' };
+    const read = key => { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch { return null; } };
+    const fmt = d => { if (!d) return '—'; const x = new Date(d); return Number.isNaN(x) ? String(d) : x.toLocaleDateString('pt-BR'); };
+
+    function userCupFixtures(cup, userClub) {
+      if (!cup?.stages) return [];
+      return cup.stages.flatMap(s => (s.fixtures || []).filter(g => g.home === userClub || g.away === userClub));
+    }
+
+    function tieWinner(games) {
+      if (!games.every(g => g.completed)) return null;
+      const [a, b] = [games[0].home, games[0].away];
+      let ga = 0, gb = 0;
+      games.forEach(g => {
+        ga += g.home === a ? (g.homeGoals || 0) : (g.awayGoals || 0);
+        gb += g.home === b ? (g.homeGoals || 0) : (g.awayGoals || 0);
+      });
+      if (ga > gb) return a;
+      if (gb > ga) return b;
+      return games.find(g => g.winner)?.winner || null;
+    }
+
+    function diagnose() {
+      const career = read(KEYS.career);
+      const season = read(KEYS.season);
+      const out = document.getElementById('out');
+      if (!career) {
+        out.innerHTML = '<p class="err">Nenhuma carreira em <code>matchday-new-game</code>.</p>';
+        return;
+      }
+      const userClub = career.clubName;
+      const division = career.division;
+      const seedOk = season?.seed === career.seed;
+      const cup = season?.cupCompetition;
+      const fixtures = userCupFixtures(cup, userClub);
+      const pending = fixtures.filter(g => !g.completed);
+      const completed = fixtures.filter(g => g.completed);
+      const calendar = season?.careerCalendarDate || '—';
+      const round = season?.currentRound ?? '—';
+
+      let status = 'desconhecido', detail = '';
+      const phase5 = cup?.stages?.find(s => s.index === 5);
+      const phase4 = cup?.stages?.find(s => s.index === 4);
+      const inPhase5Entrants = phase5?.entrants?.includes(userClub);
+      const eliminationMsgs = (season?.careerMessages || []).filter(m =>
+        (m.body || '').includes(userClub) && /elimina|eliminado|fora|copa/i.test((m.title || '') + (m.body || ''))
+      );
+
+      if (division === 'A' && !fixtures.length && (!phase4 || !phase4.completed)) {
+        status = 'aguardando_entrada';
+        detail = 'Série A só entra na 5ª fase (após conclusão da 4ª). Até lá é normal não haver jogos de Copa.';
+      } else if (division === 'A' && phase4?.completed && !phase5) {
+        status = 'bug_fase5_ausente';
+        detail = 'A 4ª fase terminou mas a 5ª fase não foi sorteada — estado inconsistente.';
+      } else if (division === 'A' && phase5 && !inPhase5Entrants && !fixtures.length) {
+        status = 'bug_nao_sorteado';
+        detail = '5ª fase existe mas seu clube não está entre os participantes.';
+      } else if (pending.length) {
+        status = 'ativo';
+        detail = `Você ainda tem ${pending.length} jogo(s) de Copa pendente(s).`;
+      } else if (completed.length) {
+        const lastStage = cup.stages.filter(s => s.fixtures.some(g => g.home === userClub || g.away === userClub)).pop();
+        const ties = [...new Set((lastStage?.fixtures || []).filter(g => g.home === userClub || g.away === userClub).map(g => g.tieId))];
+        let eliminated = false;
+        ties.forEach(tid => {
+          const games = (lastStage.fixtures || []).filter(g => g.tieId === tid);
+          const w = tieWinner(games);
+          if (w && w !== userClub && games.every(g => g.completed)) eliminated = true;
+        });
+        status = eliminated ? 'eliminado' : (cup?.champion === userClub ? 'campeao' : 'sem_jogos');
+        detail = eliminated ? 'Eliminado em confronto já concluído.' : (status === 'campeao' ? 'Campeão da Copa.' : 'Sem jogos pendentes de Copa.');
+      } else if (!season) {
+        status = 'sem_temporada';
+        detail = 'Carreira existe mas não há save de temporada — progresso da Copa pode ter sido perdido ao recarregar.';
+      } else {
+        status = 'sem_participacao';
+        detail = 'Nenhum jogo de Copa registrado para o clube.';
+      }
+
+      const stageRows = (cup?.stages || []).map(s => {
+        const userIn = s.entrants?.includes(userClub) ? 'sim' : '—';
+        const userGames = (s.fixtures || []).filter(g => g.home === userClub || g.away === userClub).length;
+        return `<tr><td>${s.index}</td><td>${s.name}</td><td>${s.completed ? 'sim' : 'não'}</td><td>${userIn}</td><td>${userGames}</td><td>${(s.entrants || []).length}</td></tr>`;
+      }).join('');
+
+      out.innerHTML = `
+        <div class="card">
+          <h2>Carreira</h2>
+          <p><b>Clube:</b> ${userClub} · <b>Divisão:</b> Série ${division} · <b>Temporada:</b> ${career.season || '—'}</p>
+          <p><b>Seed carreira:</b> ${career.seed} · <b>Seed temporada válida:</b> <span class="${seedOk ? 'ok' : 'err'}">${seedOk ? 'sim' : 'NÃO — save de temporada ignorado no boot'}</span></p>
+          <p><b>Data in-game:</b> ${calendar} · <b>Rodada:</b> ${round}</p>
+        </div>
+        <div class="card">
+          <h2>Copa do Brasil — veredito</h2>
+          <p class="${status.includes('bug') || status === 'sem_temporada' ? 'err' : status === 'aguardando_entrada' ? 'warn' : status === 'ativo' ? 'ok' : ''}"><b>${status}</b> — ${detail}</p>
+          <p>Jogos do clube: ${fixtures.length} total · ${pending.length} pendente(s) · ${completed.length} concluído(s)</p>
+          <p>Fase atual da Copa: ${cup?.currentPhase ?? '—'} · Campeão: ${cup?.champion || '—'}</p>
+        </div>
+        <h2>Fases da Copa</h2>
+        <table><thead><tr><th>#</th><th>Nome</th><th>Concluída</th><th>Você nos entrants</th><th>Seus jogos</th><th>Clubes</th></tr></thead><tbody>${stageRows || '<tr><td colspan="6">Sem dados de Copa no save</td></tr>'}</tbody></table>
+        ${pending.length ? `<h2>Próximos jogos de Copa</h2><pre>${JSON.stringify(pending.map(g => ({ phase: g.phase, leg: g.leg, home: g.home, away: g.away, date: g.date })), null, 2)}</pre>` : ''}
+        ${eliminationMsgs.length ? `<h2>Mensagens de eliminação</h2><pre>${JSON.stringify(eliminationMsgs, null, 2)}</pre>` : ''}
+        ${!seedOk && season ? '<p class="warn">O save de temporada não combina com a carreira (seed diferente). O jogo descarta a temporada ao carregar — isso explica Copa “resetada” ou inconsistente.</p>' : ''}
+      `;
+    }
+
+    document.getElementById('run').onclick = diagnose;
+    document.getElementById('export').onclick = () => {
+      const blob = new Blob([JSON.stringify({ career: read(KEYS.career), season: read(KEYS.season) }, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'matchday-save-export.json';
+      a.click();
+    };
+    diagnose();
+  </script>
+</body>
+</html>

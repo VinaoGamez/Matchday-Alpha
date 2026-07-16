@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Matchday Football · Simulador de Carreira</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/home.css">
+</head>
+<body>
+  <div class="home-shell">
+    <div class="home-bg" aria-hidden="true"></div>
+    <header class="home-header">
+      <div class="home-brand">
+        <span class="home-mark">MF</span>
+        <span class="home-wordmark"><b>MATCHDAY</b><small>FOOTBALL</small></span>
+      </div>
+      <span class="home-tag">ALPHA 01 · TESTE LOCAL</span>
+    </header>
+
+    <main class="home-main">
+      <section class="home-hero">
+        <p class="home-kicker">SIMULADOR DE CARREIRA NO BRASIL</p>
+        <h1>Gerencie seu clube do Brasileirão à Copa do Brasil.</h1>
+        <p class="home-lead">Monte elenco, defina táticas, dispute partidas ao vivo e acompanhe lesões, disciplina, calendário e mensagens da temporada em um único hub de gestão.</p>
+        <div class="home-actions">
+          <a id="newGameBtn" class="home-btn primary" href="index.html?novo=1">NOVO JOGO</a>
+          <a id="continueBtn" class="home-btn secondary hidden" href="index.html">CONTINUAR CARREIRA</a>
+        </div>
+        <p id="careerHint" class="home-hint hidden"></p>
+      </section>
+
+      <section class="home-features">
+        <article class="feature-card">
+          <small>COMPETIÇÕES</small>
+          <strong>Brasileirão A–D + Copa</strong>
+          <p>Agenda nacional unificada com intervalos dinâmicos entre jogos e rotina de treinos.</p>
+        </article>
+        <article class="feature-card">
+          <small>PARTIDA AO VIVO</small>
+          <strong>Motor com eventos</strong>
+          <p>Gols, cartões, lesões, substituições inteligentes e decisões médicas durante a partida.</p>
+        </article>
+        <article class="feature-card">
+          <small>GESTÃO</small>
+          <strong>Hub de mensagens</strong>
+          <p>Resultados, diagnósticos, suspensões e alertas do clube reunidos em uma caixa de entrada.</p>
+        </article>
+        <article class="feature-card">
+          <small>PERSISTÊNCIA</small>
+          <strong>Salvo no navegador</strong>
+          <p>Sua carreira fica no <code>localStorage</code> deste dispositivo e navegador.</p>
+        </article>
+      </section>
+    </main>
+
+    <footer class="home-footer">
+      <div class="share-box">
+        <small>LINK DE COMPARTILHAMENTO NA REDE LOCAL</small>
+        <strong id="shareUrl">Carregando endereço…</strong>
+        <button id="copyShare" type="button">COPIAR LINK</button>
+      </div>
+      <p>Use o mesmo Wi‑Fi/rede do PC que está hospedando o jogo. O servidor precisa permanecer aberto.</p>
+    </footer>
+  </div>
+  <script type="module" src="js/home.js"></script>
+</body>
+</html>

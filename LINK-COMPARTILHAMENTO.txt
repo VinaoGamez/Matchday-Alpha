@@ -1,0 +1,27 @@
+﻿MATCHDAY FOOTBALL - LINKS DE ACESSO
+Atualizado: 16/07/2026 19:13
+
+=== LINK EXTERNO (internet) ===
+Pagina inicial:
+https://ist-planning-gasoline-warrior.trycloudflare.com/home.html
+
+Novo jogo:
+https://ist-planning-gasoline-warrior.trycloudflare.com/index.html?novo=1
+
+=== REDE LOCAL (mesmo Wi-Fi) ===
+http://192.168.18.3:5080/home.html
+
+=== NESTE PC ===
+Dev (fontes):     http://127.0.0.1:5080/home.html
+Testers (bundle): http://127.0.0.1:5081/home.html
+
+=== LINK FIXO (permanente) ===
+GitHub Pages (recomendado): veja LINK-GITHUB-SETUP.txt e PUBLICAR-GITHUB.bat
+Cloudflare Pages: PUBLICAR-LINK-FIXO.bat
+
+Exemplo GitHub:
+https://SEU-USUARIO.github.io/matchday-football-alpha/home.html
+
+IMPORTANTE:
+- O link trycloudflare muda quando o tunel reinicia.
+- Se nao abrir de imediato, aguarde 1 minuto ou execute INICIAR-LINK-EXTERNO.bat.

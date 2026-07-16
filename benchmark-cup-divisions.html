@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Copa do Brasil — auditoria por divisão</title>
+  <style>
+    body{font-family:system-ui,sans-serif;max-width:960px;margin:20px auto;padding:0 16px;background:#0b1a22;color:#e8f4f3}
+    pre{background:#102b35;padding:12px;border-radius:8px;overflow:auto;font-size:11px;border:1px solid #28505b;max-height:70vh}
+    .ok{color:#b6ff38}.err{color:#ff8a8a}.warn{color:#ffc94f}
+    button{background:#1d5a6d;color:#fff;border:1px solid #63d9ff;border-radius:6px;padding:8px 14px;cursor:pointer;margin:8px 8px 8px 0}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    .notice{padding:12px;border:1px solid #5a4a1a;border-radius:8px;background:#2b220d;color:#ffe6a8;font-size:13px;line-height:1.5;margin:12px 0}
+  </style>
+</head>
+<body>
+  <h1>Copa do Brasil — auditoria por divisão</h1>
+  <div class="notice">
+    <strong>Atenção:</strong> cada simulação recarrega o motor completo do jogo.
+    Valores altos consomem muita RAM e CPU — no Windows isso pode travar o PC.
+    Use no máximo <strong>200</strong> por sessão no navegador. Para 5000+, rode em lotes pequenos ou use o script Python com <code>--force</code> conscientemente.
+  </div>
+  <p>
+    Amostras: <input id="sampleInput" type="number" min="4" max="5000" value="40" style="width:80px">
+    <button type="button" id="startBtn">Iniciar auditoria</button>
+    <button type="button" id="stopBtn" disabled>Parar</button>
+  </p>
+  <p id="status">Aguardando início manual.</p>
+  <pre id="output">{}</pre>
+  <iframe id="game" src="about:blank" style="display:none;width:0;height:0;border:0" title="Engine"></iframe>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const HARD_MAX = 500;
+    const SAFE_DEFAULT = 40;
+    let SAMPLE = Math.min(HARD_MAX, Math.max(4, Number(params.get('n')) || SAFE_DEFAULT));
+    if (Number(params.get('n')) > HARD_MAX && params.get('confirm') !== '1') {
+      SAMPLE = HARD_MAX;
+    }
+    const DIVISIONS = ['A', 'B', 'C', 'D'];
+    const PER_DIV = Math.floor(SAMPLE / DIVISIONS.length);
+    const status = document.getElementById('status');
+    const output = document.getElementById('output');
+    const iframe = document.getElementById('game');
+    const sampleInput = document.getElementById('sampleInput');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    sampleInput.value = SAMPLE;
+
+    const CLUB_NAMES = { A: 'Atlético Fênix', B: 'Vinas FC B', C: 'Vinas FC C', D: 'Vinas FC' };
+    let stopRequested = false;
+
+    function freshSummary() {
+      const summary = {
+        sampleSize: SAMPLE,
+        perDivision: PER_DIV,
+        divisions: {},
+        totals: { ok: 0, fail: 0, anomalies: {} },
+        samples: [],
+        startedAt: new Date().toISOString()
+      };
+      DIVISIONS.forEach(d => {
+        summary.divisions[d] = { runs: 0, ok: 0, fail: 0, everInCup: 0, entryPath: {}, anomalies: {} };
+      });
+      return summary;
+    }
+
+    function record(summary, audit) {
+      const div = summary.divisions[audit.division];
+      div.runs++;
+      if (audit.everInCup) div.everInCup++;
+      if (audit.entryPath) div.entryPath[audit.entryPath] = (div.entryPath[audit.entryPath] || 0) + 1;
+      if (audit.anomalies.length) {
+        summary.totals.fail++;
+        div.fail++;
+        audit.anomalies.forEach(a => {
+          summary.totals.anomalies[a] = (summary.totals.anomalies[a] || 0) + 1;
+          div.anomalies[a] = (div.anomalies[a] || 0) + 1;
+        });
+        if (summary.samples.length < 40) summary.samples.push(audit);
+      } else {
+        summary.totals.ok++;
+        div.ok++;
+      }
+    }
+
+    function bootCareer(division, seed) {
+      localStorage.setItem('matchday-new-game', JSON.stringify({
+        seed,
+        clubName: CLUB_NAMES[division],
+        managerName: 'Auditor Copa',
+        division,
+        clubStatus: { environment: 70, support: 70, board: 70, finances: 70 },
+        season: 2026,
+        version: 4,
+        createdAt: new Date().toISOString()
+      }));
+      localStorage.removeItem('matchday-season');
+      localStorage.removeItem('matchday-live-match');
+    }
+
+    function runOne(index) {
+      return new Promise((resolve, reject) => {
+        const division = DIVISIONS[index % DIVISIONS.length];
+        const seed = 900000 + index;
+        bootCareer(division, seed);
+        const onLoad = () => {
+          iframe.removeEventListener('load', onLoad);
+          const win = iframe.contentWindow;
+          const tick = (left = 80) => {
+            if (stopRequested) return reject(new Error('Parado pelo usuário'));
+            if (win.__cupAuditResult) return resolve(win.__cupAuditResult);
+            if (win.document.title === 'CUP_AUDIT_FAIL' || win.document.title === 'CUP_AUDIT_OK') {
+              try {
+                const raw = win.document.getElementById('cup-audit-json')?.textContent;
+                return resolve(raw ? JSON.parse(raw) : win.__cupAuditResult);
+              } catch (e) { return reject(e); }
+            }
+            if (win.document.documentElement?.dataset?.bootError) {
+              return reject(new Error(win.document.documentElement.dataset.bootError));
+            }
+            if (left <= 0) return reject(new Error('Timeout no motor'));
+            setTimeout(() => tick(left - 1), 100);
+          };
+          tick();
+        };
+        iframe.addEventListener('load', onLoad);
+        iframe.src = `index.html?cupAudit=1&engineTest&_=${seed}`;
+      });
+    }
+
+    const pause = ms => new Promise(r => setTimeout(r, ms));
+
+    async function runBatch() {
+      SAMPLE = Math.min(HARD_MAX, Math.max(4, Number(sampleInput.value) || SAFE_DEFAULT));
+      const perDiv = Math.floor(SAMPLE / DIVISIONS.length);
+      if (SAMPLE > 100) {
+        const ok = confirm(`Rodar ${SAMPLE} simulações? Isso pode demorar vários minutos e aquecer o PC.`);
+        if (!ok) return;
+      }
+      stopRequested = false;
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      const summary = freshSummary();
+      summary.sampleSize = SAMPLE;
+      summary.perDivision = perDiv;
+      const started = performance.now();
+      const total = SAMPLE;
+      for (let i = 0; i < total; i++) {
+        if (stopRequested) break;
+        const division = DIVISIONS[i % DIVISIONS.length];
+        const divIndex = Math.floor(i / DIVISIONS.length);
+        if (divIndex >= perDiv) continue;
+        status.textContent = `Simulação ${i + 1} / ${total} · Série ${division} · seed ${900000 + i}`;
+        try {
+          const audit = await runOne(i);
+          record(summary, audit);
+        } catch (err) {
+          summary.totals.fail++;
+          summary.divisions[division].fail++;
+          summary.divisions[division].runs++;
+          const key = `boot_error:${String(err.message || err).slice(0, 80)}`;
+          summary.totals.anomalies[key] = (summary.totals.anomalies[key] || 0) + 1;
+        }
+        if ((i + 1) % 10 === 0) output.textContent = JSON.stringify(summary, null, 2);
+        await pause(50);
+      }
+      summary.elapsedMs = Math.round(performance.now() - started);
+      summary.finishedAt = new Date().toISOString();
+      summary.passRate = Number((summary.totals.ok / Math.max(1, summary.totals.ok + summary.totals.fail) * 100).toFixed(2));
+      output.textContent = JSON.stringify(summary, null, 2);
+      status.innerHTML = summary.totals.fail
+        ? `<span class="err">Concluído com ${summary.totals.fail} falha(s) (${summary.passRate}% OK)</span>`
+        : `<span class="ok">Concluído — ${summary.totals.ok} simulações OK (${summary.passRate}%)</span>`;
+      document.title = summary.totals.fail ? 'CUP_BENCHMARK_FAIL' : 'CUP_BENCHMARK_OK';
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+
+    startBtn.addEventListener('click', () => runBatch());
+    stopBtn.addEventListener('click', () => { stopRequested = true; stopBtn.disabled = true; status.textContent = 'Parando…'; });
+    status.innerHTML = `<span class="warn">Pronto. Padrão seguro: ${SAMPLE} simulações. Clique em Iniciar.</span>`;
+  </script>
+</body>
+</html>

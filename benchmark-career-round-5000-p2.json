@@ -1,0 +1,168 @@
+{
+  "sampleSize": 5000,
+  "elapsedMs": 4064,
+  "mode": "career",
+  "division": "A",
+  "pairing": "round",
+  "builtIn": {
+    "matches": 1000,
+    "goals": 2606,
+    "shots": 20493,
+    "onTarget": 7310,
+    "draws": 214,
+    "scoreless": 60,
+    "overFour": 121,
+    "homeWins": 456,
+    "awayWins": 330,
+    "maxGoals": 9,
+    "goalsPerMatch": 2.606,
+    "shotsPerMatch": 20.493,
+    "onTargetPerMatch": 7.31,
+    "drawRate": 21.4,
+    "scorelessRate": 6,
+    "overFourRate": 12.1,
+    "homeWinRate": 45.6,
+    "awayWinRate": 33
+  },
+  "rates": {
+    "goalsPerMatch": 2.476,
+    "homeGoalsPerMatch": 1.421,
+    "awayGoalsPerMatch": 1.054,
+    "drawRate": 21.96,
+    "homeWinRate": 45.22,
+    "awayWinRate": 32.82,
+    "scorelessRate": 7.46,
+    "over25Rate": 43.42,
+    "over35Rate": 23.1,
+    "over45Rate": 10.66,
+    "shotsPerMatch": 20.29,
+    "onTargetPerMatch": 7.22,
+    "onTargetPct": 35.59,
+    "conversionPct": 34.29,
+    "foulsPerMatch": 22.18,
+    "yellowsPerMatch": 3.33,
+    "redsPerMatch": 0.05,
+    "cornersPerMatch": 5.68,
+    "offsidesPerMatch": 4.24,
+    "penaltiesPerMatch": 0.25,
+    "injuriesPerMatch": 0.35,
+    "subsPerMatch": 3.03,
+    "xgPerMatch": 2.482,
+    "xgToGoalsRatio": 0.998
+  },
+  "percentiles": {
+    "goals": {
+      "p10": 1,
+      "p25": 1,
+      "p50": 2,
+      "p75": 3,
+      "p90": 5
+    },
+    "shots": {
+      "p50": 20,
+      "p90": 25
+    },
+    "xg": {
+      "p50": 2.42,
+      "p90": 3.42
+    },
+    "homePossession": {
+      "p25": 49,
+      "p50": 57,
+      "p75": 60
+    }
+  },
+  "topScores": [
+    {
+      "score": "1-1",
+      "count": 547,
+      "pct": 10.94
+    },
+    {
+      "score": "1-0",
+      "count": 532,
+      "pct": 10.64
+    },
+    {
+      "score": "2-0",
+      "count": 508,
+      "pct": 10.16
+    },
+    {
+      "score": "0-1",
+      "count": 507,
+      "pct": 10.14
+    },
+    {
+      "score": "0-0",
+      "count": 373,
+      "pct": 7.46
+    },
+    {
+      "score": "0-2",
+      "count": 362,
+      "pct": 7.24
+    },
+    {
+      "score": "2-1",
+      "count": 308,
+      "pct": 6.16
+    },
+    {
+      "score": "3-0",
+      "count": 285,
+      "pct": 5.7
+    },
+    {
+      "score": "1-2",
+      "count": 272,
+      "pct": 5.44
+    },
+    {
+      "score": "3-1",
+      "count": 164,
+      "pct": 3.28
+    },
+    {
+      "score": "0-3",
+      "count": 151,
+      "pct": 3.02
+    },
+    {
+      "score": "2-2",
+      "count": 148,
+      "pct": 2.96
+    }
+  ],
+  "powerGapBuckets": {
+    "even": {
+      "matches": 3000,
+      "homeWinRate": 43.27,
+      "goalsPerMatch": 2.431
+    },
+    "slight": {
+      "matches": 2000,
+      "homeWinRate": 48.15,
+      "goalsPerMatch": 2.542
+    },
+    "strong": {
+      "matches": 0,
+      "homeWinRate": 0,
+      "goalsPerMatch": 0
+    }
+  },
+  "references": {
+    "brasileiraoSerieA": {
+      "goalsPerMatch": "2.45-2.55",
+      "drawRate": "24-27%",
+      "homeWinRate": "45-48%",
+      "shotsPerMatch": "22-28",
+      "foulsPerMatch": "24-30"
+    },
+    "topLeagues": {
+      "goalsPerMatch": "2.6-2.9",
+      "drawRate": "22-26%",
+      "homeWinRate": "44-46%"
+    }
+  }
+}

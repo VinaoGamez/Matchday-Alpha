@@ -1,0 +1,57 @@
+{
+  "sampleSize": 40,
+  "perDivision": 10,
+  "divisions": {
+    "A": {
+      "runs": 10,
+      "ok": 10,
+      "fail": 0,
+      "everInCup": 10,
+      "entryPath": {
+        "5a_fase_serie_a": 10
+      },
+      "anomalies": {}
+    },
+    "B": {
+      "runs": 10,
+      "ok": 10,
+      "fail": 0,
+      "everInCup": 10,
+      "entryPath": {
+        "2a_fase_direta": 8,
+        "3a_fase_especial": 2
+      },
+      "anomalies": {}
+    },
+    "C": {
+      "runs": 10,
+      "ok": 10,
+      "fail": 0,
+      "everInCup": 10,
+      "entryPath": {
+        "2a_fase_direta": 8,
+        "1a_fase": 2
+      },
+      "anomalies": {}
+    },
+    "D": {
+      "runs": 10,
+      "ok": 10,
+      "fail": 0,
+      "everInCup": 10,
+      "entryPath": {
+        "1a_fase": 6,
+        "2a_fase_direta": 4
+      },
+      "anomalies": {}
+    }
+  },
+  "totals": {
+    "ok": 40,
+    "fail": 0,
+    "anomalies": {}
+  },
+  "samples": [],
+  "elapsedMs": 578900,
+  "passRate": 100.0
+}

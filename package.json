@@ -1,0 +1,16 @@
+{
+  "name": "matchday-football-alpha",
+  "version": "0.2.0-alpha",
+  "private": true,
+  "description": "Matchday Football — simulador de gestão (Alpha 02 modular)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy:testers": "npm run build && npx wrangler pages deploy dist --project-name matchday-football-alpha --branch main"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}

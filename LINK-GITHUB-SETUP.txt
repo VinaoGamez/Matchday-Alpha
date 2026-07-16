@@ -1,0 +1,70 @@
+MATCHDAY FOOTBALL - LINK FIXO COM GITHUB PAGES
+==============================================
+
+O jogo e estatico (save no navegador). GitHub Pages hospeda a pasta dist/
+gratis com URL fixa:
+
+  https://SEU-USUARIO.github.io/NOME-DO-REPO/home.html
+
+Exemplo:
+  https://vinhao.github.io/matchday-football-alpha/home.html
+
+
+PASSO 1 — CRIAR REPOSITORIO NO GITHUB
+--------------------------------------
+1. Acesse https://github.com/new
+2. Nome sugerido: matchday-football-alpha
+3. Publico ou privado (Pages funciona nos dois)
+4. NAO marque README se for enviar esta pasta inteira
+5. Crie o repositorio
+
+
+PASSO 2 — ENVIAR O PROJETO (primeira vez)
+-----------------------------------------
+Instale Git: https://git-scm.com/download/win
+
+No terminal, dentro desta pasta:
+
+  git init
+  git add .
+  git commit -m "Matchday Football Alpha - build testers"
+  git branch -M main
+  git remote add origin https://github.com/SEU-USUARIO/matchday-football-alpha.git
+  git push -u origin main
+
+(Substitua SEU-USUARIO e o nome do repo.)
+
+
+PASSO 3 — ATIVAR GITHUB PAGES
+------------------------------
+1. GitHub > seu repositorio > Settings > Pages
+2. Source: GitHub Actions  (nao use "Deploy from branch")
+3. Salve
+
+
+PASSO 4 — PRIMEIRO DEPLOY
+-------------------------
+O arquivo .github/workflows/deploy-testers.yml ja esta no projeto.
+Apos o push, va em Actions e aguarde "Deploy testers" ficar verde.
+
+Link final (fixo):
+  https://SEU-USUARIO.github.io/matchday-football-alpha/home.html
+
+Novo jogo:
+  https://SEU-USUARIO.github.io/matchday-football-alpha/index.html?novo=1
+
+
+ATUALIZAR VERSAO PARA TESTERS
+-----------------------------
+1. Faca alteracoes no codigo
+2. Execute PUBLICAR-GITHUB.bat
+   (ou: git add . && git commit -m "..." && git push)
+3. Aguarde 1-3 min — o MESMO link recebe a nova versao
+
+
+OBSERVACOES
+-----------
+- Link fixo: nao depende do seu PC ligado
+- Saves continuam no localStorage de cada tester
+- Hardening de testers ativo em *.github.io
+- Link temporario (PC ligado): INICIAR-LINK-EXTERNO.bat

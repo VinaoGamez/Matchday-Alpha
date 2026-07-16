@@ -1,0 +1,18 @@
+﻿MATCHDAY FOOTBALL - LINK EXTERNO
+
+Pagina inicial (testers):
+https://ist-planning-gasoline-warrior.trycloudflare.com/home.html
+
+Jogo direto (novo):
+https://ist-planning-gasoline-warrior.trycloudflare.com/index.html?novo=1
+
+Link base do tunel:
+https://ist-planning-gasoline-warrior.trycloudflare.com
+
+Servidor hardened: porta 5081 (bundle dist/)
+Atualizado: 16/07/2026 19:13
+
+IMPORTANTE:
+- Mantenha o servidor (porta 5081) e o cloudflared abertos.
+- Se o link parar, execute INICIAR-LINK-EXTERNO.bat para gerar um novo.
+- Link fixo permanente: use PUBLICAR-LINK-FIXO.bat (requer login Cloudflare na 1a vez).
