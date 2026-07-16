@@ -1,0 +1,48 @@
+MATCHDAY FOOTBALL - CONECTAR SEU REPOSITORIO GITHUB
+====================================================
+
+Repositorio local pronto (branch main, commit inicial feito).
+
+PASSO 1 — CRIAR REPO NO GITHUB
+-------------------------------
+1. https://github.com/new
+2. Nome: matchday-football-alpha  (ou outro — ajuste a URL abaixo)
+3. Publico ou Privado
+4. NAO marque "Add README" se o repo for receber este push
+5. Criar repositório
+
+
+PASSO 2 — LIGAR E ENVIAR (substitua SEU-USUARIO)
+-------------------------------------------------
+Abra o terminal nesta pasta e execute:
+
+  git remote add origin https://github.com/SEU-USUARIO/matchday-football-alpha.git
+  git push -u origin main
+
+Se o GitHub pedir login, use sua conta ou um Personal Access Token.
+
+
+PASSO 3 — ATIVAR GITHUB PAGES
+-----------------------------
+GitHub > repositório > Settings > Pages
+Source: GitHub Actions
+
+
+PASSO 4 — AGUARDAR DEPLOY
+-------------------------
+GitHub > Actions > "Deploy testers (GitHub Pages)"
+Quando ficar verde (1-3 min), acesse:
+
+  https://SEU-USUARIO.github.io/matchday-football-alpha/home.html
+
+Novo jogo:
+  https://SEU-USUARIO.github.io/matchday-football-alpha/index.html?novo=1
+
+
+ATUALIZAR DEPOIS
+----------------
+  git add .
+  git commit -m "Atualiza versao testers"
+  git push
+
+Ou execute: PUBLICAR-GITHUB.bat
