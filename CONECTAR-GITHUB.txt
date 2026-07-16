@@ -1,6 +1,9 @@
 MATCHDAY FOOTBALL - CONECTAR SEU REPOSITORIO GITHUB
 ====================================================
 
+Pasta do projeto (recomendada):
+  C:\Users\Vinão\Documents\Matchday-Alpha
+
 Repositorio local pronto (branch main, commit inicial feito).
 
 PASSO 1 — CRIAR REPO NO GITHUB
@@ -16,7 +19,8 @@ PASSO 2 — LIGAR E ENVIAR (substitua SEU-USUARIO)
 -------------------------------------------------
 Abra o terminal nesta pasta e execute:
 
-  git remote add origin https://github.com/SEU-USUARIO/matchday-football-alpha.git
+  cd "C:\Users\Vinão\Documents\Matchday-Alpha"
+  git remote add origin https://github.com/VinaoGamez/Matchday-Alpha.git
   git push -u origin main
 
 Se o GitHub pedir login, use sua conta ou um Personal Access Token.
@@ -33,10 +37,10 @@ PASSO 4 — AGUARDAR DEPLOY
 GitHub > Actions > "Deploy testers (GitHub Pages)"
 Quando ficar verde (1-3 min), acesse:
 
-  https://SEU-USUARIO.github.io/matchday-football-alpha/home.html
+  https://VinaoGamez.github.io/Matchday-Alpha/home.html
 
 Novo jogo:
-  https://SEU-USUARIO.github.io/matchday-football-alpha/index.html?novo=1
+  https://VinaoGamez.github.io/Matchday-Alpha/index.html?novo=1
 
 
 ATUALIZAR DEPOIS
