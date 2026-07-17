@@ -1349,6 +1349,7 @@ export async function bootEngine({ bus } = {}) {
   economyUi.init();
   router.onView('office',()=>economyUi.renderOffice());
   router.onView('stadium',()=>economyUi.renderStadium());
+  router.onView('training',()=>calendarView.renderTrainingRules());
   const refreshSeasonPresentation=()=>{
     reconcileCurrentRound();
     rebuildCalendarGames();

@@ -1,6 +1,22 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-17',
+    date: '2026-07-17',
+    publishedAt: '2026-07-17T18:45:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Novidades',
+        items: [
+          'Sidebar: Treinamento, Transferências e Categoria de Base abaixo de Estádio.',
+          'Planejamento semanal de treinos moveu para a área Treinamento (atalho no Calendário).',
+          'Transferências e Categoria de Base aparecem como Em Breve.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-16',
     date: '2026-07-17',
     publishedAt: '2026-07-17T17:35:00-03:00',

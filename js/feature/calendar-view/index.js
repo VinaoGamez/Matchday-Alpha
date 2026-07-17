@@ -441,6 +441,8 @@ export function createCalendarViewFeature(deps) {
       if (getHasCareer()) persistSeason();
       renderCalendar();
     });
+    onClick('#openTrainingFromCalendar', () => openView('training'));
+    onClick('#openCalendarFromTraining', () => openView('calendar'));
   };
 
   const init = initialDate => {
@@ -457,6 +459,7 @@ export function createCalendarViewFeature(deps) {
     init,
     setPersist,
     renderCalendar,
+    renderTrainingRules,
     openCalendarMatchReport,
     calendarGameResult,
     openDashboardCalendarView,

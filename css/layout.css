@@ -58,6 +58,10 @@ main > .view.active {
 }
 .sidebar nav {
   gap: 5px !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sidebar .nav {
@@ -1077,4 +1081,123 @@ main > .view.active {
 .view#dashboard .dashboard-tables .mini-table-head span:nth-child(n+3),
 .view#dashboard .dashboard-tables .standing-row span:nth-child(n+3) {
   text-align: right !important;
+}
+
+/* --- Treinamento e áreas em breve --- */
+.training-view .training-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.1fr) minmax(240px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.training-view .training-planner,
+.training-view .training-guide-card,
+.coming-soon-view .coming-soon-card {
+  padding: 18px 20px;
+}
+
+.calendar-view .training-shortcut-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.training-view .training-planner > label,
+.training-view .training-guide-card > label,
+.coming-soon-view .coming-soon-card > label {
+  display: block;
+  margin: 0 0 14px;
+  color: #63d9ff;
+  font: 700 11px 'DM Sans', sans-serif;
+  letter-spacing: 0.6px;
+}
+
+.calendar-view .training-shortcut-card > p {
+  margin: 0;
+  padding: 13px 16px 4px;
+  color: #9eb6b8;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.calendar-view .training-shortcut-card .training-open-btn {
+  width: calc(100% - 24px);
+  margin: 12px 12px 14px;
+}
+
+.training-view .training-note {
+  padding: 12px 0 0;
+}
+
+.training-guide-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.training-guide-list > div {
+  padding: 10px 12px;
+  border: 1px solid #28505b;
+  border-radius: 5px;
+  background: #102b35;
+}
+
+.training-guide-list small {
+  display: block;
+  color: #63d9ff;
+  font: 700 8px 'DM Sans', sans-serif;
+  letter-spacing: 0.5px;
+}
+
+.training-guide-list strong {
+  display: block;
+  margin-top: 4px;
+  color: #edf8f5;
+  font: 700 14px 'Barlow Condensed', sans-serif;
+  line-height: 1.25;
+}
+
+.training-open-btn {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px !important;
+  border: 1px solid #63d9ff !important;
+  border-radius: 5px !important;
+  background: #1d5a6d !important;
+  color: #fff !important;
+  font: 700 11px 'DM Sans', sans-serif !important;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  box-shadow: inset 0 -2px #b6ff38;
+}
+
+.training-open-btn:hover,
+.training-open-btn:focus-visible {
+  background: #246b82 !important;
+  outline: 0;
+}
+
+.coming-soon-view .coming-soon-card {
+  max-width: 560px;
+}
+
+.coming-soon-view .coming-soon-card > strong {
+  display: block;
+  margin: 0 0 10px;
+  color: #b6ff38;
+  font: 700 28px 'Barlow Condensed', sans-serif;
+  line-height: 1.1;
+}
+
+.coming-soon-view .coming-soon-card > p {
+  margin: 0;
+  color: #9eb6b8;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .training-view .training-layout {
+    grid-template-columns: 1fr;
+  }
 }

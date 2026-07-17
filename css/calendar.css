@@ -16,7 +16,7 @@
 
 .season-calendar,
 .day-agenda-card,
-.training-planner {
+.calendar-view .training-shortcut-card {
   padding: 0 !important;
   border: 1px solid #28505b !important;
   border-radius: 8px !important;
@@ -247,7 +247,7 @@
 }
 
 .day-agenda-card > label,
-.training-planner > label {
+.calendar-view .training-shortcut-card > label {
   padding: 14px 16px;
   background: #102b35;
   border-bottom: 1px solid #28505b;
@@ -339,11 +339,11 @@
   display: inline;
 }
 
-.training-planner > p {
-  margin: 0;
-  padding: 13px 16px 4px;
+.training-view .training-planner > p {
+  margin: 0 0 12px;
+  padding: 0;
   color: #9eb6b8;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .training-rules {
@@ -352,6 +352,11 @@
   gap: 7px;
 }
 
+.training-view .training-rules {
+  padding: 0;
+}
+
+.training-view .training-rules button,
 .calendar-view .training-rules button {
   min-height: 52px;
   padding: 8px 10px !important;
@@ -367,6 +372,8 @@
   cursor: pointer;
 }
 
+.training-view .training-rules button:hover,
+.training-view .training-rules button:focus-visible,
 .calendar-view .training-rules button:hover,
 .calendar-view .training-rules button:focus-visible {
   background: #153541 !important;
@@ -406,6 +413,11 @@
   color: #718f95;
   font-size: 8px;
   line-height: 1.4;
+}
+
+.training-view .training-note {
+  padding: 12px 0 0;
+  font-size: 10px;
 }
 
 body.dark-mode .calendar-view .calendar-toolbar button {
@@ -450,6 +462,7 @@ body.dark-mode .calendar-view button.calendar-day.user-away {
   background: linear-gradient(145deg, #143448, #10293a) !important;
 }
 
+body.dark-mode .training-view .training-rules button,
 body.dark-mode .calendar-view .training-rules button {
   background: #0f2731 !important;
   color: #edf8f5 !important;
@@ -457,6 +470,8 @@ body.dark-mode .calendar-view .training-rules button {
   padding: 8px 10px !important;
 }
 
+body.dark-mode .training-view .training-rules button:hover,
+body.dark-mode .training-view .training-rules button:focus-visible,
 body.dark-mode .calendar-view .training-rules button:hover,
 body.dark-mode .calendar-view .training-rules button:focus-visible {
   background: #153541 !important;

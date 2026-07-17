@@ -10,8 +10,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/site.css?v=20260715-revision">
   <link rel="stylesheet" href="css/championship.css?v=20260715-revision">
-  <link rel="stylesheet" href="css/calendar.css?v=20260715-revision">
-  <link rel="stylesheet" href="css/layout.css?v=20260716-sidebar">
+  <link rel="stylesheet" href="css/calendar.css?v=20260717-training">
+  <link rel="stylesheet" href="css/layout.css?v=20260717-training">
 </head>
 <body>
 
@@ -26,6 +26,9 @@
       <button class="nav" data-view="table">▤ Campeonatos</button>
       <button class="nav" data-view="office">▥ Escritório</button>
       <button class="nav" data-view="stadium">⬡ Estádio</button>
+      <button class="nav" data-view="training">◎ Treinamento</button>
+      <button class="nav" data-view="transfers">⇄ Transferências</button>
+      <button class="nav" data-view="youth">◆ Categoria de Base</button>
       <button class="nav" data-view="ranking">≣ Ranking Nacional</button>
       <button class="nav" data-view="messages">✉ Mensagens <em id="messagesBadge" class="nav-badge hidden">0</em></button>
       <button class="nav" data-view="calendar">◷ Calendário</button>
@@ -114,6 +117,46 @@
         </article>
       </div>
     </section>
+    <section id="training" class="view training-view">
+      <div class="title"><p>PREPARAÇÃO FÍSICA E TÁTICA</p><h1>Treinamento</h1><span>Defina as rotinas semanais do elenco. Os treinos são simulados dia a dia no calendário; se houver jogo do clube, a semana para nesse dia para você organizar a partida.</span></div>
+      <div class="training-layout">
+        <article class="card training-planner">
+          <label>PLANEJAMENTO SEMANAL</label>
+          <p>Escolha a rotina para cada situação. As opções ciclam a cada clique e ficam salvas na carreira.</p>
+          <div id="trainingRules" class="training-rules">
+            <button type="button" data-training-rule="before"><small>ANTES DA PARTIDA</small><strong></strong><i>›</i></button>
+            <button type="button" data-training-rule="after"><small>APÓS A PARTIDA</small><strong></strong><i>›</i></button>
+            <button type="button" data-training-rule="free"><small>DIAS LIVRES</small><strong></strong><i>›</i></button>
+          </div>
+          <small class="training-note">Pós-jogo e dias livres recuperam o elenco entre partidas; pré-jogo ajusta a energia no apito inicial.</small>
+        </article>
+        <article class="card training-guide-card">
+          <label>COMO FUNCIONA</label>
+          <div class="training-guide-list">
+            <div><small>ANTES DA PARTIDA</small><strong>Ajusta a energia e o foco no dia do jogo.</strong></div>
+            <div><small>APÓS A PARTIDA</small><strong>Recupera o elenco nos dias seguintes ao confronto.</strong></div>
+            <div><small>DIAS LIVRES</small><strong>Define a rotina nos dias sem compromisso do clube.</strong></div>
+          </div>
+          <button type="button" id="openCalendarFromTraining" class="training-open-btn">VER CALENDÁRIO →</button>
+        </article>
+      </div>
+    </section>
+    <section id="transfers" class="view coming-soon-view">
+      <div class="title"><p>MERCADO DE JOGADORES</p><h1>Transferências</h1><span>Contratações, vendas e negociações com outros clubes.</span></div>
+      <article class="card coming-soon-card">
+        <label>EM BREVE</label>
+        <strong>Área em desenvolvimento</strong>
+        <p>O mercado de transferências estará disponível em uma atualização futura. Por enquanto, foque no elenco atual, nas táticas e no planejamento semanal de treinos.</p>
+      </article>
+    </section>
+    <section id="youth" class="view coming-soon-view">
+      <div class="title"><p>FORMAÇÃO DE TALENTOS</p><h1>Categoria de Base</h1><span>Desenvolvimento de jovens e revelação de promessas para o elenco principal.</span></div>
+      <article class="card coming-soon-card">
+        <label>EM BREVE</label>
+        <strong>Área em desenvolvimento</strong>
+        <p>A categoria de base estará disponível em uma atualização futura. O investimento correspondente no Escritório permanece bloqueado até a abertura desta área.</p>
+      </article>
+    </section>
     <section id="table" class="view championship-view">
       <div class="title championship-page-heading"><p id="championshipPageKicker">CAMPEONATO BRASILEIRO · SÉRIE A</p><h1>Campeonatos</h1></div>
       <div class="card league championship-page-table">
@@ -179,7 +222,7 @@
         </article>
         <aside class="calendar-sidebar">
           <article class="card day-agenda-card"><label>AGENDA DO DIA</label><div class="agenda-date"><strong id="calendarSelectedDay"></strong><small id="calendarSelectedMeta"></small></div><div id="calendarDayAgenda" class="day-agenda"></div></article>
-          <article class="card training-planner"><label>PLANEJAMENTO SEMANAL</label><p>Defina as rotinas abaixo e avance a semana no calendário. Os treinos são simulados dia a dia; se houver jogo do clube, a simulação para nesse dia para você organizar a partida.</p><div id="trainingRules" class="training-rules"><button type="button" data-training-rule="before"><small>ANTES DA PARTIDA</small><strong></strong><i>›</i></button><button type="button" data-training-rule="after"><small>APÓS A PARTIDA</small><strong></strong><i>›</i></button><button type="button" data-training-rule="free"><small>DIAS LIVRES</small><strong></strong><i>›</i></button></div><small class="training-note">Pós-jogo e dias livres recuperam o elenco entre partidas; pré-jogo ajusta a energia no apito inicial.</small></article>
+          <article class="card training-shortcut-card"><label>TREINAMENTO</label><p>As rotinas semanais do elenco ficam na área de Treinamento.</p><button type="button" id="openTrainingFromCalendar" class="training-open-btn">ABRIR TREINAMENTO →</button></article>
         </aside>
       </div>
     </section>
