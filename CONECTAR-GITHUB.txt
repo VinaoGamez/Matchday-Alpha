@@ -1,52 +1,88 @@
-MATCHDAY FOOTBALL - CONECTAR SEU REPOSITORIO GITHUB
-====================================================
+MATCHDAY FOOTBALL - GITHUB PAGES (LINK FIXO TESTERS)
+=====================================================
 
-Pasta do projeto (recomendada):
+Pasta do projeto:
   C:\Users\Vinão\Documents\Matchday-Alpha
 
-Repositorio local pronto (branch main, commit inicial feito).
+Repositorio:
+  https://github.com/VinaoGamez/Matchday-Alpha
+
+Status: PUBLICADO E FUNCIONANDO (16/07/2026)
+
+
+=== LINKS FIXOS PARA TESTERS ===
+
+Pagina inicial:
+  https://vinaogamez.github.io/Matchday-Alpha/home.html
+
+Novo jogo:
+  https://vinaogamez.github.io/Matchday-Alpha/index.html?novo=1
+
+Link base:
+  https://vinaogamez.github.io/Matchday-Alpha/
+
+Estes enderecos sao permanentes. Cada git push atualiza a mesma URL em 1-3 min.
+
+
+=== CONFIGURACAO INICIAL (JA FEITA) ===
+
+1. Repositorio criado: VinaoGamez/Matchday-Alpha
+2. Codigo enviado (branch main)
+3. GitHub Pages ativo com Source: GitHub Actions
+4. Workflow "Deploy testers (GitHub Pages)" executado com sucesso
+
+
+=== SE PRECISAR REFAZER O SETUP ===
 
 PASSO 1 — CRIAR REPO NO GITHUB
 -------------------------------
 1. https://github.com/new
-2. Nome: matchday-football-alpha  (ou outro — ajuste a URL abaixo)
+2. Nome sugerido: Matchday-Alpha
 3. Publico ou Privado
-4. NAO marque "Add README" se o repo for receber este push
-5. Criar repositório
+4. NAO marque "Add README" se for enviar esta pasta
+5. Criar repositorio
 
 
-PASSO 2 — LIGAR E ENVIAR (substitua SEU-USUARIO)
--------------------------------------------------
-Abra o terminal nesta pasta e execute:
+PASSO 2 — LIGAR E ENVIAR
+------------------------
+Abra o terminal nesta pasta:
 
   cd "C:\Users\Vinão\Documents\Matchday-Alpha"
   git remote add origin https://github.com/VinaoGamez/Matchday-Alpha.git
   git push -u origin main
 
-Se o GitHub pedir login, use sua conta ou um Personal Access Token.
+
+PASSO 3 — ATIVAR GITHUB PAGES (OBRIGATORIO)
+-------------------------------------------
+Sem este passo o link SEMPRE da 404, mesmo com os arquivos no GitHub.
+
+1. https://github.com/VinaoGamez/Matchday-Alpha/settings/pages
+2. Source: GitHub Actions (NAO use "Deploy from a branch")
+3. Salve se aparecer botao Save
 
 
-PASSO 3 — ATIVAR GITHUB PAGES
------------------------------
-GitHub > repositório > Settings > Pages
-Source: GitHub Actions
+PASSO 4 — REEXECUTAR O DEPLOY (SE FALHAR)
+-----------------------------------------
+1. https://github.com/VinaoGamez/Matchday-Alpha/actions
+2. Clique no run de "Deploy testers (GitHub Pages)"
+3. Re-run all jobs
+4. Aguarde ficar verde (1-3 min)
 
 
-PASSO 4 — AGUARDAR DEPLOY
--------------------------
-GitHub > Actions > "Deploy testers (GitHub Pages)"
-Quando ficar verde (1-3 min), acesse:
+=== ATUALIZAR VERSAO PARA TESTERS ===
 
-  https://VinaoGamez.github.io/Matchday-Alpha/home.html
-
-Novo jogo:
-  https://VinaoGamez.github.io/Matchday-Alpha/index.html?novo=1
-
-
-ATUALIZAR DEPOIS
-----------------
   git add .
   git commit -m "Atualiza versao testers"
   git push
 
 Ou execute: PUBLICAR-GITHUB.bat
+
+Acompanhe o deploy em:
+  https://github.com/VinaoGamez/Matchday-Alpha/actions
+
+
+=== OBSERVACOES ===
+
+- Saves ficam no localStorage de cada navegador/dispositivo
+- Hardening de testers ativo em *.github.io
+- Link temporario (PC ligado): INICIAR-LINK-EXTERNO.bat
