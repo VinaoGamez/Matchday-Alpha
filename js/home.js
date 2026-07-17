@@ -31,10 +31,6 @@ import { showUpdateAlertIfNeeded } from './ui/update-alert.js';
     catch { return false; }
   };
 
-  const shareUrl = `${location.origin}${location.pathname}`;
-  const shareEl = $('#shareUrl');
-  if (shareEl) shareEl.textContent = shareUrl;
-
   const continueBtn = $('#continueBtn');
   const careerHint = $('#careerHint');
   if (hasCareer()) {
@@ -53,13 +49,4 @@ import { showUpdateAlertIfNeeded } from './ui/update-alert.js';
     }
   }
 
-  $('#copyShare')?.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      $('#copyShare').textContent = 'LINK COPIADO ✓';
-      setTimeout(() => { $('#copyShare').textContent = 'COPIAR LINK'; }, 1800);
-    } catch {
-      window.prompt('Copie o link de compartilhamento:', shareUrl);
-    }
-  });
 })();

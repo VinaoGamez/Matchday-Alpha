@@ -241,59 +241,6 @@ body {
   font-size: 10px;
 }
 
-.home-footer {
-  margin-top: 32px;
-  padding-top: 18px;
-  border-top: 1px solid var(--md-line);
-}
-
-.share-box {
-  display: grid;
-  gap: 8px;
-  max-width: 720px;
-  padding: 14px 16px;
-  border: 1px solid var(--md-line);
-  border-radius: 8px;
-  background: #0b1d25;
-}
-
-.share-box small {
-  color: var(--md-cyan);
-  font: 700 8px 'DM Sans', sans-serif;
-  letter-spacing: .6px;
-}
-
-.share-box strong {
-  color: var(--md-lime);
-  font: 700 15px 'Barlow Condensed', sans-serif;
-  word-break: break-all;
-}
-
-#copyShare {
-  justify-self: start;
-  min-height: 32px;
-  padding: 8px 12px;
-  border: 1px solid #3a6b77;
-  border-radius: 5px;
-  background: #12313c;
-  color: #75dfff;
-  font: 700 9px 'DM Sans', sans-serif;
-  letter-spacing: .45px;
-  cursor: pointer;
-}
-
-#copyShare:hover {
-  background: #1b4a59;
-  border-color: #75dfff;
-}
-
-.home-footer > p {
-  margin: 10px 0 0;
-  color: #7fa0a4;
-  font-size: 11px;
-  line-height: 1.45;
-}
-
 .hidden { display: none !important; }
 
 @media (max-width: 960px) {
