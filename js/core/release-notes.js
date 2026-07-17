@@ -1,8 +1,24 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-5',
+    date: '2026-07-16',
+    publishedAt: '2026-07-16T22:06:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Novidades',
+        items: [
+          'Opções do Jogo: consulte o histórico de atualizações com data, hora e detalhes de cada build.',
+          'Modal de consulta no padrão das mensagens, com navegação entre versões anteriores.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-4',
     date: '2026-07-16',
+    publishedAt: '2026-07-16T22:00:00-03:00',
     title: 'Matchday Football foi atualizado',
     topics: [
       {
@@ -25,6 +41,7 @@ export const RELEASE_NOTES = [
   {
     version: 'alpha-02-tester-3',
     date: '2026-07-16',
+    publishedAt: '2026-07-16T20:30:00-03:00',
     title: 'Matchday Football foi atualizado',
     topics: [
       {
@@ -47,6 +64,7 @@ export const RELEASE_NOTES = [
   {
     version: 'alpha-02-tester-2',
     date: '2026-07-16',
+    publishedAt: '2026-07-16T17:00:00-03:00',
     title: 'Matchday Football foi atualizado',
     topics: [
       {
