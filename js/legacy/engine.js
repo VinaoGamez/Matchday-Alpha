@@ -4,6 +4,7 @@ import { createMessagesFeature } from '../feature/messages/index.js';
 import { createDashboardFeature } from '../feature/dashboard/index.js';
 import { createCalendarViewFeature } from '../feature/calendar-view/index.js';
 import { createTacticsFeature } from '../feature/tactics/index.js';
+import { createSeasonSummaryFeature } from '../feature/season-summary/index.js';
 import { createPlayerCells, injectPlayerStatusCss, outfield } from '../feature/shared/player-cells.js';
 import { SAVE_KEYS } from '../core/constants.js';
 import {
@@ -2163,9 +2164,20 @@ export async function bootEngine({ bus } = {}) {
     Object.entries(champions).forEach(([competition,clubName])=>{if(!clubName)return;const entry=nationalRankingEntries[clubName],label=competition==='CUP'?'COPA DO BRASIL':`SÉRIE ${competition}`,token=`${careerSeason}-${competition}`;if(!entry||entry.titles.some(title=>title.token===token))return;const points=nationalTitleBonuses[competition];entry.titlePoints=roundRankingScore(entry.titlePoints+points);entry.titles.push({token,season:careerSeason,competition:label,points});});
     nationalRankingFinalizedSeasons.add(careerSeason);renderNationalRanking();
   };
-  const seasonTransitionCss=document.createElement('style');seasonTransitionCss.textContent='.season-transition-modal{width:min(720px,calc(100vw - 28px));text-align:left}.season-transition-modal h2{margin:5px 0 5px;font:700 32px Barlow Condensed}.season-transition-modal>p{margin:0 0 12px;color:#9eb6b8;font-size:12px}.season-transition-summary{margin:0 0 14px;padding:12px 14px;border:1px solid #28505b;border-radius:7px;background:#0b1d25}.season-transition-summary strong{display:block;margin-bottom:6px;color:#b6ff38;font:700 16px Barlow Condensed}.season-transition-summary span{display:block;color:#cfe3e6;font-size:11px;line-height:1.45}.season-champions{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:0 0 14px}.season-champions article{padding:9px 8px;border:1px solid #28505b;border-radius:6px;background:#0b1a22;text-align:center}.season-champions small{display:block;color:#63d9ff;font:700 8px DM Sans;letter-spacing:.5px}.season-champions b{display:block;margin-top:5px;color:#edf8f5;font:700 12px Barlow Condensed;line-height:1.25}.movement-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.movement-card{border:1px solid #28505b;border-radius:7px;overflow:hidden;background:#0b1a22}.movement-card h3{margin:0;padding:10px 12px;background:#123843;color:#b6ff38;font:700 17px Barlow Condensed}.movement-card div{display:grid;grid-template-columns:30px minmax(0,1fr);gap:7px;padding:7px 11px;border-top:1px solid #234b55;font-size:10px}.movement-card div.user-movement{background:#203b26;color:#dcffa9;box-shadow:inset 3px 0 #b6ff38}.movement-card small{color:#63d9ff}.season-transition-actions{display:flex;justify-content:flex-end;margin-top:16px}.season-transition-actions button{background:#b6ff38!important;color:#06131b!important;border:0!important}.idle-sim-modal{width:min(420px,calc(100vw - 28px));text-align:center}.idle-sim-modal h2{margin:8px 0 6px;font:700 28px Barlow Condensed}.idle-sim-modal p{margin:0;color:#9eb6b8;font-size:12px;line-height:1.45}.idle-sim-modal strong{display:block;margin-top:14px;color:#63d9ff;font:700 13px DM Sans}@media(max-width:620px){.movement-grid{grid-template-columns:1fr}.season-champions{grid-template-columns:1fr 1fr}}';document.head.append(seasonTransitionCss);
-  document.body.insertAdjacentHTML('beforeend',`<div id="seasonTransitionModal" class="modal hidden"><div class="modal-card season-transition-modal"><label>TEMPORADA CONCLUÍDA</label><h2>Acessos e rebaixamentos</h2><p id="seasonTransitionLead">Os clubes abaixo mudarão de divisão na próxima temporada.</p><div id="seasonTransitionSummary" class="season-transition-summary"></div><div id="seasonChampions" class="season-champions"></div><div id="seasonMovements" class="movement-grid"></div><div class="season-transition-actions"><button id="startNextSeason">INICIAR PRÓXIMA TEMPORADA →</button></div></div></div><div id="idleSeasonSimModal" class="modal hidden"><div class="modal-card idle-sim-modal"><label>CALENDÁRIO NACIONAL</label><h2>Simulando não humanos</h2><p>Seu clube não tem mais partidas. O restante da temporada está sendo resolvido automaticamente.</p><strong id="idleSeasonSimStatus">Preparando…</strong></div></div>`);
   let pendingDivisionTeams=null,pendingUserDivision=userDivision,nonHumanSimRunning=false,idleSeasonWasSimulated=false;
+  const seasonSummary=createSeasonSummaryFeature({
+    $,
+    clubCrestInitials,
+    onStartNextSeason:()=>{
+      if(!pendingDivisionTeams||!savedNewGame)return;
+      const nextSave={...savedNewGame,division:pendingUserDivision,divisionTeams:pendingDivisionTeams,userRoster:clubs[userClub].roster.map(player=>({...player,fatigue:100})),nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:nationalRankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},season:(savedNewGame.season||2026)+1,createdAt:new Date().toISOString(),version:4};
+      localStorage.setItem('matchday-new-game',JSON.stringify(nextSave));
+      localStorage.removeItem('matchday-season');
+      localStorage.removeItem('matchday-live-match');
+      redirectGame();
+    },
+  });
+  seasonSummary.init();
   const ranked=division=>[...nationalCompetitions[division].standings].sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff).map(row=>row.club);
   const playoffEdge=(first,second,division)=>{const table=nationalCompetitions[division].standings,a=table.find(row=>row.club===first),b=table.find(row=>row.club===second),aScore=a.points+clubs[first].power*.18+rnd(-2.5,2.5),bScore=b.points+clubs[second].power*.18+rnd(-2.5,2.5);return aScore>=bScore?first:second;};
   const finishRemainingNationalRounds=fromRound=>{for(let round=fromRound;round<=38;round++)['A','B','C'].forEach(division=>{const competition=nationalCompetitions[division],fixtures=competition.fixtures[round-1]||[],results=fixtures.map(game=>simulateRoundMatch(game.home,game.away));results.forEach(recordGameLeaders);results.forEach(game=>applySecondaryResult(game,competition));competitionRoundHistory[division].push({round,games:results.map(game=>({home:game.home,away:game.away,homeGoals:game.homeGoals,awayGoals:game.awayGoals,data:game.data,goals:game.goals}))});});Object.values(nationalCompetitions).forEach(competition=>competition.standings.sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff));};
@@ -2181,13 +2193,33 @@ export async function bootEngine({ bus } = {}) {
       :userRelegated?`${userClub} foi rebaixado para a Série ${pendingUserDivision}.`
       :`${userClub} segue na Série ${pendingUserDivision} na próxima temporada.`;
     const idleNote=idleSeasonWasSimulated?` Sem jogos restantes do clube — o calendário nacional de ${careerSeason} foi simulado até o fim.`: '';
-    const summary=$('#seasonTransitionSummary');if(summary)summary.innerHTML=`<strong>Situação de ${userClub}</strong><span>${userLine}${idleNote}</span>`;
-    const champs=$('#seasonChampions');if(champs)champs.innerHTML=`<article><small>SÉRIE A</small><b>${champions.A||'—'}</b></article><article><small>SÉRIE B</small><b>${champions.B||'—'}</b></article><article><small>SÉRIE C</small><b>${champions.C||'—'}</b></article><article><small>SÉRIE D</small><b>${champions.D||'—'}</b></article><article><small>COPA DO BRASIL</small><b>${champions.CUP||'—'}</b></article>`;
-    const lead=$('#seasonTransitionLead');if(lead)lead.textContent='Resultados finais das competições e movimentos de acesso/rebaixamento.';
-    const section=(title,clubsList)=>`<article class="movement-card"><h3>${title}</h3>${clubsList.map((name,index)=>`<div class="${name===userClub?'user-movement':''}"><small>${index+1}</small><b>${name}</b></div>`).join('')||'<div><small>—</small><b>Nenhum clube</b></div>'}</article>`;
-    $('#seasonMovements').innerHTML=section('SÉRIE B → SÉRIE A',promB)+section('SÉRIE A → SÉRIE B',relA)+section('SÉRIE C → SÉRIE B',promC)+section('SÉRIE B → SÉRIE C',relB)+section('SÉRIE D → SÉRIE C',promD)+section('SÉRIE C → SÉRIE D',relC);pushSeasonEndBrief();$('#seasonTransitionModal').classList.remove('hidden');
+    const userStatus=userPromoted?'promoted':userRelegated?'relegated':'neutral';
+    const leadersByDivision={
+      A:{scorers:leadersFor('A','scorers'),assistants:leadersFor('A','assists')},
+      B:{scorers:leadersFor('B','scorers'),assistants:leadersFor('B','assists')},
+      C:{scorers:leadersFor('C','scorers'),assistants:leadersFor('C','assists')},
+      D:{scorers:leadersFor('D','scorers'),assistants:leadersFor('D','assists')},
+      CUP:{scorers:championshipLeadersFor('CUP','scorers'),assistants:championshipLeadersFor('CUP','assists')},
+    };
+    pushSeasonEndBrief();
+    seasonSummary.open({
+      userClub,
+      careerSeason,
+      userLine,
+      idleNote,
+      userStatus,
+      champions,
+      leadersByDivision,
+      movements:[
+        {title:'Série B → Série A',clubs:promB,type:'promote'},
+        {title:'Série A → Série B',clubs:relA,type:'relegate'},
+        {title:'Série C → Série B',clubs:promC,type:'promote'},
+        {title:'Série B → Série C',clubs:relB,type:'relegate'},
+        {title:'Série D → Série C',clubs:promD,type:'promote'},
+        {title:'Série C → Série D',clubs:relC,type:'relegate'},
+      ],
+    });
   };
-  onClick('#startNextSeason',()=>{if(!pendingDivisionTeams||!savedNewGame)return;const nextSave={...savedNewGame,division:pendingUserDivision,divisionTeams:pendingDivisionTeams,userRoster:clubs[userClub].roster.map(player=>({...player,fatigue:100})),nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:nationalRankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},season:(savedNewGame.season||2026)+1,createdAt:new Date().toISOString(),version:4};localStorage.setItem('matchday-new-game',JSON.stringify(nextSave));localStorage.removeItem('matchday-season');localStorage.removeItem('matchday-live-match');redirectGame();});
   const advancePostMatchDay=()=>{
     const nextDay=new Date(careerCalendarDate);
     nextDay.setDate(nextDay.getDate()+1);
@@ -2270,15 +2302,13 @@ export async function bootEngine({ bus } = {}) {
     roundPreviewResults={};
     return completedSeasonNow;
   };
-  const setIdleSimStatus=text=>{const el=$('#idleSeasonSimStatus');if(el)el.textContent=text;};
   const simulateNonHumanSeasonRemainder=()=>{
     if(nonHumanSimRunning)return;
     if(seasonComplete()){prepareSeasonTransition();return;}
     if(!isUserSeasonIdle())return;
     nonHumanSimRunning=true;
-    const overlay=$('#idleSeasonSimModal');
-    overlay?.classList.remove('hidden');
-    setIdleSimStatus(`Rodada ${currentRound} de ${seasonMaxRound()}…`);
+    seasonSummary.openIdleSim();
+    seasonSummary.setIdleSimStatus(`Rodada ${currentRound} de ${seasonMaxRound()}…`);
     $$('.nav').find(button=>button.dataset.view==='dashboard')?.click();
     const maxRound=seasonMaxRound();
     const step=()=>{
@@ -2288,12 +2318,12 @@ export async function bootEngine({ bus } = {}) {
           finalizeNationalRankingSeason();
           persistSeason();
           refreshSeasonPresentation();
-          overlay?.classList.add('hidden');
+          seasonSummary.closeIdleSim();
           nonHumanSimRunning=false;
           prepareSeasonTransition();
           return;
         }
-        setIdleSimStatus(`Simulando rodada ${currentRound} de ${maxRound}…`);
+        seasonSummary.setIdleSimStatus(`Simulando rodada ${currentRound} de ${maxRound}…`);
         const finished=simulateIdleRound();
         persistSeason();
         if(finished||currentRound>maxRound){
@@ -2301,7 +2331,7 @@ export async function bootEngine({ bus } = {}) {
           finalizeNationalRankingSeason();
           persistSeason();
           refreshSeasonPresentation();
-          overlay?.classList.add('hidden');
+          seasonSummary.closeIdleSim();
           nonHumanSimRunning=false;
           prepareSeasonTransition();
           return;
@@ -2310,7 +2340,7 @@ export async function bootEngine({ bus } = {}) {
         setTimeout(step,0);
       }catch(error){
         console.error('Falha ao simular restante da temporada',error);
-        overlay?.classList.add('hidden');
+        seasonSummary.closeIdleSim();
         nonHumanSimRunning=false;
         persistSeason();
         refreshSeasonPresentation();
