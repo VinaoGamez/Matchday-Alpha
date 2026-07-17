@@ -14,17 +14,6 @@ export const RELEASE_NOTES = [
           'Resumo pós-jogo compara plano tático (posse planejada, precisão estimada, finalizações) com o que aconteceu na partida.',
         ],
       },
-      {
-        label: 'QA sugerido (tática)',
-        items: [
-          'Posse 100 vs 0 (mesmo adversário, elencos parecidos): ~+10 pp de posse, ~+9 pp de passes certos e ~+4 finalizações.',
-          'Mentalidade 100 vs 0: barra de ataque sobe ~+9; espere 1–2 finalizações a mais e mais chances de gol.',
-          'Pressão 100 vs 0: ~+2 a +4 faltas no jogo; passes certos caem ~3 pp.',
-          'Linha alta vs baixa: linha 100 → 2–4 impedimentos; linha 0 → raramente ou zero.',
-          'Presets: posse+pressão altas ≈ 64% de posse e ~15 finalizações; bloco baixo ≈ 47% de posse, ~9 finalizações e menos gols.',
-          'Antes do apito: confronto tático (ataque/passe/defesa) deve refletir os sliders; após o jogo, confira “Plano tático vs partida”.',
-        ],
-      },
     ],
   },
   {
