@@ -18,6 +18,8 @@ import {
   engineBlowoutDamp,
   matchDifficultyForClub,
   createSimLineupBuilder,
+  fatigueMinuteWear,
+  FATIGUE_SUB_THRESHOLD,
 } from '../engine/match-tuning.js';
 import { FORMATION_PERFORMANCE, COMPATIBLE_ROLES, roundTactic } from '../engine/match-core.js';
 import { createRoundMatchSimulator } from '../engine/match-sim.js';
@@ -328,8 +330,8 @@ export async function bootEngine({ bus } = {}) {
       defense:clamp(morale*.42+board*.68+crowd*.24,-2.25,2.25),
       keeper:clamp(morale*.34+board*.28,-1.25,1.25),
       discipline:clamp((52-club.board)/420+(50-club.environment)/540,-.065,.13),
-      wear:clamp(1-(club.finances-50)/520-(club.environment-50)/1050,.88,1.12),
-      recovery:clamp(1+(club.finances-50)/310+(club.environment-50)/650,.84,1.20),
+      wear:clamp(1-(club.finances-50)/900-(club.environment-50)/1800,.94,1.06),
+      recovery:clamp(1+(club.finances-50)/500+(club.environment-50)/1000,.90,1.15),
       volatility:clamp(1+(55-club.environment)/125+(55-club.board)/180,.82,1.28)
     };
   };
@@ -869,8 +871,11 @@ export async function bootEngine({ bus } = {}) {
   const trainingRecoveryModifiers={before:{'Preparação tática':1,'Treino leve':.94,'Descanso':1.06},after:{'Recuperação':1.18,'Descanso total':1.3,'Análise do jogo':1.06},free:{'Treino equilibrado':1,'Treino técnico':.96,'Descanso intermitente':1.08}};
   const trainingRecoveryMultiplier=type=>trainingRecoveryModifiers[type]?.[trainingRules[type]]??1;
   const dailyRecovery=player=>player.age<=22?6.5:player.age<=26?5.5:player.age<=29?4.5:player.age<=32?3.5:2.5;
-  const applyTrainingDay=type=>{const user=clubs[userClub],institution=clubInstitutionalContext(user),mod=trainingRecoveryMultiplier(type);user.roster.forEach(player=>{if(type==='before')player.fatigue=clamp(player.fatigue+(mod-1)*5-(mod<1?(1-mod)*4:0),0,100);else player.fatigue=clamp(player.fatigue+dailyRecovery(player)*institution.recovery*mod,0,100);});};
-  const applyPreMatchTraining=()=>{const mod=trainingRecoveryMultiplier('before');clubs[userClub].roster.forEach(player=>{player.fatigue=clamp(player.fatigue+(mod-1)*5-(mod<1?(1-mod)*4:0),0,100);});};
+  const recoverClubRoster=(club,days=1,mod=1)=>{const institution=clubInstitutionalContext(club);club.roster.forEach(player=>{player.fatigue=clamp(player.fatigue+dailyRecovery(player)*days*institution.recovery*mod,0,100);});};
+  const recoverPlayers=(days=3,mod=1)=>Object.values(clubs).forEach(club=>recoverClubRoster(club,days,mod));
+  const recoverOtherClubs=(days=1,mod=1)=>Object.values(clubs).forEach(club=>{if(club.name!==userClub)recoverClubRoster(club,days,mod);});
+  const applyTrainingDay=type=>{const user=clubs[userClub],institution=clubInstitutionalContext(user),mod=trainingRecoveryMultiplier(type);user.roster.forEach(player=>{if(type==='before')player.fatigue=clamp(player.fatigue+(mod-1)*5-(mod<1?(1-mod)*4:0),0,100);else player.fatigue=clamp(player.fatigue+dailyRecovery(player)*institution.recovery*mod,0,100);});recoverOtherClubs(1,1);};
+  const applyPreMatchTraining=()=>{const mod=trainingRecoveryMultiplier('before');clubs[userClub].roster.forEach(player=>{player.fatigue=clamp(player.fatigue+(mod-1)*5-(mod<1?(1-mod)*4:0),0,100);});const opponent=matchClub();if(opponent)recoverClubRoster(opponent,1,.75);};
   const fixtureResultLabel=game=>{
     if(game.competition==='COPA DO BRASIL'||isKnockoutShootoutCompetition(game)){
       if(!game.completed&&!game.homeGoals&&game.homeGoals!==0){
@@ -1621,7 +1626,7 @@ export async function bootEngine({ bus } = {}) {
     const drawDominance=home===away && own && rival ? clamp((own.goodAttacks-rival.goodAttacks)*.24+(own.shots-rival.shots)*.10+(own.xg-rival.xg)*.5,-3.2,3.2) : 0;
     return clamp(power.overall-(100-fatigue)*.055-reds*6.5+momentum+passForm+attackForm+drawDominance,50,95);
   };
-  let timer, liveClockSeconds=0, liveClockSecondTimer=null, minute, home, away, pauses, stats, cards, halftimeShown, pendingPenalty, shootoutState=null, matchFactors, goals, disciplineEvents, matchStarted=false, matchFinished=false, preMatchPreparation=false, substitutions=0, substitutedOut=new Set(), activePreparationTitle='', matchDiscipline={home:new Map(),away:new Map()},liveInjuries={home:[],away:[]},liveDeferredInjuries={home:[],away:[]},liveOpeningLineup={home:[],away:[]},liveMinutesPlayed={home:new Map(),away:new Map()},availabilityCommitted=false,roundResultMessagePushed=false,liveMatchGame=null,liveDayMatchSnapshots=null;
+  let timer, liveClockSeconds=0, liveClockSecondTimer=null, minute, home, away, pauses, stats, cards, halftimeShown, pendingPenalty, shootoutState=null, matchFactors, goals, disciplineEvents, matchStarted=false, matchFinished=false, preMatchPreparation=false, substitutions=0, awaySubstitutions=0, awaySubWindows=0, substitutedOut=new Set(), activePreparationTitle='', matchDiscipline={home:new Map(),away:new Map()},liveInjuries={home:[],away:[]},liveDeferredInjuries={home:[],away:[]},liveOpeningLineup={home:[],away:[]},liveMinutesPlayed={home:new Map(),away:new Map()},availabilityCommitted=false,roundResultMessagePushed=false,liveMatchGame=null,liveDayMatchSnapshots=null;
   const liveMatchDayKey=()=>{
     if(!liveMatchGame)return null;
     if(liveMatchGame.competition==='COPA DO BRASIL')return calendarKey(new Date(liveMatchGame.date));
@@ -1739,6 +1744,56 @@ export async function bootEngine({ bus } = {}) {
     const division=liveDayGameDivision(game);
     return `S${division} · Rod. ${game.round||currentRound}ª`;
   };
+  const liveDayMatchShortLabel=game=>{
+    if(game.competition==='COPA DO BRASIL')return `${game.phase}${game.leg?` · ${game.leg}`:''}`;
+    if(isKnockoutShootoutCompetition(game))return game.leg||'Elim.';
+    return `Rod. ${game.round||currentRound}ª`;
+  };
+  const liveDaySectionKey=game=>{
+    if(game.competition==='COPA DO BRASIL')return 'CUP';
+    const division=liveDayGameDivision(game);
+    if(division==='D'){
+      if(isKnockoutShootoutCompetition(game))return 'D:KO';
+      if((game.round||0)<=SERIE_D_GROUP_ROUNDS){
+        const groupIndex=serieDGroupIndexForGame(game);
+        return groupIndex>=0?`D:${groupIndex}`:'D:UNK';
+      }
+      return 'D:KO';
+    }
+    return division;
+  };
+  const liveDaySectionLabel=key=>{
+    if(key==='CUP')return 'Copa do Brasil';
+    if(key==='A')return 'Brasileirão Série A';
+    if(key==='B')return 'Brasileirão Série B';
+    if(key==='C')return 'Brasileirão Série C';
+    if(key==='D:KO')return 'Série D · Mata-mata';
+    if(key==='D:UNK')return 'Série D';
+    if(key.startsWith('D:'))return `Série D · Grupo A${Number(key.slice(2))+1}`;
+    return key;
+  };
+  const liveDaySectionSortKey=key=>{
+    if(key==='CUP')return '0-CUP';
+    if(key==='A'||key==='B'||key==='C')return `1-${key}`;
+    if(key==='D:KO')return '2-KO';
+    if(key.startsWith('D:'))return `2-${String(Number(key.slice(2))).padStart(2,'0')}`;
+    return `9-${key}`;
+  };
+  const groupLiveDayGamesAllView=games=>{
+    const buckets=new Map();
+    games.forEach(game=>{
+      const key=liveDaySectionKey(game);
+      if(!buckets.has(key))buckets.set(key,[]);
+      buckets.get(key).push(game);
+    });
+    return [...buckets.entries()]
+      .sort(([a],[b])=>liveDaySectionSortKey(a).localeCompare(liveDaySectionSortKey(b)))
+      .map(([key,sectionGames])=>({
+        key,
+        label:liveDaySectionLabel(key),
+        games:sectionGames.sort((a,b)=>Number(isUserFixture(b))-Number(isUserFixture(a))||a.home.localeCompare(b.home,'pt-BR')),
+      }));
+  };
   const liveDayMatchStatus=(game,isUser,atMinute)=>{
     if(preMatchPreparation)return 'A iniciar';
     if(isUser&&matchFinished)return 'Encerrado';
@@ -1787,13 +1842,21 @@ export async function bootEngine({ bus } = {}) {
       listEl.innerHTML='<div class="live-day-matches-empty">Nenhuma partida nesta competição para a data selecionada.</div>';
       return;
     }
-    listEl.innerHTML=`<div class="live-day-matches-head"><span>Comp.</span><span>Mandante</span><span>Placar</span><span>Visitante</span><span>Min.</span></div>${filteredGames.map(game=>{
+    const renderLiveDayMatchRow=(game,compactLabel=false)=>{
       const id=liveDayGameKey(game);
       const entry=liveDayMatchSnapshots?.get(id)||{game,isUser:isUserFixture(game)};
       const isUser=isUserFixture(game);
       const {homeGoals,awayGoals}=preMatchPreparation&&!entry.isUser?{homeGoals:0,awayGoals:0}:livePartialAtMinute(entry,atMinute);
-      return `<div class="live-day-match-row ${isUser?'user-game':''}"><span class="live-day-match-label">${liveDayMatchLabel(game)}</span><span class="live-day-match-home"><b class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</b></span><strong class="live-day-match-score">${homeGoals} — ${awayGoals}</strong><span class="live-day-match-away"><b class="club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</b>${isUser?'<small class="user-game-tag">SEU JOGO</small>':''}</span><span class="live-day-match-status">${liveDayMatchStatus(game,isUser,atMinute)}</span></div>`;
-    }).join('')}`;
+      const label=compactLabel?liveDayMatchShortLabel(game):liveDayMatchLabel(game);
+      return `<div class="live-day-match-row ${isUser?'user-game':''}"><span class="live-day-match-label">${label}</span><span class="live-day-match-home"><b class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</b></span><strong class="live-day-match-score">${homeGoals} — ${awayGoals}</strong><span class="live-day-match-away"><b class="club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</b>${isUser?'<small class="user-game-tag">SEU JOGO</small>':''}</span><span class="live-day-match-status">${liveDayMatchStatus(game,isUser,atMinute)}</span></div>`;
+    };
+    const tableHead=`<div class="live-day-matches-head"><span>Comp.</span><span>Mandante</span><span>Placar</span><span>Visitante</span><span>Min.</span></div>`;
+    if(liveDayMatchFilter==='ALL'){
+      const sections=groupLiveDayGamesAllView(filteredGames);
+      listEl.innerHTML=`${tableHead}${sections.map(section=>`<div class="live-day-division-block"><div class="live-day-division-head"><strong>${section.label}</strong><span>${section.games.length} jogos</span></div>${section.games.map(game=>renderLiveDayMatchRow(game,true)).join('')}</div>`).join('')}`;
+      return;
+    }
+    listEl.innerHTML=`${tableHead}${filteredGames.map(game=>renderLiveDayMatchRow(game,false)).join('')}`;
   };
   const openLiveDayMatches=()=>{const games=liveMatchDayGames();liveDayMatchFilter=defaultLiveDayFilter(games);renderLiveDayMatches();$('#liveDayMatchesModal')?.classList.remove('hidden');};
   const modal = $('#matchModal'), timeline = $('#timeline');
@@ -2076,7 +2139,7 @@ export async function bootEngine({ bus } = {}) {
   const roundResultsCss=document.createElement('style');roundResultsCss.textContent='.round-results-modal{width:min(820px,calc(100vw - 28px));text-align:left}.round-results-modal h2{margin:5px 0 4px;font:700 32px Barlow Condensed}.round-results-modal p{margin:0;color:#9eb6b8;font-size:11px}.round-results-toolbar{display:grid;gap:10px;margin:15px 0 12px}.round-division-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.round-division-tabs button,.round-group-nav button,.round-selector button{min-height:34px;border:1px solid #315d69!important;background:#102a34!important;color:#b9ced2!important}.round-division-tabs button.active{border-color:#63d9ff!important;background:#1c5061!important;color:#f2fcff!important;box-shadow:inset 0 -2px #63d9ff}.round-context-nav{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:38px;padding:7px 9px;border:1px solid #28505b;border-radius:6px;background:#0b1d25}.round-group-nav,.round-selector{display:flex;align-items:center;gap:8px}.round-group-nav strong,.round-selector strong{min-width:92px;text-align:center;color:#edf8f5;font-size:11px}.round-group-nav button,.round-selector button{width:34px;padding:0}.round-format{color:#63d9ff;font:700 9px DM Sans;letter-spacing:.55px}.round-games{border:1px solid #28505b;border-radius:7px;overflow:hidden}.round-games-head,.round-game-row{display:grid;grid-template-columns:minmax(0,1fr) 76px minmax(0,1fr);gap:12px;align-items:center;padding:11px 14px}.round-games-head{background:#102b35;color:#63d9ff;font:700 9px DM Sans;letter-spacing:.65px}.round-games-head span:nth-child(2),.round-game-row strong{text-align:center}.round-games-head span:last-child,.round-game-row span:last-child{text-align:right}.round-game-row{min-height:44px;border-top:1px solid #234650;color:#edf8f5;font-size:12px}.round-game-row strong{font:700 19px Barlow Condensed;color:#b6ff38}.round-game-row.user-game{background:linear-gradient(90deg,#254d2c,#203b26);box-shadow:inset 4px 0 #b6ff38,0 0 16px #b6ff3818}.user-game-tag{display:inline-block;margin-left:7px;padding:3px 5px;border:1px solid #b6ff38;border-radius:3px;color:#dfff9b;font:700 8px DM Sans;letter-spacing:.35px;vertical-align:middle}.round-games-empty{padding:32px 15px;text-align:center;color:#8fa9ae;font-size:11px}@media(max-width:620px){.round-results-modal{width:calc(100vw - 16px)}.round-division-tabs{grid-template-columns:1fr 1fr}.round-context-nav{align-items:stretch;flex-direction:column}.round-format{text-align:center}.round-games-head,.round-game-row{grid-template-columns:minmax(0,1fr) 58px minmax(0,1fr);gap:5px;padding:10px 8px;font-size:10px}.round-game-row strong{font-size:16px}.user-game-tag{display:none}}';document.head.append(roundResultsCss);
   document.body.insertAdjacentHTML('beforeend',`<div id="roundResultsModal" class="modal hidden"><div class="modal-card round-results-modal"><button id="closeRoundResults" class="close">×</button><label>RODADA CONCLUÍDA</label><h2>Tabela de Jogos</h2><p id="roundResultsMeta"></p><div class="round-results-toolbar"><div id="roundDivisionTabs" class="round-division-tabs"></div><div class="round-context-nav"><div id="roundGroupNav" class="round-group-nav"></div><span id="roundFormat" class="round-format"></span><div id="roundSelector" class="round-selector"></div></div></div><div id="roundGames" class="round-games"></div></div></div>`);
   const liveDayMatchesCss=document.createElement('style');
-  liveDayMatchesCss.textContent='.live-day-matches-modal{width:min(820px,calc(100vw - 28px));max-height:min(90vh,860px);display:flex;flex-direction:column;text-align:left}.live-day-matches-modal h2{margin:5px 0 4px;font:700 30px Barlow Condensed;flex:0 0 auto}.live-day-matches-modal>p{margin:0;color:#9eb6b8;font-size:11px;line-height:1.45;flex:0 0 auto}.live-day-matches-toolbar{display:grid;gap:10px;margin-top:14px;flex:0 0 auto}.live-day-matches-toolbar.hidden{display:none!important}.live-day-division-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:7px}.live-day-division-tabs button{min-height:34px;border:1px solid #315d69!important;background:#102a34!important;color:#b9ced2!important;font:700 9px DM Sans;letter-spacing:.35px;padding:6px 4px}.live-day-division-tabs button.active{border-color:#63d9ff!important;background:#1c5061!important;color:#f2fcff!important;box-shadow:inset 0 -2px #63d9ff}.live-day-group-nav{display:flex;justify-content:center;align-items:center;gap:8px;min-height:34px;padding:6px 9px;border:1px solid #28505b;border-radius:6px;background:#0b1d25}.live-day-group-nav:empty{display:none}.live-day-group-nav button{width:34px;min-height:28px;padding:0;border:1px solid #315d69!important;background:#102a34!important;color:#b9ced2!important}.live-day-group-nav strong{color:#edf8f5;font:700 10px DM Sans;letter-spacing:.35px}.live-day-matches-list{margin-top:14px;border:1px solid #28505b;border-radius:7px;overflow-x:hidden;overflow-y:auto;max-height:min(52vh,520px);flex:1 1 auto;min-height:120px}.live-day-matches-head,.live-day-match-row{display:grid;grid-template-columns:72px minmax(0,1fr) 76px minmax(0,1fr) 52px;gap:10px;align-items:center;padding:10px 12px}.live-day-matches-head{position:sticky;top:0;z-index:1;background:#102b35;color:#63d9ff;font:700 9px DM Sans;letter-spacing:.55px}.live-day-matches-head span:nth-child(3),.live-day-match-score{text-align:center}.live-day-match-row{min-height:42px;border-top:1px solid #234650;color:#edf8f5;font-size:11px}.live-day-match-row.user-game{background:linear-gradient(90deg,#254d2c,#203b26);box-shadow:inset 4px 0 #b6ff38,0 0 16px #b6ff3818}.live-day-match-label{color:#7fa8b0;font:700 8px DM Sans;letter-spacing:.35px}.live-day-match-score{font:700 18px Barlow Condensed;color:#b6ff38}.live-day-match-status{text-align:center;color:#63d9ff;font:700 9px DM Sans}.live-day-match-away{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}.live-day-matches-empty{padding:28px 14px;text-align:center;color:#8fa9ae;font-size:11px}@media(max-width:620px){.live-day-matches-modal{width:calc(100vw - 16px);max-height:92vh}.live-day-division-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.live-day-matches-list{max-height:min(48vh,420px)}.live-day-matches-head,.live-day-match-row{grid-template-columns:58px minmax(0,1fr) 58px minmax(0,1fr) 44px;gap:6px;padding:9px 8px;font-size:10px}.live-day-match-score{font-size:15px}.live-day-match-away .user-game-tag{display:none}}';
+  liveDayMatchesCss.textContent='.live-day-matches-modal{width:min(820px,calc(100vw - 28px));max-height:min(90vh,860px);display:flex;flex-direction:column;text-align:left}.live-day-matches-modal h2{margin:5px 0 4px;font:700 30px Barlow Condensed;flex:0 0 auto}.live-day-matches-modal>p{margin:0;color:#9eb6b8;font-size:11px;line-height:1.45;flex:0 0 auto}.live-day-matches-toolbar{display:grid;gap:10px;margin-top:14px;flex:0 0 auto}.live-day-matches-toolbar.hidden{display:none!important}.live-day-division-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:7px}.live-day-division-tabs button{min-height:34px;border:1px solid #315d69!important;background:#102a34!important;color:#b9ced2!important;font:700 9px DM Sans;letter-spacing:.35px;padding:6px 4px}.live-day-division-tabs button.active{border-color:#63d9ff!important;background:#1c5061!important;color:#f2fcff!important;box-shadow:inset 0 -2px #63d9ff}.live-day-group-nav{display:flex;justify-content:center;align-items:center;gap:8px;min-height:34px;padding:6px 9px;border:1px solid #28505b;border-radius:6px;background:#0b1d25}.live-day-group-nav:empty{display:none}.live-day-group-nav button{width:34px;min-height:28px;padding:0;border:1px solid #315d69!important;background:#102a34!important;color:#b9ced2!important}.live-day-group-nav strong{color:#edf8f5;font:700 10px DM Sans;letter-spacing:.35px}.live-day-matches-list{margin-top:14px;border:1px solid #28505b;border-radius:7px;overflow-x:hidden;overflow-y:auto;max-height:min(52vh,520px);flex:1 1 auto;min-height:120px}.live-day-matches-head,.live-day-match-row{display:grid;grid-template-columns:72px minmax(0,1fr) 76px minmax(0,1fr) 52px;gap:10px;align-items:center;padding:10px 12px}.live-day-matches-head{position:sticky;top:0;z-index:2;background:#102b35;color:#63d9ff;font:700 9px DM Sans;letter-spacing:.55px}.live-day-division-block+.live-day-division-block .live-day-division-head{border-top:8px solid #091820}.live-day-division-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 12px;background:#0b2530;color:#63d9ff;border-top:1px solid #28505b;border-bottom:1px solid #234650;position:sticky;top:38px;z-index:1}.live-day-division-head strong{color:#edf8f5;font:700 12px Barlow Condensed,sans-serif;letter-spacing:.35px}.live-day-division-head span{color:#9eb6b8;font:600 9px DM Sans}.live-day-matches-head span:nth-child(3),.live-day-match-score{text-align:center}.live-day-match-row{min-height:42px;border-top:1px solid #234650;color:#edf8f5;font-size:11px}.live-day-division-head+.live-day-match-row{border-top:0}.live-day-match-row.user-game{background:linear-gradient(90deg,#254d2c,#203b26);box-shadow:inset 4px 0 #b6ff38,0 0 16px #b6ff3818}.live-day-match-label{color:#7fa8b0;font:700 8px DM Sans;letter-spacing:.35px}.live-day-match-score{font:700 18px Barlow Condensed;color:#b6ff38}.live-day-match-status{text-align:center;color:#63d9ff;font:700 9px DM Sans}.live-day-match-away{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}.live-day-matches-empty{padding:28px 14px;text-align:center;color:#8fa9ae;font-size:11px}@media(max-width:620px){.live-day-matches-modal{width:calc(100vw - 16px);max-height:92vh}.live-day-division-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.live-day-matches-list{max-height:min(48vh,420px)}.live-day-matches-head,.live-day-match-row{grid-template-columns:58px minmax(0,1fr) 58px minmax(0,1fr) 44px;gap:6px;padding:9px 8px;font-size:10px}.live-day-division-head{top:34px}.live-day-match-score{font-size:15px}.live-day-match-away .user-game-tag{display:none}}';
   document.head.append(liveDayMatchesCss);
   document.body.insertAdjacentHTML('beforeend',`<div id="liveDayMatchesModal" class="modal hidden"><div class="modal-card live-day-matches-modal"><button id="closeLiveDayMatches" class="close">×</button><label>AO VIVO · RODADA</label><h2>Partidas em Andamento</h2><p id="liveDayMatchesMeta"></p><div id="liveDayMatchesToolbar" class="live-day-matches-toolbar hidden"><div id="liveDayDivisionTabs" class="live-day-division-tabs"></div><div id="liveDayGroupNav" class="live-day-group-nav"></div></div><div id="liveDayMatchesList" class="live-day-matches-list"></div></div></div>`);
   let roundBrowserDivision=userDivision,roundBrowserRound=currentRound,roundBrowserGroup=userDivision==='D'?userSerieDGroupIndex:0;
@@ -2211,7 +2274,6 @@ export async function bootEngine({ bus } = {}) {
   };
   renderRecentResults();
   let roundCommitted=false;
-  const recoverPlayers=(days=3)=>Object.values(clubs).forEach(club=>{const institution=clubInstitutionalContext(club);club.roster.forEach(player=>{player.fatigue=clamp(player.fatigue+dailyRecovery(player)*days*institution.recovery,0,100);});});
   persistSeason=()=>{
     if(!savedNewGame)return;
     const standings=Object.fromEntries(Object.entries(nationalCompetitions).map(([division,competition])=>[division,competition.standings.map(row=>({...row}))])),fatigue=Object.fromEntries(Object.entries(clubs).map(([clubName,club])=>[clubName,Object.fromEntries(club.roster.map(player=>[player.name,Math.round(player.fatigue*10)/10]))])),compactHistory=history=>history.map(item=>({round:item.round,games:(item.games||[]).map(game=>({home:game.home,away:game.away,homeGoals:game.homeGoals,awayGoals:game.awayGoals,data:game.data?{...game.data}:null,goals:game.goals?{home:[...(game.goals.home||[])],away:[...(game.goals.away||[])]}:null})),userStats:item.userStats?{home:{...item.userStats.home},away:{...item.userStats.away},goals:{home:[...(item.userStats.goals?.home||[])],away:[...(item.userStats.goals?.away||[])]}}:null})),compactCompetitions=Object.fromEntries(Object.entries(competitionRoundHistory).map(([division,history])=>[division,compactHistory(history)]));
@@ -2438,6 +2500,7 @@ export async function bootEngine({ bus } = {}) {
         updateSeriesDKnockout(currentRound);
         Object.values(clubs).forEach(club=>orderRosterForFormation(club.roster,club.formation));
         renderRoster();draw();
+        recoverPlayers(Math.max(1,Math.round(restDays*trainingRecoveryMultiplier('after'))));
         advancePostMatchDay();
       }
       const completedSeason=currentRound===38||(userDivision==='D'&&currentRound===22);if(userDivision==='D'&&currentRound===22)finishRemainingNationalRounds(23);
@@ -2531,6 +2594,45 @@ export async function bootEngine({ bus } = {}) {
       }
     };
     setTimeout(step,0);
+  };
+  const awayBenchPlayers=()=>matchClub().roster.slice(11).filter(candidate=>!playerUnavailable(candidate)&&!liveInjuries.away.some(item=>item.name===candidate.name)&&!liveDeferredInjuries.away.some(item=>item.name===candidate.name));
+  const replaceAwayPlayer=(index,incoming,minute,tag='substitution')=>{
+    const club=matchClub();
+    if(awaySubstitutions>=5||!incoming||index<0)return false;
+    const outgoing=club.roster[index];
+    const incomingIndex=club.roster.indexOf(incoming);
+    if(incomingIndex<11||!outgoing)return false;
+    [club.roster[index],club.roster[incomingIndex]]=[incoming,outgoing];
+    cards.away[index]={yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false,minuteLimitWarned:false};
+    incoming.fatigue=clamp(incoming.fatigue-minute*.02,0,100);
+    liveMinutesPlayed.away.set(incoming.name,liveMinutesPlayed.away.get(incoming.name)??0);
+    awaySubstitutions++;
+    log(`${club.name}: sai ${outgoing.name}, entra ${incoming.name}${incoming.pos!==outgoing.pos?' improvisado na função':''}.`,tag);
+    return true;
+  };
+  const maxAwaySubWindows=()=>(away<home&&minute>=70?4:3);
+  const buildLiveAwaySubState=()=>({name:matchClub().name,lineup:matchClub().roster.slice(0,11),fatigue:new Map(matchClub().roster.slice(0,11).map(player=>[player.name,player.fatigue])),minutesPlayed:liveMinutesPlayed.away,deferredInjuries:liveDeferredInjuries.away,homeGoals:home,awayGoals:away});
+  const makeAwayFatigueSubstitution=()=>{
+    if(!matchStarted||preMatchPreparation||matchFinished||awaySubstitutions>=5||awaySubWindows>=maxAwaySubWindows())return;
+    const chasing=away<home;
+    const windows=[55,...engineTuning.subWindows,...(chasing?engineTuning.subChaseWindows:[])];
+    if(!windows.includes(minute))return;
+    const bench=awayBenchPlayers();
+    if(!bench.length)return;
+    const lineup=matchClub().roster.slice(0,11);
+    const state=buildLiveAwaySubState();
+    const active=lineup.map((player,index)=>({player,index})).filter(({player,index})=>!cards.away[index]?.red&&!cards.away[index]?.injured&&player.pos!=='GOL');
+    const outgoingEntry=[...active].sort((a,b)=>substitutionPriority(state,'away',b.player,minute)-substitutionPriority(state,'away',a.player,minute))[0];
+    if(!outgoingEntry)return;
+    const {player:outgoing,index}=outgoingEntry;
+    const fatigue=outgoing.fatigue;
+    const priority=substitutionPriority(state,'away',outgoing,minute);
+    const need=clamp(.3+(chasing?.28:0)+(minute>=70?.22:0)+Math.max(0,FATIGUE_SUB_THRESHOLD-fatigue)/42+priority/95,(fatigue<FATIGUE_SUB_THRESHOLD?.45:.22),.95);
+    if(Math.random()>need)return;
+    const expected=outgoing.pos,compatible=bench.filter(candidate=>candidate.pos===expected||(compatibleRoles[expected]||[]).includes(candidate.pos)),candidates=compatible.length?compatible:bench,incoming=[...candidates].sort((a,b)=>b.overall-a.overall||b.fatigue-a.fatigue)[0];
+    if(!incoming||!replaceAwayPlayer(index,incoming,minute))return;
+    awaySubWindows++;
+    renderRoster();drawBoard();renderStats();renderLiveOpponent();
   };
   const renderLiveOpponent = () => {
     if(!stats || $('#liveOpponentModal').classList.contains('hidden')) return;
@@ -2649,16 +2751,16 @@ export async function bootEngine({ bus } = {}) {
       return;
     }
     const bench=club.roster.slice(11).filter(candidate=>!playerUnavailable(candidate)&&!liveInjuries.away.some(item=>item.name===candidate.name)&&!liveDeferredInjuries.away.some(item=>item.name===candidate.name));
-    if(!bench.length||substitutions>=5)return;
+    if(!bench.length||awaySubstitutions>=5)return;
     const expected=player.pos,compatible=bench.filter(candidate=>candidate.pos===expected||(compatibleRoles[expected]||[]).includes(candidate.pos)),incoming=[...(compatible.length?compatible:bench)].sort((a,b)=>b.overall-a.overall)[0],incomingIndex=club.roster.indexOf(incoming);
     [club.roster[index],club.roster[incomingIndex]]=[incoming,player];
     cards.away[index]={yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false,minuteLimitWarned:false};
     liveMinutesPlayed.away.set(incoming.name,liveMinutesPlayed.away.get(incoming.name)??0);
-    substitutions++;
+    awaySubstitutions++;
     log(`${club.name} substitui ${player.name} ao atingir limite médico por ${incoming.name}.`,'injury-substitution');
     renderRoster();drawBoard();renderSubstitutionControls();renderStats();
   };
-  const applyWear = () => { [[starters(),clubs[userClub]],[matchClub().roster.slice(0,11),matchClub()]].forEach(([lineup,club],sideIndex)=>{const side=sideIndex===0?'home':'away',wear=clubInstitutionalContext(club,nextUserGame?.home===club.name).wear;lineup.forEach((player,index)=>{player.fatigue=clamp(player.fatigue-(.12+(player.age>=33?.1:player.age>=30?.07:player.age>=27?.035:0))*wear,0,100);if(cards?.[side]?.[index]&&!cards[side][index].red){liveMinutesPlayed[side].set(player.name,(liveMinutesPlayed[side].get(player.name)??0)+1);if(cards[side][index]?.playThroughRisk)checkMinuteAggravation(side,index,player);enforceLiveRehabLimit(side,index,player);}});}); renderRoster(); };
+  const applyWear = () => { [[starters(),clubs[userClub]],[matchClub().roster.slice(0,11),matchClub()]].forEach(([lineup,club],sideIndex)=>{const side=sideIndex===0?'home':'away',wear=clubInstitutionalContext(club,nextUserGame?.home===club.name).wear;lineup.forEach((player,index)=>{player.fatigue=clamp(player.fatigue-fatigueMinuteWear(player)*wear,0,100);if(cards?.[side]?.[index]&&!cards[side][index].red){liveMinutesPlayed[side].set(player.name,(liveMinutesPlayed[side].get(player.name)??0)+1);if(cards[side][index]?.playThroughRisk)checkMinuteAggravation(side,index,player);enforceLiveRehabLimit(side,index,player);}});}); makeAwayFatigueSubstitution(); renderRoster(); };
   // Um erro de dados não pode continuar avançando apenas o relógio e encerrar
   // uma partida sem eventos. Além de interromper o ciclo, a interface informa o
   // problema em vez de produzir silenciosamente um 0 x 0 com estatísticas zeradas.
@@ -2999,7 +3101,7 @@ export async function bootEngine({ bus } = {}) {
     // Após SAIR, a partida é consolidada e o calendário avança para o dia seguinte.
     if(reopenMatchWindow()) return;
     orderRosterForFormation(squad,formation);orderRosterForFormation(matchClub().roster,matchClub().formation);
-    matchStarted=true; matchFinished=false; preMatchPreparation=true; minute=0;home=0;away=0;pauses=0;halftimeShown=false;pendingPenalty=null;shootoutState=null;disciplineEvents=0;substitutions=0;substitutedOut=new Set();roundResults=null;roundResultMessagePushed=false;postMatchMedicalQueue=[];matchDiscipline={home:new Map(),away:new Map()};liveInjuries={home:[],away:[]};liveDeferredInjuries={home:[],away:[]};liveOpeningLineup={home:starters().map(player=>player.name),away:matchClub().roster.slice(0,11).map(player=>player.name)};liveMinutesPlayed={home:new Map(starters().map(player=>[player.name,0])),away:new Map(matchClub().roster.slice(0,11).map(player=>[player.name,0]))};availabilityCommitted=false;liveDayMatchSnapshots=null;matchFactors={home:contextFactor({...seasonContext.home,position:clubs[userClub].position,isHome:nextUserGame?.home===userClub}),away:contextFactor({...seasonContext.away,position:matchClub().position,isHome:nextUserGame?.home!==userClub})};cards={home:starters().map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false})),away:matchClub().roster.slice(0,11).map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false}))};goals={home:[],away:[]};stats={home:blank(),away:blank()};score();timeline.innerHTML="<p>PRÉ-JOGO · Aguardando a confirmação do treinador.</p>";$('#matchActions').innerHTML='<button id="pauseMatch">Ⅱ PAUSA TÉCNICA <small id="pauseCounter">0/3</small></button><button id="liveStats">ESTATÍSTICAS AO VIVO</button><button id="liveOpponent">VER ADVERSÁRIO</button>';bindLiveActions();$('#pauseCounter').textContent='0/3';$('#matchStatus').textContent='Organize sua equipe antes de iniciar a partida.';modal.classList.remove('hidden');$('#penaltyChoice').classList.add('hidden');$('#shootoutPanel').classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');updateLiveMatchClock();openPreparation('PRÉ-JOGO');
+    matchStarted=true; matchFinished=false; preMatchPreparation=true; minute=0;home=0;away=0;pauses=0;halftimeShown=false;pendingPenalty=null;shootoutState=null;disciplineEvents=0;substitutions=0;awaySubstitutions=0;awaySubWindows=0;substitutedOut=new Set();roundResults=null;roundResultMessagePushed=false;postMatchMedicalQueue=[];matchDiscipline={home:new Map(),away:new Map()};liveInjuries={home:[],away:[]};liveDeferredInjuries={home:[],away:[]};liveOpeningLineup={home:starters().map(player=>player.name),away:matchClub().roster.slice(0,11).map(player=>player.name)};liveMinutesPlayed={home:new Map(starters().map(player=>[player.name,0])),away:new Map(matchClub().roster.slice(0,11).map(player=>[player.name,0]))};availabilityCommitted=false;liveDayMatchSnapshots=null;matchFactors={home:contextFactor({...seasonContext.home,position:clubs[userClub].position,isHome:nextUserGame?.home===userClub}),away:contextFactor({...seasonContext.away,position:matchClub().position,isHome:nextUserGame?.home!==userClub})};cards={home:starters().map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false})),away:matchClub().roster.slice(0,11).map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false}))};goals={home:[],away:[]};stats={home:blank(),away:blank()};score();timeline.innerHTML="<p>PRÉ-JOGO · Aguardando a confirmação do treinador.</p>";$('#matchActions').innerHTML='<button id="pauseMatch">Ⅱ PAUSA TÉCNICA <small id="pauseCounter">0/3</small></button><button id="liveStats">ESTATÍSTICAS AO VIVO</button><button id="liveOpponent">VER ADVERSÁRIO</button>';bindLiveActions();$('#pauseCounter').textContent='0/3';$('#matchStatus').textContent='Organize sua equipe antes de iniciar a partida.';modal.classList.remove('hidden');$('#penaltyChoice').classList.add('hidden');$('#shootoutPanel').classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');updateLiveMatchClock();openPreparation('PRÉ-JOGO');
   });
   onClick('#simulateRemainder',()=>simulateNonHumanSeasonRemainder());
   onClick('#closeMatch',()=>{

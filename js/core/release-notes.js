@@ -1,6 +1,28 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-4',
+    date: '2026-07-16',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Novidades',
+        items: [
+          'Cansaço mais intenso: titulares terminam partidas visivelmente mais fatigados (~75% em média).',
+          'Adversário troca jogadores por cansaço ao vivo (55\', 58\', 70\'…) para rodar elenco e evitar lesões.',
+          'Aba TODOS em Partidas em Andamento agrupa jogos por divisão (Série A/B/C, Copa, Série D por grupo).',
+        ],
+      },
+      {
+        label: 'Melhorias',
+        items: [
+          'Recuperação de cansaço equilibrada: todos os clubes recuperam no calendário, não só o seu time.',
+          'Substituições simuladas priorizam reservas mais frescos quando o titular está abaixo de 72%.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-3',
     date: '2026-07-16',
     title: 'Matchday Football foi atualizado',

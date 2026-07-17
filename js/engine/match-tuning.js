@@ -16,9 +16,17 @@ export const ENGINE_TUNING = {
   blowoutGapStart: 6,
   blowoutDampPerPoint: 0.045,
   blowoutDampMin: 0.78,
-  subWindows: [58, 70, 80],
+  subWindows: [55, 58, 70, 78, 82],
   subChaseWindows: [72, 78],
 };
+
+/** Cansaço por minuto em campo (100 = fresco, 0 = exausto). */
+export const fatigueMinuteWear = player =>
+  0.28 +
+  (player.age >= 33 ? 0.1 : player.age >= 30 ? 0.07 : player.age >= 27 ? 0.035 : 0);
+
+/** Abaixo deste valor o jogador entra na fila de substituição por cansaço. */
+export const FATIGUE_SUB_THRESHOLD = 72;
 
 export const engineFoulRisk = (rivalTactic, attacker, defender) =>
   clamp(
@@ -111,7 +119,9 @@ export function createSimLineupBuilder(deps) {
   const substitutionPriority = (state, side, player, minute) => {
     let priority = 0;
     const fatigue = state.fatigue.get(player.name) ?? player.fatigue;
-    priority += Math.max(0, 65 - fatigue) * 0.45;
+    priority += Math.max(0, FATIGUE_SUB_THRESHOLD - fatigue) * 0.55;
+    if (fatigue < 58) priority += 12;
+    if (fatigue < 45) priority += 18;
     if (workloadRisk(player.workload) > 1.12) priority += 18;
     const max = playerRehabMaxMinutes(player);
     if (max) {
