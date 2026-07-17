@@ -1954,8 +1954,13 @@ export async function bootEngine({ bus } = {}) {
   const score=()=>{const {home:homeGoals,away:awayGoals}=calendarLiveScores();$('#score').textContent=`${homeGoals} — ${awayGoals}`;updateLiveMatchClock();};
   const log = (text, type='') => { timeline.insertAdjacentHTML('beforeend', `<p class="${type}">${minute}' · ${text}</p>`); timeline.scrollTop = timeline.scrollHeight; };
   const percent = (a,b) => b ? `${Math.round(a / b * 100)}%` : '0%';
+  const calendarPossessionPair = () => {
+    const userShare = clamp(Number(stats?.home?.possession) || 50, 28, 72);
+    const homeShare = Math.round(userAtHomeInLiveMatch() ? userShare : 100 - userShare);
+    return { home: homeShare, away: 100 - homeShare };
+  };
   const renderStats = () => {
-    const {home:h,away:a}=calendarLiveSideStats(),hp=clamp(Math.round(h.possession),28,72),ap=100-hp;
+    const {home:h,away:a}=calendarLiveSideStats(),{home:hp,away:ap}=calendarPossessionPair();
     const rows = [['Posse de bola',`${hp}%`,`${ap}%`,'possession'],['Passes','','','group'],['Total de Passes',h.passes,a.passes],['% passes certos',percent(h.accurate,h.passes),percent(a.accurate,a.passes)],['Passes errados',h.passes-h.accurate,a.passes-a.accurate],['Ataque','','','group'],['Finalizações',h.shots,a.shots],['Para Fora',h.off,a.off],['No Gol',h.on,a.on],['Defendidas',h.saved,a.saved],['Pênaltis',h.penalties,a.penalties],['Escanteios',h.corners,a.corners],['Impedimentos',h.offsides,a.offsides],['Defesa','','','group'],['Defesas do Goleiro',h.keeperSaves,a.keeperSaves],['Desarmes',h.tackles,a.tackles],['Faltas Cometidas',h.fouls,a.fouls],['Cartões Amarelos',h.yellow,a.yellow,'yellow'],['Cartões Vermelhos',h.red,a.red,'red']];
     const statsBody=rows.map(r => r[3] === 'group' ? `<div class="stat-group">${r[0]}</div>` : `<div class="stat ${r[3] || ''}"><span>${r[1]}</span><span>${r[0]}</span><span>${r[2]}</span></div>`).join('');
     const confrontation=tacticalConfrontationMarkup({
@@ -2025,7 +2030,7 @@ export async function bootEngine({ bus } = {}) {
         medicalReports.push({text:result.report,outcome:result.outcome});
       });
     });
-    const h=calendarLiveSideStats().home,a=calendarLiveSideStats().away,hp=clamp(Math.round(h.possession),28,72),ap=100-hp;
+    const h=calendarLiveSideStats().home,a=calendarLiveSideStats().away,{home:hp,away:ap}=calendarPossessionPair();
     const sideGoals=calendarLiveSideGoals();
     const scorers=side=>sideGoals[side].length?sideGoals[side].map(goal=>`<span>${goal.minute}' ${goal.name}</span>`).join(''):'<span>Nenhum gol</span>';
     const rows=[['Posse de bola',`${hp}%`,`${ap}%`],['Total de Passes',h.passes,a.passes],['Finalizações',h.shots,a.shots],['Faltas Cometidas',h.fouls,a.fouls],['Cartões Amarelos',h.yellow,a.yellow],['Cartões Vermelhos',h.red,a.red]];
@@ -2232,7 +2237,33 @@ export async function bootEngine({ bus } = {}) {
     return true;
   };
   let advanceCalendarWeek=()=>{};
-  const buildLiveKnockoutStats=()=>{const h=stats.home,a=stats.away,hp=clamp(Math.round(h.possession),28,72),userAtHome=liveMatchGame?.home===userClub;return {homeGoals:userAtHome?home:away,awayGoals:userAtHome?away:home,goals:userAtHome?{home:[...goals.home],away:[...goals.away]}:{home:[...goals.away],away:[...goals.home]},data:{homePossession:hp,awayPossession:100-hp,homePasses:h.passes,awayPasses:a.passes,homeAccurate:h.accurate,awayAccurate:a.accurate,homeShots:h.shots,awayShots:a.shots,homeOnTarget:h.on,awayOnTarget:a.on,homeOff:h.off,awayOff:a.off,homeSaved:h.saved,awaySaved:a.saved,homePenalties:h.penalties,awayPenalties:a.penalties,homeOffsides:h.offsides,awayOffsides:a.offsides,homeKeeperSaves:h.keeperSaves,awayKeeperSaves:a.keeperSaves,homeTackles:h.tackles,awayTackles:a.tackles,homeFouls:h.fouls,awayFouls:a.fouls,homeYellow:h.yellow,awayYellow:a.yellow,homeRed:h.red,awayRed:a.red}};};
+  const buildLiveKnockoutStats=()=>{
+    const {home:h,away:a}=calendarLiveSideStats();
+    const {home:homeGoals,away:awayGoals}=calendarLiveScores();
+    const sideGoals=calendarLiveSideGoals();
+    const {home:hp,away:ap}=calendarPossessionPair();
+    return {
+      homeGoals,
+      awayGoals,
+      goals:{home:[...sideGoals.home],away:[...sideGoals.away]},
+      data:{
+        homePossession:hp,awayPossession:ap,
+        homePasses:h.passes,awayPasses:a.passes,
+        homeAccurate:h.accurate,awayAccurate:a.accurate,
+        homeShots:h.shots,awayShots:a.shots,
+        homeOnTarget:h.on,awayOnTarget:a.on,
+        homeOff:h.off,awayOff:a.off,
+        homeSaved:h.saved,awaySaved:a.saved,
+        homePenalties:h.penalties,awayPenalties:a.penalties,
+        homeOffsides:h.offsides,awayOffsides:a.offsides,
+        homeKeeperSaves:h.keeperSaves,awayKeeperSaves:a.keeperSaves,
+        homeTackles:h.tackles,awayTackles:a.tackles,
+        homeFouls:h.fouls,awayFouls:a.fouls,
+        homeYellow:h.yellow,awayYellow:a.yellow,
+        homeRed:h.red,awayRed:a.red,
+      },
+    };
+  };
   const buildLiveCupStats=buildLiveKnockoutStats;
   const commitLiveKnockoutResult=()=>{
     if(!liveMatchGame||liveMatchGame.completed||!isKnockoutShootoutCompetition(liveMatchGame))return false;
@@ -3176,7 +3207,10 @@ export async function bootEngine({ bus } = {}) {
     const structuralControl=(homeProfile.passing-awayProfile.passing)*.44+(homeProfile.overall-awayProfile.overall)*.18+(homeTactic.possession-awayTactic.possession)*.15+(homeTactic.press-awayTactic.press)*.035+(homeTactic.mentality-awayTactic.mentality)*.025+(stats.home.momentum-stats.away.momentum)*.16+passControl+attackControl+redControl+homeOpeningBias*.25+2.5;
     const hasRed=cards.home?.some(card=>card.red)||cards.away?.some(card=>card.red);
     const targetPossession=clamp(50+structuralControl,hasRed?29:32,hasRed?71:68);
+    // Motor: home = usuário, away = adversário. Sempre espelhar a posse do visitante
+    // (como no match-sim); senão, em jogos fora a UI lê stats.away travado em 50%.
     stats.home.possession=stats.home.possession*.74+targetPossession*.26;
+    stats.away.possession=100-stats.home.possession;
     const side = Math.random()*100 < stats.home.possession ? 'home' : 'away';
     const otherSide = side === 'home' ? 'away' : 'home';
     const current = side === 'home' ? homeProfile : awayProfile;

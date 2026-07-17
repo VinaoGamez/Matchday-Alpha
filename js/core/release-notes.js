@@ -1,6 +1,21 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-13',
+    date: '2026-07-17',
+    publishedAt: '2026-07-17T16:20:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Correções',
+        items: [
+          'Posse de bola AO VIVO deixa de ficar travada em 50%–50%, principalmente em jogos fora de casa.',
+          'Estatísticas salvas de Copa/mata-mata passam a respeitar mandante × visitante do calendário.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-12',
     date: '2026-07-17',
     publishedAt: '2026-07-17T15:50:00-03:00',
