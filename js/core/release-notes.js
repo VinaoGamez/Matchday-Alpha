@@ -1,6 +1,22 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-15',
+    date: '2026-07-17',
+    publishedAt: '2026-07-17T17:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Novidades',
+        items: [
+          'Lotação do estádio no dia do jogo varia com Ambiente, torcida, preço do ingresso e fase (mata-mata agudo enche mais).',
+          'AO VIVO mostra público/capacidade e % de lotação; bilheteria em casa entra no fluxo de caixa.',
+          'Mensagem única RESULTADO DA PARTIDA com placar, público e bilheteria (sem alerta separado de bilheteria).',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-14',
     date: '2026-07-17',
     publishedAt: '2026-07-17T16:30:00-03:00',

@@ -183,6 +183,9 @@ export async function bootEngine({ bus } = {}) {
     getTicketPrices,
     adjustTicketPrice,
     estimateGateReceipt,
+    competitionAttraction,
+    computeMatchAttendance,
+    attachMatchAttendance,
     creditHomeGate,
     ensureSponsors,
     getSponsors,
@@ -947,21 +950,86 @@ export async function bootEngine({ bus } = {}) {
     const club=clubs[homeClubName],seed=[...homeClubName].reduce((sum,char)=>sum+char.charCodeAt(0),0)+(club?.power||70)*17,capacity=Math.round((18000+(seed%52000))/1000)*1000,lastWord=homeClubName.split(' ').filter(Boolean).pop()||homeClubName;
     return {name:`Estádio ${lastWord}`,capacity};
   };
+  /** Lotação do dia — Ambiente, preço, fase e ruído do fixture (AO VIVO e bilheteria). */
+  const resolveMatchAttendance=game=>{
+    if(!game?.home||!clubs[game.home])return null;
+    const homeClub=clubs[game.home];
+    const venue=matchVenueFor(game.home);
+    if(game.home!==userClub){
+      ensureStadium(homeClub,homeClub.division||'A');
+      homeClub.stadiumCapacity=venue.capacity;
+    }
+    return attachMatchAttendance(homeClub,game,{division:homeClub.division||userDivision,capacity:venue.capacity});
+  };
+  const formatVenueCrowdLine=game=>{
+    const venue=matchVenueFor(game.home);
+    const crowd=resolveMatchAttendance(game);
+    const homeTag=game.home===userClub?'EM CASA':'FORA DE CASA';
+    if(!crowd)return `${venue.name} · ${venue.capacity.toLocaleString('pt-BR')} lugares · ${homeTag}`;
+    const fillPct=Math.round(crowd.fillRate*100);
+    const phase=crowd.attraction?.boost>=0.1?` · ${crowd.attraction.label}`:'';
+    return `${venue.name} · ${crowd.attendance.toLocaleString('pt-BR')}/${crowd.capacity.toLocaleString('pt-BR')} · ${fillPct}% lotação${phase} · ${homeTag}`;
+  };
   const creditUserHomeGate=game=>{
+    // Mandante no dia de jogo → receita no orçamento (sem mensagem própria; vai no resultado).
     if(!game||game.home!==userClub||!clubs[userClub])return null;
-    const result=creditHomeGate(clubs[userClub],game,{division:userDivision});
+    const venue=matchVenueFor(userClub);
+    const result=creditHomeGate(clubs[userClub],game,{division:userDivision,capacity:venue.capacity});
     if(result?.ok){
-      pushMessage?.({
-        category:'club',
-        type:'budget',
-        title:'Bilheteria creditada',
-        body:`+${formatBudget(result.entry.amount)} · ${result.entry.label}. Caixa: ${formatBudget(result.balance)}.`,
-        round:currentRound,
-        meta:{competition:'Finanças',reason:'gate_receipt'},
-      });
       renderClubBudget();
+      economyUi?.renderOffice?.();
+      persistSeason();
     }
     return result;
+  };
+  /** Resultado da partida + público/bilheteria (mando de campo) numa única mensagem. */
+  const pushUserMatchResultMessage=(game,gateResult=null)=>{
+    if(!game||roundResultMessagePushed)return;
+    if(game.home!==userClub&&game.away!==userClub)return;
+    roundResultMessagePushed=true;
+    const userAtHome=game.home===userClub;
+    const calendarScores=(()=>{
+      if(Number.isFinite(Number(game.homeGoals))&&Number.isFinite(Number(game.awayGoals))){
+        return {home:Number(game.homeGoals),away:Number(game.awayGoals)};
+      }
+      return calendarLiveScores();
+    })();
+    const homeGoals=calendarScores.home,awayGoals=calendarScores.away;
+    const userGoals=userAtHome?homeGoals:awayGoals;
+    const oppGoals=userAtHome?awayGoals:homeGoals;
+    const outcome=userGoals>oppGoals?'Vitória':userGoals<oppGoals?'Derrota':'Empate';
+    const scoreLabel=game.penalties
+      ? `${homeGoals}—${awayGoals} (${game.penalties})`
+      : `${homeGoals}—${awayGoals}`;
+    const crowd=resolveMatchAttendance(game);
+    const lines=[
+      `${game.home} ${scoreLabel} ${game.away}`,
+      `${outcome} · ${competitionLabelForGame(game)}`,
+    ];
+    if(crowd){
+      lines.push(`Público: ${crowd.attendance.toLocaleString('pt-BR')} (${Math.round(crowd.fillRate*100)}% lotação)`);
+    }
+    if(userAtHome&&gateResult?.ok){
+      lines.push(`Bilheteria: +${formatBudget(gateResult.entry.amount)} · caixa ${formatBudget(gateResult.balance)}`);
+    }
+    pushMessage({
+      category:'competition',
+      type:'match-result',
+      title:'RESULTADO DA PARTIDA',
+      body:lines.join('\n'),
+      round:currentRound,
+      meta:{
+        competition:competitionLabelForGame(game),
+        outcome,
+        home:game.home,
+        away:game.away,
+        homeGoals,
+        awayGoals,
+        attendance:crowd?.attendance??null,
+        fillRate:crowd?.fillRate??null,
+        gateRevenue:gateResult?.ok?gateResult.entry.amount:null,
+      },
+    });
   };
   const fixtureCompetitionLabel=game=>{if(game.competition==='COPA DO BRASIL')return `Copa ${game.leg}`;if(isKnockoutShootoutCompetition(game))return `Série D · ${game.leg||'Eliminatórias'}`;return `${game.round}ª`;};
   const isUserFixture=game=>game.home===userClub||game.away===userClub;
@@ -1937,10 +2005,10 @@ export async function bootEngine({ bus } = {}) {
   };
   const renderLiveMatchHeader=game=>{
     if(!game)return;
-    const details=fixtureDetails(game),venue=matchVenueFor(game.home);
+    const details=fixtureDetails(game);
     const homeClub=game.home,awayClub=game.away,userHome=homeClub===userClub;
     $('#liveMatchDateTime').textContent=`${details.display} · ${details.time}`;
-    $('#liveMatchVenue').textContent=`${venue.name} · ${venue.capacity.toLocaleString('pt-BR')} lugares · ${userHome?'EM CASA':'FORA DE CASA'}`;
+    $('#liveMatchVenue').textContent=formatVenueCrowdLine(game);
     const homeCrest=$('#liveHomeCrest'),awayCrest=$('#liveAwayCrest');
     homeCrest.textContent=clubCrestInitials(homeClub);
     awayCrest.textContent=clubCrestInitials(awayClub);
@@ -2280,7 +2348,8 @@ export async function bootEngine({ bus } = {}) {
   const commitLiveCupResult=commitLiveKnockoutResult;
   const advanceCupRound=()=>{
     if(roundCommitted)return;
-    creditUserHomeGate(liveMatchGame);
+    const gateResult=creditUserHomeGate(liveMatchGame);
+    pushUserMatchResultMessage(liveMatchGame,gateResult);
     advancePostMatchDay();
     const restDays=Math.max(1,restDaysUntilNextFixture());
     Object.values(clubs).forEach(club=>orderRosterForFormation(club.roster,club.formation));
@@ -2642,8 +2711,9 @@ export async function bootEngine({ bus } = {}) {
     }
     roundCommitted=true;
     try{
-      creditUserHomeGate(liveMatchGame);
+      const gateResult=creditUserHomeGate(liveMatchGame);
       if(liveMatchGame&&isKnockoutShootoutCompetition(liveMatchGame))commitLiveKnockoutResult();
+      pushUserMatchResultMessage(liveMatchGame,gateResult);
       const alreadyRecorded=seasonRoundHistory.some(item=>item.round===currentRound);
       if(!alreadyRecorded){
         // Primeiro são cumpridas as ausências que pertenciam à rodada disputada;
@@ -3294,7 +3364,11 @@ export async function bootEngine({ bus } = {}) {
       liveClockSeconds=0;liveDayMatchSnapshots=null;ensureLiveDayMatches();applyPreMatchTraining();renderRoster();
       preMatchTacticSnapshot={...(tactics?.getTacticalValues?.()??DEFAULT_USER_TACTICS)};
       const venue=matchVenueFor(liveMatchGame?.home||userClub);
-      timeline.innerHTML=`<p>0' · A bola está rolando no ${venue.name}!</p>`;
+      const crowd=liveMatchGame?resolveMatchAttendance(liveMatchGame):null;
+      const crowdLine=crowd
+        ? ` Público: ${crowd.attendance.toLocaleString('pt-BR')} (${Math.round(crowd.fillRate*100)}% da capacidade).`
+        : '';
+      timeline.innerHTML=`<p>0' · A bola está rolando no ${venue.name}!${crowdLine}</p>`;
       const kickoff=tacticalKickoffMessage(preMatchTacticSnapshot);
       if(kickoff)log(kickoff,'tactic');
     }

@@ -482,53 +482,199 @@ export function setTicketPrice(club, channel, value) {
   return { ok: true, channel, price: club.ticketPrices[channel], ticketPrices: { ...club.ticketPrices } };
 }
 
-/**
- * Taxa de ocupação estimada: preço alto reduz público; apoio da torcida ajuda.
- * Canal: 'national' | 'cups'
- */
-export function estimateFillRate(club, channel = 'national') {
-  ensureStadium(club, club?.division || 'A');
-  const range = TICKET_PRICE_RANGE[channel] || TICKET_PRICE_RANGE.national;
-  const price = club.ticketPrices[channel] ?? range.default;
-  const priceFactor = 1 - ((price - range.min) / (range.max - range.min)) * 0.42;
-  const support = Math.max(0, Math.min(100, Number(club.support) || 60));
-  const supportBoost = (support - 50) / 220;
-  const cupBoost = channel === 'cups' ? 0.06 : 0;
-  return Math.max(0.38, Math.min(0.98, 0.72 * priceFactor + supportBoost + cupBoost));
-}
-
-/** Estimativa de bilheteria de um jogo em casa. */
-export function estimateGateReceipt(club, { channel = 'national', division = 'A' } = {}) {
-  ensureStadium(club, division);
-  const fill = estimateFillRate(club, channel);
-  const attendance = Math.round(club.stadiumCapacity * fill);
-  const price = club.ticketPrices[channel] ?? TICKET_PRICE_RANGE[channel].default;
-  const revenue = Math.round(attendance * price);
-  return { channel, attendance, fillRate: fill, price, revenue, capacity: club.stadiumCapacity };
-}
+const isSerieDKnockoutGame = game => {
+  if (!game) return false;
+  const comp = String(game.competition || '');
+  if (comp === 'SERIE_D' || comp.includes('SÉRIE D') || comp.includes('SERIE D')) return true;
+  return Boolean(game.twoLegged && game.leg && Number(game.round) > 10);
+};
 
 export function ticketChannelFromGame(game) {
   if (!game) return 'national';
   if (game.competition === 'COPA DO BRASIL' || game.competition === 'COPA') return 'cups';
+  if (isSerieDKnockoutGame(game)) return 'cups';
   return 'national';
 }
 
-/** Credita bilheteria de jogo em casa do usuário. */
-export function creditHomeGate(club, game, { division = 'A' } = {}) {
+const hashFixtureKey = game => {
+  const key = `${game?.home || ''}|${game?.away || ''}|${game?.round || ''}|${game?.phase || ''}|${game?.phaseIndex || ''}|${game?.leg || ''}|${game?.date || ''}|${game?.tieId || ''}`;
+  let hash = 2166136261;
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+};
+
+/** Ruído determinístico por jogo (±3.5 pp) — mesma partida = mesma lotação. */
+const fixtureAttendanceNoise = game => {
+  if (!game) return 0;
+  const unit = (hashFixtureKey(game) % 10001) / 10000;
+  return (unit - 0.5) * 0.07;
+};
+
+/**
+ * Atração extra por fase (mata-mata agudo enche mais).
+ * Retorna boost aditivo na taxa de ocupação (0–0.28).
+ */
+export function competitionAttraction(game) {
+  if (!game) return { boost: 0, label: 'Campeonato' };
+  const comp = game.competition;
+  const phaseName = String(game.phase || game.leg || '').toUpperCase();
+
+  if (comp === 'COPA DO BRASIL' || comp === 'COPA') {
+    const phase = Number(game.phaseIndex) || 0;
+    const byIndex = {
+      1: 0.03,
+      2: 0.04,
+      3: 0.055,
+      4: 0.07,
+      5: 0.09,
+      6: 0.13,
+      7: 0.17,
+      8: 0.22,
+      9: 0.28,
+    };
+    let boost = byIndex[phase] ?? 0.06;
+    if (/FINAL/.test(phaseName) && !/SEMI|QUARTAS|OITAVAS/.test(phaseName)) boost = Math.max(boost, 0.28);
+    else if (/SEMI/.test(phaseName)) boost = Math.max(boost, 0.22);
+    else if (/QUARTAS/.test(phaseName)) boost = Math.max(boost, 0.17);
+    else if (/OITAVAS/.test(phaseName)) boost = Math.max(boost, 0.13);
+    return { boost, label: game.phase || 'Copa do Brasil' };
+  }
+
+  if (isSerieDKnockoutGame(game)) {
+    const round = Number(game.round || game.knockoutRound) || 0;
+    if (round <= 12) return { boost: 0.06, label: 'Série D · 2ª fase' };
+    if (round <= 14) return { boost: 0.08, label: 'Série D · 3ª fase' };
+    if (round <= 16) return { boost: 0.12, label: 'Série D · Oitavas' };
+    if (round <= 18) return { boost: 0.16, label: 'Série D · Quartas' };
+    if (round <= 20) return { boost: 0.21, label: 'Série D · Semifinal' };
+    return { boost: 0.27, label: 'Série D · Final' };
+  }
+
+  return { boost: 0, label: 'Nacional' };
+}
+
+/**
+ * Taxa de ocupação: preço, Ambiente do elenco, torcida, fase do campeonato e ruído do jogo.
+ * Canal: 'national' | 'cups'. Passe `game` no dia do jogo para fase + variação.
+ */
+export function estimateFillRate(club, channel = 'national', options = {}) {
+  ensureStadium(club, club?.division || 'A');
+  const range = TICKET_PRICE_RANGE[channel] || TICKET_PRICE_RANGE.national;
+  const price = club.ticketPrices[channel] ?? range.default;
+  const priceSpan = Math.max(1, range.max - range.min);
+  const priceFactor = 1 - ((price - range.min) / priceSpan) * 0.46;
+  const environment = Math.max(0, Math.min(100, Number(options.environment ?? club.environment) || 60));
+  const support = Math.max(0, Math.min(100, Number(options.support ?? club.support) || 60));
+  // Ambiente alto enche; crise no vestiário afasta o público.
+  const envBoost = (environment - 55) / 160;
+  const supportBoost = (support - 50) / 200;
+  const attraction = competitionAttraction(options.game);
+  const noise = options.deterministic === false ? (Math.random() - 0.5) * 0.07 : fixtureAttendanceNoise(options.game);
+  // Sem jogo específico (painel do Estádio), Copas têm leve atrativo médio.
+  const channelBias = !options.game && channel === 'cups' ? 0.05 : 0;
+  const fill = 0.6 * priceFactor + envBoost + supportBoost + attraction.boost + noise + channelBias;
+  return Math.max(0.32, Math.min(0.99, fill));
+}
+
+/** Estimativa de bilheteria — com ou sem jogo concreto. */
+export function estimateGateReceipt(club, { channel = 'national', division = 'A', game = null, capacity = null } = {}) {
+  ensureStadium(club, division);
+  const resolvedChannel = game ? ticketChannelFromGame(game) : channel;
+  const fill = estimateFillRate(club, resolvedChannel, { game });
+  const cap = Math.max(1000, Number(capacity) || Number(club.stadiumCapacity) || 12_000);
+  const attendance = Math.round(cap * fill);
+  const price = club.ticketPrices[resolvedChannel] ?? TICKET_PRICE_RANGE[resolvedChannel].default;
+  const revenue = Math.round(attendance * price);
+  const attraction = competitionAttraction(game);
+  return {
+    channel: resolvedChannel,
+    attendance,
+    fillRate: fill,
+    price,
+    revenue,
+    capacity: cap,
+    attraction,
+    environment: Number(club.environment) || 60,
+    support: Number(club.support) || 60,
+  };
+}
+
+/**
+ * Lotação do dia do jogo (AO VIVO ou simulado).
+ * Se o jogo já tem attendance gravada, reutiliza — mesma partida, mesmo público.
+ */
+export function computeMatchAttendance(club, game, { division = 'A', capacity = null } = {}) {
+  if (!club || !game) return null;
+  ensureStadium(club, division || club.division || 'A');
+  const channel = ticketChannelFromGame(game);
+  const cap = Math.max(1000, Number(capacity) || Number(club.stadiumCapacity) || 12_000);
+  const price = club.ticketPrices[channel] ?? TICKET_PRICE_RANGE[channel].default;
+  if (Number.isFinite(Number(game.attendance)) && Number.isFinite(Number(game.fillRate))) {
+    const attendance = Math.round(Number(game.attendance));
+    const fillRate = Math.max(0.32, Math.min(0.99, Number(game.fillRate)));
+    return {
+      channel,
+      attendance,
+      fillRate,
+      price,
+      revenue: Math.round(attendance * price),
+      capacity: cap,
+      attraction: competitionAttraction(game),
+      environment: Number(club.environment) || 60,
+      support: Number(club.support) || 60,
+      cached: true,
+    };
+  }
+  return { ...estimateGateReceipt(club, { channel, division, game, capacity: cap }), cached: false };
+}
+
+/** Grava lotação no fixture para UI ao vivo e bilheteria usarem o mesmo valor. */
+export function attachMatchAttendance(club, game, options = {}) {
+  const estimate = computeMatchAttendance(club, game, options);
+  if (!estimate || !game) return estimate;
+  if (!estimate.cached) {
+    game.attendance = estimate.attendance;
+    game.fillRate = Number(estimate.fillRate.toFixed(4));
+  }
+  return estimate;
+}
+
+/**
+ * Credita bilheteria no caixa do clube mandante (fluxo de caixa + ledger).
+ * Só jogos em casa; evita crédito duplicado no mesmo fixture.
+ */
+export function creditHomeGate(club, game, { division = 'A', capacity = null } = {}) {
   if (!club || !game || game.home !== club.name) {
     return { ok: false, error: 'not_home' };
   }
-  const channel = ticketChannelFromGame(game);
-  const estimate = estimateGateReceipt(club, { channel, division });
+  if (game.gateCredited) {
+    return { ok: false, error: 'already_credited', balance: getBalance(club) };
+  }
+  const estimate = attachMatchAttendance(club, game, { division, capacity });
+  const phaseNote = estimate.attraction?.boost > 0.1 ? ` · ${estimate.attraction.label}` : '';
   const label =
-    channel === 'cups'
-      ? `Bilheteria · Copa (${estimate.attendance.toLocaleString('pt-BR')} pág.)`
+    estimate.channel === 'cups'
+      ? `Bilheteria · Copa (${estimate.attendance.toLocaleString('pt-BR')} pág.${phaseNote})`
       : `Bilheteria · Nacional (${estimate.attendance.toLocaleString('pt-BR')} pág.)`;
-  return credit(club, estimate.revenue, {
+  const result = credit(club, estimate.revenue, {
     reason: 'gate_receipt',
     label,
-    meta: { ...estimate, opponent: game.away, competition: game.competition || 'LEAGUE' },
+    meta: {
+      ...estimate,
+      opponent: game.away,
+      competition: game.competition || 'LEAGUE',
+      phase: game.phase || null,
+      fillPercent: Math.round(estimate.fillRate * 100),
+    },
   });
+  if (result?.ok) {
+    game.gateCredited = true;
+    game.gateRevenue = result.entry.amount;
+  }
+  return result;
 }
 
 /** Pool único — qualquer nome pode ser Master ou Secundário. */
@@ -703,6 +849,9 @@ export function createEconomyEngine() {
     setTicketPrice,
     estimateFillRate,
     estimateGateReceipt,
+    competitionAttraction,
+    computeMatchAttendance,
+    attachMatchAttendance,
     ticketChannelFromGame,
     creditHomeGate,
   };

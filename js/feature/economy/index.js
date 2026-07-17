@@ -239,7 +239,8 @@ export function createEconomyFeature(deps) {
     if (gateNatEl) gateNatEl.textContent = formatBudget(national.revenue);
     if (gateCupEl) gateCupEl.textContent = formatBudget(cups.revenue);
     if (hintEl) {
-      hintEl.textContent = `Gramado limitado pela estrutura (${structureLevel}/5) · Nacional ${Math.round(national.fillRate * 100)}% · Copas ${Math.round(cups.fillRate * 100)}%. Preço alto reduz público.`;
+      const env = Math.round(Number(club.environment) || 0);
+      hintEl.textContent = `Lotação no dia do jogo varia com Ambiente (${env}%), torcida, preço e fase (mata-mata agudo enche mais). Estimativa média: Nacional ${Math.round(national.fillRate * 100)}% · Copas ${Math.round(cups.fillRate * 100)}%. Gramado limitado pela estrutura (${structureLevel}/5).`;
     }
     renderUpgradeRows($('#stadiumUpgradesList'), listStadiumUpgrades(club), 'data-buy-stadium');
     renderTickets(club);
