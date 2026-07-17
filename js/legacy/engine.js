@@ -2012,7 +2012,8 @@ export async function bootEngine({ bus } = {}) {
   tactics.setPersist(persistSeason);
   messages.setPersist(persistSeason);
   if(validSavedSeason&&savedSeason.currentRound!==currentRound)persistSeason();
-  window.addEventListener('beforeunload',()=>{if(savedNewGame)persistSeason();});
+  let skipPersistOnUnload=false;
+  window.addEventListener('beforeunload',()=>{if(savedNewGame&&!skipPersistOnUnload)persistSeason();});
   advanceCalendarWeek=()=>{
     if(!savedNewGame||seasonComplete()||isUserSeasonIdle())return null;
     rebuildCalendarGames();
@@ -2170,10 +2171,12 @@ export async function bootEngine({ bus } = {}) {
     clubCrestInitials,
     onStartNextSeason:()=>{
       if(!pendingDivisionTeams||!savedNewGame)return;
+      skipPersistOnUnload=true;
       const nextSave={...savedNewGame,division:pendingUserDivision,divisionTeams:pendingDivisionTeams,userRoster:clubs[userClub].roster.map(player=>({...player,fatigue:100})),nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:nationalRankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},season:(savedNewGame.season||2026)+1,createdAt:new Date().toISOString(),version:4};
-      localStorage.setItem('matchday-new-game',JSON.stringify(nextSave));
-      localStorage.removeItem('matchday-season');
-      localStorage.removeItem('matchday-live-match');
+      writeJson(SAVE_KEYS.career,nextSave);
+      clearSeasonSave();
+      pendingDivisionTeams=null;
+      seasonSummary.close();
       redirectGame();
     },
   });

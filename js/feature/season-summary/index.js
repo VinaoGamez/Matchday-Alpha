@@ -1,5 +1,4 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
-import { onClick } from '../../ui/dom.js';
 
 const LEAGUE_ORDER = [
   { key: 'A', label: 'Série A', accent: '#63d9ff', trophy: '#ffd24a' },
@@ -509,14 +508,28 @@ const MODAL_HTML = `
  */
 export function createSeasonSummaryFeature(deps) {
   const { $, clubCrestInitials, onStartNextSeason } = deps;
+  let handlersBound = false;
+
+  const bindHandlers = () => {
+    if (handlersBound) return;
+    handlersBound = true;
+    document.addEventListener('click', event => {
+      const button = event.target.closest('#startNextSeason');
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onStartNextSeason?.();
+    });
+  };
 
   const injectDom = () => {
-    if ($('#seasonTransitionModal')) return;
-    document.body.insertAdjacentHTML('beforeend', MODAL_HTML);
-    const style = document.createElement('style');
-    style.textContent = CSS;
-    document.head.append(style);
-    onClick('#startNextSeason', () => onStartNextSeason?.());
+    if (!$('#seasonTransitionModal')) {
+      document.body.insertAdjacentHTML('beforeend', MODAL_HTML);
+      const style = document.createElement('style');
+      style.textContent = CSS;
+      document.head.append(style);
+    }
+    bindHandlers();
   };
 
   const championCard = ({ key, label, accent, trophy }, clubName) => {
