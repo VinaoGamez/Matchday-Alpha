@@ -1,20 +1,60 @@
 /* Layout unificado — sidebar, dashboard, mensagens e páginas internas */
 
-/* --- Shell e navegação --- */
-.game-shell {
-  grid-template-columns: 232px minmax(0, 1fr) !important;
+/* --- Shell: sidebar fixa, scroll só no centro --- */
+html,
+body {
+  height: 100%;
+  overflow: hidden !important;
 }
 
-main {
-  min-height: 100vh;
-  overflow: auto !important;
+.game-shell {
+  grid-template-columns: 232px minmax(0, 1fr) !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  max-height: 100vh !important;
+  overflow: hidden !important;
+  align-items: stretch;
 }
 
 .sidebar {
   padding: 22px 14px !important;
   gap: 18px !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
   overflow-x: hidden !important;
-  overflow-y: auto !important;
+  overflow-y: hidden !important;
+  position: sticky !important;
+  top: 0 !important;
+  align-self: start;
+  flex-shrink: 0;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+main {
+  height: 100vh !important;
+  max-height: 100vh !important;
+  min-height: 0 !important;
+  min-width: 0;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+main > header {
+  flex: 0 0 auto;
+}
+
+main > .view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  display: none !important;
+}
+
+main > .view.active {
+  display: block !important;
 }
 .sidebar nav {
   gap: 5px !important;
@@ -289,7 +329,7 @@ main {
 
 /* --- Página de Mensagens --- */
 .messages-view {
-  min-height: calc(100vh - 68px);
+  min-height: 0;
   padding-bottom: 34px;
 }
 
@@ -873,12 +913,37 @@ main {
 }
 
 @media (max-width: 800px) {
-  .sidebar {
-    display: flex !important;
+  html,
+  body {
+    height: auto;
+    overflow: auto !important;
   }
 
   .game-shell {
     grid-template-columns: 1fr !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .sidebar {
+    display: flex !important;
+    height: auto !important;
+    max-height: none !important;
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  main {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  main > .view,
+  main > .view.active {
+    overflow: visible;
   }
 }
 
