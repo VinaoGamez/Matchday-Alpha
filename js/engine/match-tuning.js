@@ -31,7 +31,7 @@ export const FATIGUE_SUB_THRESHOLD = 72;
 export const engineFoulRisk = (rivalTactic, attacker, defender) =>
   clamp(
     ENGINE_TUNING.foulRiskBase +
-      rivalTactic.press / 400 +
+      rivalTactic.press / 200 +
       Math.max(0, attacker.dribble + attacker.speed - defender.marking - defender.tackling) / 220,
     ENGINE_TUNING.foulRiskMin,
     ENGINE_TUNING.foulRiskMax,
@@ -40,7 +40,7 @@ export const engineFoulRisk = (rivalTactic, attacker, defender) =>
 export const engineProgressiveFoulRisk = (otherSide, attacker, defender, tacticalDiscipline) =>
   clamp(
     ENGINE_TUNING.progressiveFoulBase +
-      tacticalDiscipline(otherSide) * 0.75 +
+      tacticalDiscipline(otherSide) * 1.05 +
       Math.max(0, attacker.dribble - defender.marking) / 210,
     ENGINE_TUNING.progressiveFoulMin,
     ENGINE_TUNING.progressiveFoulMax,

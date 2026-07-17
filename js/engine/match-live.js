@@ -32,7 +32,29 @@ export function createLiveMatchActions(deps) {
     pickInjuryVictim,
   } = deps;
 
-  const addPasses = (side, current, other, minutes, share) => { const item = getStats()[side], passerName=playerFor(side,'pass'), passer=actorData(side,passerName,'pass'), total = Math.max(2,Math.round(minutes*rnd(7,10)*share)), accuracy = clamp(.64+(passer.passing*.56+passer.playmaking*.44-other.defense)/145+((current.passing-other.passing)/300)+item.momentum/220,.62,.91); item.passes += total; item.accurate += Math.round(total*accuracy); influencePossession(side, accuracy > .79 ? .8 : -.25); return accuracy; };
+  const addPasses = (side, current, other, minutes, share) => {
+    const item = getStats()[side];
+    const passerName = playerFor(side, 'pass');
+    const passer = actorData(side, passerName, 'pass');
+    const tactic = tacticFor(side);
+    const possessionBias = (tactic.possession - 50) / 105;
+    const pressBias = (tactic.press - 50) / 320;
+    const total = Math.max(2, Math.round(minutes * rnd(7, 10) * share));
+    const accuracy = clamp(
+      .62 +
+        (passer.passing * 0.56 + passer.playmaking * 0.44 - other.defense) / 125 +
+        (current.passing - other.passing) / 175 +
+        item.momentum / 220 +
+        possessionBias +
+        pressBias,
+      .58,
+      .93,
+    );
+    item.passes += total;
+    item.accurate += Math.round(total * accuracy);
+    influencePossession(side, accuracy > 0.79 ? 0.8 : -0.25);
+    return accuracy;
+  };
   const shot = (side,current,other,options={}) => {
     const s=getStats()[side], otherStats=getStats()[side === 'home' ? 'away' : 'home'], team=side === 'home' ? getUserClub() : getMatchClub().name;
     const writeLog=options.logFn||log;
@@ -43,14 +65,14 @@ export function createLiveMatchActions(deps) {
     const freeKickSpecialist=options.freeKick && attackerData.freeKick>85;
     const penaltySpecialist=options.penalty && options.penaltySkill>85;
     if(!options.shootout){s.shots++; influencePossession(side,1.8);}
-    const onTarget=options.penalty || options.shootout || random()<clamp(options.freeKick ? (freeKickSpecialist ? clamp(.50+(finishing-keeperData.positioning)/170+(current.attack-other.defense)/600,.42,.58) : clamp(.30+(finishing-keeperData.positioning)/220,.25,.42)) : options.corner ? clamp(.30+(attackerData.heading-keeperData.positioning)/165,.22,.57) : clamp(.37+(finishing-keeperData.positioning)/158+(current.attack-other.defense)/305,.25,.72),.18,.72);
+    const onTarget=options.penalty || options.shootout || random()<clamp(options.freeKick ? (freeKickSpecialist ? clamp(.50+(finishing-keeperData.positioning)/170+(current.attack-other.defense)/600,.42,.58) : clamp(.30+(finishing-keeperData.positioning)/220,.25,.42)) : options.corner ? clamp(.30+(attackerData.heading-keeperData.positioning)/165,.22,.57) : clamp(.37+(finishing-keeperData.positioning)/158+(current.attack-other.defense)/175,.25,.76),.18,.76);
     if(!onTarget){
       if(!options.shootout){s.off++;}
       writeLog(`${attacker} finaliza ${label}, mas a bola sai para fora.`, options.shootout ? 'shootout-miss' : undefined);
       return options.shootout ? false : undefined;
     }
     if(!options.shootout){s.on++;}
-    let goalChance=options.penalty || options.shootout ? clamp(.69+(options.penaltySkill-keeperData.penaltySaving)/95+(options.penaltySkill-70)/260+(penaltySpecialist?.035:0),.56,.94) : options.freeKick ? (freeKickSpecialist ? clamp(.20+(attackerData.freeKick-60)/220+(attackerData.freeKick-keeperData.positioning)/500+(current.attack-other.defense)/900,.18,.34) : clamp(.11+(attackerData.freeKick-65)/600+(attackerData.freeKick-keeperData.positioning)/650,.115,.15)) : (()=>{const xg=clamp(.128+(finishing+current.attack-keeperData.reflexes-other.defense)/198+(current.overall-other.overall)/600+rnd(-.028,.028),.072,.33);return clamp(xg/onTarget,.15,.64);})();
+    let goalChance=options.penalty || options.shootout ? clamp(.69+(options.penaltySkill-keeperData.penaltySaving)/95+(options.penaltySkill-70)/260+(penaltySpecialist?.035:0),.56,.94) : options.freeKick ? (freeKickSpecialist ? clamp(.20+(attackerData.freeKick-60)/220+(attackerData.freeKick-keeperData.positioning)/500+(current.attack-other.defense)/900,.18,.34) : clamp(.11+(attackerData.freeKick-65)/600+(attackerData.freeKick-keeperData.positioning)/650,.115,.15)) : (()=>{const xg=clamp(.128+(finishing+current.attack-keeperData.reflexes-other.defense)/115+(current.overall-other.overall)/520+rnd(-.028,.028),.072,.36);return clamp(xg/onTarget,.15,.68);})();
     if(!options.penalty&&!options.freeKick&&!options.corner&&!options.shootout){const gap=current.overall-other.overall;if(gap>engineTuning.blowoutGapStart)goalChance*=engineBlowoutDamp(gap);}
     if(random()<goalChance){
       if(options.shootout){
@@ -97,7 +119,7 @@ export function createLiveMatchActions(deps) {
     const creatorName=playerFor(side,'pass'), creator=actorData(side,creatorName);
     const attackerName=playerFor(side,'shot'), attacker=actorData(side,attackerName);
     const defenderName=playerFor(otherSide,'tackle'), defender=actorData(otherSide,defenderName);
-    const creation = clamp(engineTuning.creationBase+(creator.passing*.46+creator.playmaking*.34+attacker.dribble*.12+attacker.speed*.08-defender.marking*.45-defender.tackling*.45)/130+(current.passing-other.defense)/250+(s.momentum-o.momentum)/100+openingBoost,.22,.86);
+    const creation = clamp(engineTuning.creationBase+(creator.passing*.46+creator.playmaking*.34+attacker.dribble*.12+attacker.speed*.08-defender.marking*.45-defender.tackling*.45)/130+(current.passing-other.defense)/130+(s.momentum-o.momentum)/100+openingBoost,.22,.88);
     s.attacks++;
     if(random() > creation){
       // O futebol brasileiro tem uma taxa alta de interrupções. A falta nasce
@@ -137,7 +159,7 @@ export function createLiveMatchActions(deps) {
       if(foul(otherSide,side,{foulerName:defender,attackerName,phase:'final'}))return;
     } else {
       const line=(tacticFor(side).offsideLine ?? 50);
-      const offsideChance=clamp(.028+(line/100)*.092,.012,.13);
+      const offsideChance=clamp(.015+(line/100)*.17,.01,.18);
       if(random()<offsideChance){s.offsides++;influencePossession(otherSide,.9);log(`${attackerName} é flagrado em impedimento.`);}
       else{influencePossession(otherSide,.55);log(`${defenderName} recua a linha e neutraliza a chegada de ${attackerName}.`);}
     }

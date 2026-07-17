@@ -674,8 +674,8 @@ main > .view.active {
 
 #dashboard .dashboard-factors {
   display: grid !important;
-  grid-template-columns: 1fr !important;
-  gap: 10px !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px !important;
   width: 100%;
   margin-top: 0 !important;
 }
@@ -683,10 +683,10 @@ main > .view.active {
 .dashboard-factors > div {
   display: grid;
   align-content: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
-  min-height: 58px;
-  padding: 12px 14px !important;
+  min-height: 52px;
+  padding: 10px 8px !important;
   border: 1px solid #28505b !important;
   border-radius: 5px;
   background: #102b35 !important;
@@ -695,8 +695,8 @@ main > .view.active {
 
 .dashboard-factors small {
   display: block !important;
-  font: 700 10px 'DM Sans', sans-serif !important;
-  letter-spacing: .35px;
+  font: 700 8px 'DM Sans', sans-serif !important;
+  letter-spacing: .3px;
   color: #9eb6b8 !important;
   min-height: 0 !important;
   line-height: 1.15;
@@ -705,9 +705,10 @@ main > .view.active {
 .dashboard-factors b {
   display: block !important;
   margin-top: 0 !important;
-  font: 700 23px 'Barlow Condensed', sans-serif !important;
+  font: 700 18px 'Barlow Condensed', sans-serif !important;
   color: #b6ff38 !important;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .dashboard-factors > div.positive {
@@ -802,17 +803,21 @@ main > .view.active {
     gap: 20px !important;
   }
 
+  #dashboard .dashboard-factors {
+    gap: 8px !important;
+  }
+
   #dashboard .dashboard-factors > div {
-    min-height: 58px;
-    padding: 12px 14px !important;
+    min-height: 52px;
+    padding: 10px 8px !important;
   }
 
   #dashboard .dashboard-factors small {
-    font-size: 10px !important;
+    font-size: 8px !important;
   }
 
   #dashboard .dashboard-factors b {
-    font-size: 23px !important;
+    font-size: 18px !important;
   }
 
   #dashboard .dashboard-environment-note strong {

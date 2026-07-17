@@ -162,6 +162,9 @@ export async function bootEngine({ bus } = {}) {
   } = discipline;
   const economy = createEconomyEngine();
   const { initialBudget, formatBudget, computeSeasonPrize } = economy;
+  // Declarados cedo: playerUnavailable / orderRosterForFormation leem durante o boot.
+  let liveMatchGame = null;
+  let nextUserGame = null;
   const userLeagueDisciplineKey = () => `LEAGUE:${userDivision}`;
   const fixtureCompetitionKey = fixture =>
     competitionKeyFromFixture(fixture, { isKnockoutShootout: isKnockoutShootoutCompetition, clubs });
@@ -473,6 +476,17 @@ export async function bootEngine({ bus } = {}) {
     });
     return summary;
   };
+  const renderClubBudget=()=>{
+    const budget=clubs[userClub]?.budget;
+    const label=formatBudget(budget??0);
+    const headerBudget=$('#headerBudget');
+    if(headerBudget)headerBudget.textContent=label;
+    const dashboardBudget=$('#dashboardBudget');
+    if(dashboardBudget){
+      dashboardBudget.textContent=label;
+      setIndicatorTone(dashboardBudget.parentElement,Math.min(100,Math.round((Number(budget)||0)/200_000)));
+    }
+  };
   if(savedNewGame){
     const user=clubs[userClub],overall=Math.round(user.roster.slice(0,11).reduce((sum,player)=>sum+player.overall,0)/11),environment=user.environment;
     $('.dashboard-overall strong').textContent=overall;
@@ -488,18 +502,15 @@ export async function bootEngine({ bus } = {}) {
     const specialistRows=Object.keys(divisionRules).map(division=>{const divisionClubs=divisionTeams[division],freeClubs=divisionClubs.filter(name=>clubs[name].roster.some(player=>player.freeKick>85)).length,penaltyClubs=divisionClubs.filter(name=>clubs[name].roster.some(player=>player.penaltyTaking>85)).length;return `<span><b>Série ${division}</b>${divisionClubs.length} clubes · ${freeClubs} com especialista em faltas · ${penaltyClubs} em pênaltis</span>`;}).join('');
     $('.new-game-action').insertAdjacentHTML('afterend',`<div class="generated-world-summary"><small>CARREIRA ATUAL</small><span class="career-current"><b>${userClub}</b>${careerProfile.managerName} · Série ${userDivision}</span><small>UNIVERSO NACIONAL</small>${specialistRows}</div>`);
   }
-  const renderClubBudget=()=>{
-    const budget=clubs[userClub]?.budget;
-    const label=formatBudget(budget??0);
-    const headerBudget=$('#headerBudget');
-    if(headerBudget)headerBudget.textContent=label;
-    const dashboardBudget=$('#dashboardBudget');
-    if(dashboardBudget){
-      dashboardBudget.textContent=label;
-      setIndicatorTone(dashboardBudget.parentElement,Math.min(100,Math.round((Number(budget)||0)/200_000)));
+  const resolveOpponentClubName=()=>{
+    const game=liveMatchGame||nextUserGame;
+    if(game){
+      const name=game.home===userClub?game.away:game.home;
+      if(clubs[name])return name;
     }
+    return Object.keys(clubs).find(name=>name!==userClub&&clubs[name]?.roster)||Object.keys(clubs).find(name=>name!==userClub)||userClub;
   };
-  const matchClub=()=>clubs[(typeof nextUserGame!=='undefined'&&nextUserGame?(nextUserGame.home===userClub?nextUserGame.away:nextUserGame.home):'Estrela do Cerrado')];
+  const matchClub=()=>clubs[resolveOpponentClubName()];
   // Série A: 20 clubes em pontos corridos, com turno e returno. Em cada uma
   // das 38 rodadas, os 20 clubes entram em campo uma única vez (10 jogos).
   const buildBrazilianLeagueFixtures=clubList=>{
@@ -965,7 +976,7 @@ export async function bootEngine({ bus } = {}) {
     if(!result)return null;
     return `${result.homeGoals}—${result.awayGoals}`;
   };
-  let userUpcomingGames=[],nextUserGame=null;
+  let userUpcomingGames=[];
   const refreshUserFixtures=()=>{
     userUpcomingGames=pendingUserSchedule().slice(0,3).map(entry=>entry.game);
     nextUserGame=nextPendingUserEntry()?.game||null;
@@ -1147,6 +1158,7 @@ export async function bootEngine({ bus } = {}) {
     reconcileCurrentRound();
     rebuildCalendarGames();
     futureMatches=currentRoundFixtures();
+    refreshUserFixtures();
     leagueData.sort((a,b)=>b.points-a.points||b.goalDiff-a.goalDiff||b.wins-a.wins);
     leagueData.forEach((row,index)=>clubs[row.club].position=index+1);
     $('#leagueTable').innerHTML=displayedLeagueRows().map(leagueRow).join('');
@@ -1386,25 +1398,43 @@ export async function bootEngine({ bus } = {}) {
   const positionalPenalty=()=>starters().reduce((total,player,index)=>total+(cards?.home?.[index]?.red?0:positionMismatch(player,positionAssignments[index])),0);
   const seasonContext = {home:{streak:2,position:4,isHome:true},away:{streak:1,position:9,isHome:false}};
   const contextFactor = context => clamp(1 + context.streak*.004 + (context.isHome?.028:0) + (10-context.position)*.001 + rnd(-.009,.009),.975,1.038);
+  const buildTacticalRatings=(tv,clubFormation,roster,institution,isHome,factor,{improvisation=0,tacticalRatingExtra=0}={})=>{
+    const avg=key=>roster.reduce((sum,p)=>sum+matchPlayerStat(p,key),0)/roster.length;
+    const mentalShift=(tv.mentality-50)/50,possessionShift=(tv.possession-50)/50,pressShift=tv.press/100,lineShift=(tv.offsideLine-50)/50;
+    const shape=formationPerformance[clubFormation]||{attack:0,passing:0,defense:0},formationBonus=[shape.attack,shape.passing,shape.defense];
+    const mentalBonus=[mentalShift*9,mentalShift*2.5,mentalShift*-5.5];
+    const styleBonus=[2.4-possessionShift*2.6+pressShift*1.75,possessionShift*6.5+pressShift*.75,(1-possessionShift)*.9+pressShift*3.5];
+    const lineDefenseBonus=-lineShift*2.1;
+    const tiredness=(100-avg('fatigue'))/5;
+    const homeBoost=isHome?{overall:.65,attack:1.1,passing:.35,defense:.45}:{overall:0,attack:0,passing:0,defense:0};
+    const overallTacticBonus=mentalShift*1.4+possessionShift*1+pressShift*.55-lineShift*.35;
+    const keeper=roster.find(player=>player.pos==='GOL')||roster[0];
+    return {
+      overall:(avg('overall')-(100-avg('fatigue'))*.10+tacticalRatingExtra+overallTacticBonus-improvisation*.7+institution.overall+homeBoost.overall)*factor,
+      attack:(avg('finishing')*.48+avg('speed')*.17+avg('dribble')*.12+avg('playmaking')*.23+formationBonus[0]+mentalBonus[0]+styleBonus[0]+institution.attack-tiredness-improvisation*.85+homeBoost.attack)*factor,
+      passing:(avg('passing')*.6+avg('playmaking')*.4+formationBonus[1]+mentalBonus[1]+styleBonus[1]+institution.passing-tiredness-improvisation*1.05+homeBoost.passing)*factor,
+      defense:(avg('marking')*.52+avg('tackling')*.48+formationBonus[2]+mentalBonus[2]+styleBonus[2]+lineDefenseBonus+institution.defense-tiredness-improvisation*.9+homeBoost.defense)*factor,
+      keeper:(matchPlayerStat(keeper,'reflexes')*.6+matchPlayerStat(keeper,'positioning')*.4+institution.keeper-tiredness)*factor,
+    };
+  };
   const profile = () => {
     const tv=tactics?.getTacticalValues?.()??DEFAULT_USER_TACTICS;
-    const mentalShift=(tv.mentality-50)/50, possessionShift=(tv.possession-50)/50, pressShift=tv.press/100, lineShift=(tv.offsideLine-50)/50;
-    const shape=formationPerformance[formation]||{attack:0,passing:0,defense:0},formationBonus=[shape.attack,shape.passing,shape.defense];
-    const mentalBonus = [mentalShift*4,mentalShift,mentalShift*-2.4];
-    const styleBonus = [2.1-possessionShift*1.15+pressShift*.8,possessionShift*3.1+pressShift*.35,(1-possessionShift)*.45+pressShift*1.7];
-    const lineDefenseBonus=-lineShift*.85;
     const institution=clubInstitutionalContext(clubs[userClub],nextUserGame?.home===userClub);
-    const tiredness = (100-avg('fatigue')) / 5;
     const factor=matchFactors?.home || 1;
-    const tacticalRating=(formation==='4-3-3'||formation==='4-4-2'||formation==='4-2-3-1'?1:.35)+(1-Math.abs(mentalShift)*.35)+(tv.possession>60?.9:tv.press>65?.65:.45);
-    const improvisation=positionalPenalty();
-    const keeper=activeStarters().find(player=>player.pos==='GOL')||activeStarters()[0]||squad[0];
-    const isHome=nextUserGame?.home===userClub;
-    const homeBoost=isHome?{overall:.65,attack:1.1,passing:.35,defense:.45}:{overall:0,attack:0,passing:0,defense:0};
-    return { overall:(avg('overall') - (100-avg('fatigue'))*.10 + tacticalRating-improvisation*.7+institution.overall+homeBoost.overall)*factor, attack: (avg('finishing')*.48 + avg('speed')*.17 + avg('dribble')*.12 + avg('playmaking')*.23 + formationBonus[0] + mentalBonus[0] + styleBonus[0] + institution.attack - tiredness-improvisation*.85+homeBoost.attack)*factor, passing: (avg('passing')*.6 + avg('playmaking')*.4 + formationBonus[1] + mentalBonus[1] + styleBonus[1] + institution.passing - tiredness-improvisation*1.05+homeBoost.passing)*factor, defense: (avg('marking')*.52 + avg('tackling')*.48 + formationBonus[2] + mentalBonus[2] + styleBonus[2] + lineDefenseBonus + institution.defense - tiredness-improvisation*.9+homeBoost.defense)*factor, keeper: (matchPlayerStat(keeper,'reflexes')*.6 + matchPlayerStat(keeper,'positioning')*.4 + institution.keeper - tiredness)*factor };
+    const tacticalRating=(formation==='4-3-3'||formation==='4-4-2'||formation==='4-2-3-1'?1:.35)+(1-Math.abs((tv.mentality-50)/50)*.35)+(tv.possession>60?.9:tv.press>65?.65:.45);
+    return buildTacticalRatings(tv,formation,starters(),institution,nextUserGame?.home===userClub,factor,{improvisation:positionalPenalty(),tacticalRatingExtra:tacticalRating});
   };
   const opponent = {overall:75, attack:76, passing:74, defense:75, keeper:76};
-  const opponentForMatch = () => { const club=matchClub(), roster=club.roster.slice(0,11), avg=key=>roster.reduce((sum,p)=>sum+matchPlayerStat(p,key),0)/roster.length, factor=matchFactors?.away || 1, institution=clubInstitutionalContext(club,nextUserGame?.home===club.name), defenders=Number(club.formation[0])||4, shape=formationPerformance[club.formation]||{attack:0,passing:0,defense:0},tacticalRating=(defenders===4?1:.35)+(club.mentality==='Equilibrada'?1:0)+(club.style==='Posse de bola'?1:club.style==='Pressão alta'?.55:.35), attackBonus=(club.mentality==='Ofensiva'?4:club.mentality==='Defensiva'?-3:0)+shape.attack, passBonus=(club.style==='Posse de bola'?4:club.style==='Pressão alta'?1:-2)+shape.passing, defenseBonus=(club.mentality==='Defensiva'?4:club.mentality==='Ofensiva'?-2:0)+shape.defense, tiredness=(100-avg('fatigue'))/5, isHome=nextUserGame?.home===club.name, homeBoost=isHome?{overall:.65,attack:1.1,passing:.35,defense:.45}:{overall:0,attack:0,passing:0,defense:0}, keeper=roster.find(player=>player.pos==='GOL')||roster[0]; return {overall:(avg('overall')-(100-avg('fatigue'))*.10+tacticalRating+institution.overall+homeBoost.overall)*factor,attack:(avg('finishing')*.48+avg('speed')*.17+avg('dribble')*.12+avg('playmaking')*.23+attackBonus+institution.attack-tiredness+homeBoost.attack)*factor,passing:(avg('passing')*.6+avg('playmaking')*.4+passBonus+institution.passing-tiredness+homeBoost.passing)*factor,defense:(avg('marking')*.52+avg('tackling')*.48+defenseBonus+institution.defense-tiredness+homeBoost.defense)*factor,keeper:(matchPlayerStat(keeper,'reflexes')*.6+matchPlayerStat(keeper,'positioning')*.4+institution.keeper-tiredness)*factor}; };
+  const opponentForMatch = () => {
+    const club=matchClub();
+    if(!club?.roster?.length)return {...opponent};
+    const roster=club.roster.slice(0,11), factor=matchFactors?.away || 1;
+    const institution=clubInstitutionalContext(club,nextUserGame?.home===club.name);
+    const tv=roundTactic(club);
+    const defenders=Number(club.formation[0])||4;
+    const tacticalRating=(defenders===4?1:.35)+(club.mentality==='Equilibrada'?1:0)+(club.style==='Posse de bola'?1:club.style==='Pressão alta'?.55:.35);
+    return buildTacticalRatings(tv,club.formation,roster,institution,nextUserGame?.home===club.name,factor,{tacticalRatingExtra:tacticalRating});
+  };
   // Dados internos do motor: não são exibidos como estatísticas extras.
   const blank = () => ({possession:50,momentum:0,passes:0,accurate:0,shots:0,off:0,on:0,saved:0,penalties:0,corners:0,offsides:0,keeperSaves:0,tackles:0,fouls:0,yellow:0,red:0,xg:0,attacks:0,goodAttacks:0});
   const actorData = (side,name) => {
@@ -1447,7 +1477,8 @@ export async function bootEngine({ bus } = {}) {
     if(tactics?.tacticFor)return tactics.tacticFor(side);
     if(side==='home')return{formation,mentality:DEFAULT_USER_TACTICS.mentality,possession:DEFAULT_USER_TACTICS.possession,press:DEFAULT_USER_TACTICS.press,offsideLine:DEFAULT_USER_TACTICS.offsideLine};
     const club=matchClub();
-    return{formation:club.formation,mentality:club.mentality==='Defensiva'?25:club.mentality==='Ofensiva'?75:50,possession:club.style==='Posse de bola'?78:club.style==='Contra-ataque'?22:50,press:club.style==='Pressão alta'?82:club.mentality==='Defensiva'?35:55,offsideLine:50};
+    const base=roundTactic(club);
+    return{...base,mentality:club.mentality==='Defensiva'?25:club.mentality==='Ofensiva'?75:50,possession:club.style==='Posse de bola'?78:club.style==='Contra-ataque'?22:50,press:club.style==='Pressão alta'?82:club.mentality==='Defensiva'?35:55};
   };
   const tacticalDiscipline = side => {
     const tactic=tacticFor(side), defenders=Number(tactic.formation[0]) || 4;
@@ -1457,7 +1488,7 @@ export async function bootEngine({ bus } = {}) {
     // Blocos baixos e linhas de cinco defendem mais lances; pressão alta também
     // amplia o número de duelos. Quem está atrás no placar arrisca mais.
     const defensiveMind=clamp((50-tactic.mentality)/50,0,1), counterBias=clamp((50-tactic.possession)/50,0,1), pressure=tactic.press/100;
-    return (defenders-3)*.035 + defensiveMind*.09 + pressure*.10 + counterBias*.045 + (scoreDiff<0?.055:0) - activeYellows(side)*.016 + institution.discipline;
+    return (defenders-3)*.035 + defensiveMind*.09 + pressure*.14 + counterBias*.045 + (scoreDiff<0?.055:0) - activeYellows(side)*.016 + institution.discipline;
   };
   engineProgressiveFoulRisk=(otherSide,attacker,defender)=>engineProgressiveFoulRiskBase(otherSide,attacker,defender,tacticalDiscipline);
   // Limite de disciplina: um segundo amarelo continua aparecendo nas duas
@@ -1479,7 +1510,7 @@ export async function bootEngine({ bus } = {}) {
     const drawDominance=home===away && own && rival ? clamp((own.goodAttacks-rival.goodAttacks)*.24+(own.shots-rival.shots)*.10+(own.xg-rival.xg)*.5,-3.2,3.2) : 0;
     return clamp(power.overall-(100-fatigue)*.055-reds*6.5+momentum+passForm+attackForm+drawDominance,50,95);
   };
-  let timer, liveClockSeconds=0, liveClockSecondTimer=null, minute, home, away, pauses, stats, cards, halftimeShown, pendingPenalty, shootoutState=null, matchFactors, goals, disciplineEvents, matchStarted=false, matchFinished=false, preMatchPreparation=false, substitutions=0, awaySubstitutions=0, awaySubWindows=0, substitutedOut=new Set(), activePreparationTitle='', matchDiscipline={home:new Map(),away:new Map()},liveInjuries={home:[],away:[]},liveDeferredInjuries={home:[],away:[]},liveOpeningLineup={home:[],away:[]},liveMinutesPlayed={home:new Map(),away:new Map()},availabilityCommitted=false,roundResultMessagePushed=false,liveMatchGame=null,liveDayMatchSnapshots=null,preMatchTacticSnapshot=null;
+  let timer, liveClockSeconds=0, liveClockSecondTimer=null, minute, home, away, pauses, stats, cards, halftimeShown, pendingPenalty, shootoutState=null, matchFactors, goals, disciplineEvents, matchStarted=false, matchFinished=false, preMatchPreparation=false, substitutions=0, awaySubstitutions=0, awaySubWindows=0, substitutedOut=new Set(), activePreparationTitle='', matchDiscipline={home:new Map(),away:new Map()},liveInjuries={home:[],away:[]},liveDeferredInjuries={home:[],away:[]},liveOpeningLineup={home:[],away:[]},liveMinutesPlayed={home:new Map(),away:new Map()},availabilityCommitted=false,roundResultMessagePushed=false,liveDayMatchSnapshots=null,preMatchTacticSnapshot=null;
   const liveMatchDayKey=()=>{
     if(!liveMatchGame)return null;
     if(liveMatchGame.competition==='COPA DO BRASIL')return calendarKey(new Date(liveMatchGame.date));
@@ -1842,13 +1873,15 @@ export async function bootEngine({ bus } = {}) {
     },
     tacticForAway:()=>{
       const club=matchClub();
-      return{formation:club.formation,mentality:club.mentality==='Defensiva'?25:club.mentality==='Ofensiva'?75:50,possession:club.style==='Posse de bola'?78:club.style==='Contra-ataque'?22:50,press:club.style==='Pressão alta'?82:club.mentality==='Defensiva'?35:55,offsideLine:50};
+      const base=roundTactic(club);
+      return{...base,mentality:club.mentality==='Defensiva'?25:club.mentality==='Ofensiva'?75:50,possession:club.style==='Posse de bola'?78:club.style==='Contra-ataque'?22:50,press:club.style==='Pressão alta'?82:club.mentality==='Defensiva'?35:55};
     },
   });
   ({draw,drawBoard,renderTacticRoster,renderSubstitutionControls,makeSubstitution,syncTactics,applyTacticSuggestion,closeFormationSuggestion,tacticFor}=tactics);
   tactics.init(validSavedSeason?savedSeason?.userTactics:null);
   autoSelectUserLineup(formation);
   renderRoster();
+  refreshUserFixtures();
   draw();
   renderTacticalConfrontation({context:'tactics'});
   const renderFinalSummary = () => {
@@ -1870,16 +1903,16 @@ export async function bootEngine({ bus } = {}) {
     const injurySection=injuryReports.length?`<section class="final-injuries"><h3>DIAGNÓSTICOS MÉDICOS</h3>${medicalReports.map(item=>`<p class="${item.outcome==='cleared'?'cleared':item.outcome==='monitoring'?'monitoring':''}">${item.text}</p>`).join('')}</section>`:'';
     const homeClub=(liveMatchGame||nextUserGame)?.home||userClub,awayClub=(liveMatchGame||nextUserGame)?.away||matchClub().name;
     const userSideStats=userAtHomeInLiveMatch()?calendarLiveSideStats().home:calendarLiveSideStats().away;
-    const planned=preMatchTacticSnapshot||{possession:tactics?.getTacticalValues?.()?.possession??50,press:tactics?.getTacticalValues?.()?.press??50};
+    const planned=preMatchTacticSnapshot||tactics?.getTacticalValues?.()||DEFAULT_USER_TACTICS;
     const tacticalImpact=tacticalImpactSummaryMarkup({
       homeLabel:homeClub,
       awayLabel:awayClub,
       planned:{
         possession:planned.possession,
-        passAccuracy:planned.possession>65?68:planned.possession<35?58:62,
-        shots:planned.press>65?'Alta':'Moderada',
-        offsides:planned.offsideLine>65?'Mais provável':'Contida',
-        fouls:planned.press>65?'Mais duelos':'Contida',
+        passAccuracy:clamp(58+planned.possession*.22-planned.press*.04,52,82),
+        shots:planned.mentality>65?'Mais finalizações':planned.mentality<35?'Menos finalizações':'Equilibrado',
+        offsides:planned.offsideLine>65?'Linha alta':'Linha recuada',
+        fouls:planned.press>65?'Pressão alta':'Pressão contida',
       },
       actual:{
         possession:Math.round(userSideStats.possession||0),
@@ -2975,8 +3008,8 @@ export async function bootEngine({ bus } = {}) {
     const homeLive=liveOverall('home',homeBase), awayLive=liveOverall('away',awayBase);
     // A média efetiva ajusta as ações em escala moderada: favorece o melhor
     // momento, mas atributos individuais e aleatoriedade continuam decisivos.
-    const homeProfile={...homeBase,overall:homeLive,attack:homeBase.attack+(homeLive-homeBase.overall)*.22,passing:homeBase.passing+(homeLive-homeBase.overall)*.18,defense:homeBase.defense+(homeLive-homeBase.overall)*.18-cautionPenalty('home')};
-    const awayProfile={...awayBase,overall:awayLive,attack:awayBase.attack+(awayLive-awayBase.overall)*.22,passing:awayBase.passing+(awayLive-awayBase.overall)*.18,defense:awayBase.defense+(awayLive-awayBase.overall)*.18-cautionPenalty('away')};
+    const homeProfile={...homeBase,overall:homeLive,attack:homeBase.attack+(homeLive-homeBase.overall)*.30,passing:homeBase.passing+(homeLive-homeBase.overall)*.26,defense:homeBase.defense+(homeLive-homeBase.overall)*.26-cautionPenalty('home')};
+    const awayProfile={...awayBase,overall:awayLive,attack:awayBase.attack+(awayLive-awayBase.overall)*.30,passing:awayBase.passing+(awayLive-awayBase.overall)*.26,defense:awayBase.defense+(awayLive-awayBase.overall)*.26-cautionPenalty('away')};
     // A posse nasce da força e das escolhas táticas; o momento criado pelos lances move a posse a cada atualização.
     const overallGap=homeLive-awayLive;
     const openingPressure=minute<=15 && Math.abs(overallGap)>5 ? clamp((Math.abs(overallGap)-5)*.65+2,2,7) : 0;
@@ -2988,7 +3021,7 @@ export async function bootEngine({ bus } = {}) {
     const passControl=clamp((passRate('home')-passRate('away'))*9,-2.4,2.4);
     const attackControl=clamp((stats.home.goodAttacks-stats.away.goodAttacks)*.075+(stats.home.attacks-stats.away.attacks)*.025,-1.7,1.7);
     const redControl=((cards.away?.filter(card=>card.red).length||0)-(cards.home?.filter(card=>card.red).length||0))*2.8;
-    const structuralControl=(homeProfile.passing-awayProfile.passing)*.32+(homeProfile.overall-awayProfile.overall)*.14+(homeTactic.possession-awayTactic.possession)*.055+(stats.home.momentum-stats.away.momentum)*.16+passControl+attackControl+redControl+homeOpeningBias*.25+2.5;
+    const structuralControl=(homeProfile.passing-awayProfile.passing)*.44+(homeProfile.overall-awayProfile.overall)*.18+(homeTactic.possession-awayTactic.possession)*.15+(homeTactic.press-awayTactic.press)*.035+(homeTactic.mentality-awayTactic.mentality)*.025+(stats.home.momentum-stats.away.momentum)*.16+passControl+attackControl+redControl+homeOpeningBias*.25+2.5;
     const hasRed=cards.home?.some(card=>card.red)||cards.away?.some(card=>card.red);
     const targetPossession=clamp(50+structuralControl,hasRed?29:32,hasRed?71:68);
     stats.home.possession=stats.home.possession*.74+targetPossession*.26;
