@@ -1,6 +1,28 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-16',
+    date: '2026-07-17',
+    publishedAt: '2026-07-17T17:35:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Correções',
+        items: [
+          'Bilheteria só credita em jogos em casa; trava reforçada no motor e na mensagem de resultado.',
+          'VER ADVERSÁRIO AO VIVO volta a mostrar a formação no gramado (helpers táticos exportados).',
+          'AO VIVO: estádio no formato Nome (CASA/FORA) · público · %; badges de lesão/cartão maiores no elenco.',
+        ],
+      },
+      {
+        label: 'Interface',
+        items: [
+          'CONFRONTO TÁTICO e PLANO TÁTICO VS PARTIDA ocultos (pré-jogo, pausa e pós-jogo).',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-15',
     date: '2026-07-17',
     publishedAt: '2026-07-17T17:00:00-03:00',

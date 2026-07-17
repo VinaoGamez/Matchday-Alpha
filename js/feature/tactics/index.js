@@ -640,5 +640,8 @@ export function createTacticsFeature(deps) {
     applyTacticSuggestion,
     openFormationSuggestion,
     closeFormationSuggestion,
+    boardPlayerLabel,
+    boardPlayerBadges,
+    ensureBoardLegend,
   };
 }

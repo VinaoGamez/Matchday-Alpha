@@ -7,14 +7,16 @@ export const TACTIC_READOUT = {
   offsideLine: value => (value < 35 ? 'Baixa' : value > 65 ? 'Alta' : 'Normal'),
 };
 
-let cssInjected = false;
-
 export function injectTacticalConfrontationCss() {
-  if (cssInjected || typeof document === 'undefined') return;
-  cssInjected = true;
-  const style = document.createElement('style');
+  if (typeof document === 'undefined') return;
+  let style = document.getElementById('tacticalConfrontationCss');
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'tacticalConfrontationCss';
+    document.head.append(style);
+  }
   style.textContent = `
-.tactical-confrontation{display:grid;gap:10px;margin:0 0 14px;padding:12px 13px;border:1px solid #28505b;border-radius:7px;background:#0b2029}
+#tacticalConfrontationPause,#tacticalConfrontationTactics,.tactical-confrontation,.tactical-impact-final{display:none!important;margin:0!important;padding:0!important;border:0!important;height:0!important;overflow:hidden!important}
 .tactical-confrontation>header{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .tactical-confrontation>header label{color:#63d9ff;font:700 9px DM Sans;letter-spacing:.65px}
 .tactical-confrontation>header small{color:#7fa8b0;font-size:10px}
@@ -35,7 +37,6 @@ export function injectTacticalConfrontationCss() {
 .tactical-impact-row strong{color:#edf8f5;font-size:11px}
 .timeline p.tactic{color:#63d9ff;font-weight:600}
 `;
-  document.head.append(style);
 }
 
 function confrontationBar({ label, homeValue, awayValue, homeName, awayName }) {
@@ -54,47 +55,14 @@ function confrontationBar({ label, homeValue, awayValue, homeName, awayName }) {
   </div>`;
 }
 
-export function tacticalConfrontationMarkup({
-  homeLabel,
-  awayLabel,
-  homeProfile,
-  awayProfile,
-  homeTactics = null,
-  awayTactics = null,
-  subtitle = 'Força tática estimada pelo motor',
-  showSettings = false,
-}) {
-  if (!homeProfile || !awayProfile) return '';
-  const settings =
-    showSettings && homeTactics
-      ? `<div class="tactical-settings">
-          <span class="user">${TACTIC_READOUT.mentality(homeTactics.mentality)} · ${homeTactics.mentality}%</span>
-          <span class="user">${TACTIC_READOUT.possession(homeTactics.possession)} · ${homeTactics.possession}%</span>
-          <span class="user">Pressão ${TACTIC_READOUT.press(homeTactics.press)}</span>
-          <span class="user">Linha ${TACTIC_READOUT.offsideLine(homeTactics.offsideLine)}</span>
-        </div>`
-      : '';
-  return `<section class="tactical-confrontation" aria-label="Confronto tático">
-    <header><label>CONFRONTO TÁTICO</label><small>${subtitle}</small></header>
-    ${confrontationBar({ label: 'Ataque', homeValue: homeProfile.attack, awayValue: awayProfile.attack, homeName: homeLabel, awayName: awayLabel })}
-    ${confrontationBar({ label: 'Construção / passe', homeValue: homeProfile.passing, awayValue: awayProfile.passing, homeName: homeLabel, awayName: awayLabel })}
-    ${confrontationBar({ label: 'Defesa', homeValue: homeProfile.defense, awayValue: awayProfile.defense, homeName: homeLabel, awayName: awayLabel })}
-    ${settings}
-  </section>`;
+export function tacticalConfrontationMarkup() {
+  // Painel oculto — não renderiza em pré-jogo, pausa, táticas nem AO VIVO.
+  return '';
 }
 
-export function tacticalImpactSummaryMarkup({ planned, actual, homeLabel, awayLabel }) {
-  if (!planned || !actual) return '';
-  const row = (label, plannedValue, actualValue, suffix = '') =>
-    `<div class="tactical-impact-row"><span>${homeLabel} · plano ${plannedValue}${suffix}</span><strong>${label}</strong><span>${awayLabel} · obtido ${actualValue}${suffix}</span></div>`;
-  return `<section class="tactical-impact-final">
-    <h4>PLANO TÁTICO VS PARTIDA</h4>
-    ${row('Posse', `${planned.possession}%`, `${actual.possession}%`)}
-    ${row('Passes certos', `${planned.passAccuracy}%`, `${actual.passAccuracy}%`)}
-    ${row('Finalizações', planned.shots, actual.shots)}
-    ${row('Impedimentos', planned.offsides, actual.offsides)}
-    ${row('Faltas', planned.fouls, actual.fouls)}
-  </section>`;
+export function tacticalImpactSummaryMarkup() {
+  // Pós-jogo: resumo plano vs partida oculto em todas as telas.
+  return '';
 }
 
 export function tacticalKickoffMessage(homeTactics) {

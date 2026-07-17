@@ -644,10 +644,11 @@ export function attachMatchAttendance(club, game, options = {}) {
 
 /**
  * Credita bilheteria no caixa do clube mandante (fluxo de caixa + ledger).
- * Só jogos em casa; evita crédito duplicado no mesmo fixture.
+ * Só jogos em casa; visitante nunca recebe; evita crédito duplicado no mesmo fixture.
  */
 export function creditHomeGate(club, game, { division = 'A', capacity = null } = {}) {
-  if (!club || !game || game.home !== club.name) {
+  const clubName = club?.name;
+  if (!club || !game || !clubName || game.home !== clubName || game.away === clubName) {
     return { ok: false, error: 'not_home' };
   }
   if (game.gateCredited) {
