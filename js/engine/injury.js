@@ -9,8 +9,18 @@ export function createInjuryEngine(deps) {
   const { rnd, int, gameRandom, getCurrentRound, getCareerSeason } = deps;
 
   const clubMedicalQuality=club=>clamp(Math.round((club?.finances??50)*.5+(club?.environment??50)*.38+(club?.medicalInvestment??0)*6),35,98);
-  const pitchInjuryModifier=condition=>condition==='poor'?1.08:condition==='average'?1.03:1;
-  const pitchLabel=condition=>({good:'GRAMADO BOM',average:'GRAMADO MÉDIO',poor:'GRAMADO RUIM'})[condition]||'GRAMADO BOM';
+  const pitchLevelFrom=condition=>{
+    if(typeof condition==='number'&&Number.isFinite(condition))return clamp(Math.round(condition),0,5);
+    return ({poor:0,rough:1,average:2,good:3,excellent:4,elite:5})[condition]??3;
+  };
+  const pitchInjuryModifier=condition=>{
+    const level=pitchLevelFrom(condition);
+    return [1.1,1.06,1.03,1,.97,.94][level]??1;
+  };
+  const pitchLabel=condition=>{
+    const level=pitchLevelFrom(condition);
+    return ['GRAMADO RUIM','GRAMADO REGULAR','GRAMADO MÉDIO','GRAMADO BOM','GRAMADO EXCELENTE','GRAMADO ELITE'][level]||'GRAMADO BOM';
+  };
   const preventionWorkloadEase=club=>clamp(1-(club?.preventionProgram??0)*.18,.64,1);
   const effectiveWorkloadRisk=(player,club)=>{const base=workloadRisk(player.workload);return 1+(base-1)*preventionWorkloadEase(club);};
   const injuryAllowsTreatmentChoice=injury=>injury?.grade===2;

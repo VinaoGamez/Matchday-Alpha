@@ -122,18 +122,15 @@ main > .view.active {
 .view#dashboard .dashboard-tables .mini-table-head,
 .view#dashboard .dashboard-tables .standing-row {
   display: grid !important;
-  grid-template-columns: 32px minmax(0, 1fr) 32px 42px 48px !important;
+  grid-template-columns: 28px minmax(0, 1fr) 36px 40px 40px !important;
+  column-gap: 6px !important;
   align-items: center;
 }
 
 .view#dashboard .dashboard-tables .mini-table-head span:nth-child(n+3),
 .view#dashboard .dashboard-tables .standing-row span:nth-child(n+3) {
-  text-align: center;
-}
-
-.view#dashboard .dashboard-tables .mini-table-head span:last-child,
-.view#dashboard .dashboard-tables .standing-row span:last-child {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .view#dashboard .dashboard-tables .standing-row span:nth-child(4) {
@@ -970,4 +967,114 @@ main > .view.active {
   .game-shell {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* --- Dashboard: alinhamento visual das tabelas --- */
+.view#dashboard .club-upcoming-head,
+.view#dashboard .club-upcoming-row {
+  grid-template-columns: 40px minmax(0, 1.55fr) minmax(118px, 0.9fr) 56px !important;
+  gap: 8px !important;
+  align-items: center;
+}
+
+.view#dashboard .club-upcoming-head span:nth-child(3),
+.view#dashboard .club-upcoming-row span:nth-child(3) {
+  text-align: right;
+}
+
+.view#dashboard .club-upcoming-head span:nth-child(4) {
+  text-align: right;
+}
+
+.view#dashboard .club-upcoming-row span:nth-child(4) {
+  justify-self: end;
+  text-align: center;
+  min-width: 48px;
+}
+
+.view#dashboard .club-upcoming-row span:first-child {
+  font-variant-numeric: tabular-nums;
+  color: #9fcfd8;
+}
+
+.view#dashboard .fixture-table-head,
+.view#dashboard .dashboard-fixture-row {
+  grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr) !important;
+  gap: 8px !important;
+  align-items: center;
+}
+
+.view#dashboard .fixture-table-head span:nth-child(2),
+.view#dashboard .dashboard-fixture-row .fixture-vs {
+  text-align: center;
+}
+
+.view#dashboard .fixture-table-head span:last-child,
+.view#dashboard .dashboard-fixture-row .fixture-away {
+  text-align: right;
+}
+
+.view#dashboard .dashboard-fixture-row .fixture-home {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.view#dashboard .dashboard-fixture-row .fixture-home .club-link {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view#dashboard .dashboard-fixture-row .user-game-tag {
+  flex: 0 0 auto;
+  margin-left: 0;
+}
+
+.view#dashboard .dashboard-fixture-row .fixture-away {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view#dashboard .recent-dashboard {
+  display: flex;
+  flex-direction: column;
+}
+
+.view#dashboard .recent-dashboard #recentMatches {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.view#dashboard .recent-dashboard .dashboard-results-empty {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  min-height: 120px;
+}
+
+.view#dashboard .stadium-card.office-entry-card {
+  align-items: center;
+}
+
+.view#dashboard .stadium-card.office-entry-card > div {
+  align-content: center;
+  gap: 3px;
+}
+
+.view#dashboard .dashboard-tables .mini-table-head,
+.view#dashboard .dashboard-tables .standing-row {
+  grid-template-columns: 28px minmax(0, 1fr) 36px 40px 40px !important;
+}
+
+.view#dashboard .dashboard-tables .mini-table-head span:nth-child(n+3),
+.view#dashboard .dashboard-tables .standing-row span:nth-child(n+3) {
+  text-align: right !important;
 }

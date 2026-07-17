@@ -93,7 +93,7 @@ export function createDashboardFeature(deps) {
     $('#upcomingMatches').innerHTML = dashboardUpcomingGames()
       .map(game => {
         const isUser = isUserFixture(game);
-        return `<div class="dashboard-fixture-row ${isUser ? 'user-game' : ''}"><span><b class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</b>${isUser ? '<small class="user-game-tag">SEU JOGO</small>' : ''}</span><span>×</span><span class="club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</span></div>`;
+        return `<div class="dashboard-fixture-row ${isUser ? 'user-game' : ''}"><span class="fixture-home"><b class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</b>${isUser ? '<small class="user-game-tag">SEU JOGO</small>' : ''}</span><span class="fixture-vs">×</span><span class="fixture-away club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</span></div>`;
       })
       .join('');
   };
@@ -381,32 +381,29 @@ export function createDashboardFeature(deps) {
 
   const renderRecentResults = () => {
     const completed = userCompletedMatchResults().slice(-5);
-    const form = $('.results-card .form');
-    const summary = $('.results-card>small');
-    if (!completed.length) {
-      form.innerHTML = '<span class="form-empty">Nenhum jogo concluído.</span>';
-      summary.textContent = 'A temporada ainda não possui resultados.';
-      renderRecentGamesDashboard();
-      return;
+    const form = $('#matchRecentForm');
+    const summary = $('#matchRecentSummary');
+    if (form && summary) {
+      if (!completed.length) {
+        form.innerHTML = '<span class="form-empty">Nenhum jogo concluído.</span>';
+        summary.textContent = 'A temporada ainda não possui resultados.';
+      } else {
+        form.innerHTML = completed
+          .map(game => {
+            const score = dashboardScoreLabel(game);
+            const tone = game.result === 'V' ? 'win' : game.result === 'E' ? 'draw' : 'loss';
+            return `<b class="${tone}" title="${game.label}: ${game.home} ${score} ${game.away}">${game.result}</b>`;
+          })
+          .join('');
+        const points = completed.reduce((total, game) => total + game.points, 0);
+        const games = completed.length;
+        summary.textContent =
+          games === 1
+            ? `${points} ${points === 1 ? 'ponto' : 'pontos'} no último jogo`
+            : `${points} pontos nos últimos ${games} jogos`;
+      }
     }
-    form.innerHTML = completed
-      .map(game => {
-        const score = dashboardScoreLabel(game);
-        return `<b class="${game.result === 'V' ? 'win' : game.result === 'E' ? 'draw' : 'loss'}" title="${game.label}: ${game.home} ${score} ${game.away}">${game.result}</b>`;
-      })
-      .join('');
-    const points = completed.reduce((total, game) => total + game.points, 0);
-    const games = completed.length;
-    summary.textContent =
-      games === 1 ? `${points} ${points === 1 ? 'ponto' : 'pontos'} no último jogo` : `${points} pontos nos últimos ${games} jogos`;
     renderRecentGamesDashboard();
-  };
-
-  const injectStyles = () => {
-    const recentResultsCss = document.createElement('style');
-    recentResultsCss.textContent =
-      '.results-card .form b.win{background:#b6ff38!important;color:#07131a!important}.results-card .form b.draw{background:#63d9ff!important;color:#07131a!important}.results-card .form b.loss{background:#8d3440!important;color:#ffdce0!important}.results-card .form-empty{display:flex;align-items:center;min-height:28px;color:#9eb6b8;font-size:10px}.results-card .form b{cursor:help}';
-    document.head.append(recentResultsCss);
   };
 
   const bindHandlers = () => {
@@ -425,7 +422,6 @@ export function createDashboardFeature(deps) {
   };
 
   const init = () => {
-    injectStyles();
     bindHandlers();
     renderDashboardMiniTable();
     renderDashboardUpcoming();

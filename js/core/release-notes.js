@@ -1,6 +1,30 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-12',
+    date: '2026-07-17',
+    publishedAt: '2026-07-17T15:50:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Novidades',
+        items: [
+          'Nova seção Escritório: orçamento, investimentos médicos e movimentos de caixa.',
+          'Nova aba Estádio: gramado, expansão de capacidade e preços de ingresso (Nacional e Copas).',
+          'Bilheteria creditada após jogos em casa — preço alto reduz ocupação; preço baixo enche mais o estádio.',
+          'Patrocínio no Escritório: 1 Master + 3 secundários sorteados sem repetição, com valor por divisão.',
+        ],
+      },
+      {
+        label: 'Melhorias',
+        items: [
+          'Premiação de fim de temporada passa pelo módulo econômico (crédito com histórico).',
+          'Saves antigos sem orçamento/estádio recebem valores iniciais da divisão automaticamente.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-11',
     date: '2026-07-17',
     publishedAt: '2026-07-17T14:30:00-03:00',
