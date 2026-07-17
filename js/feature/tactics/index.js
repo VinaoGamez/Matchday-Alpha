@@ -636,5 +636,6 @@ export function createTacticsFeature(deps) {
     syncTactics,
     applyTacticSuggestion,
     openFormationSuggestion,
+    closeFormationSuggestion,
   };
 }

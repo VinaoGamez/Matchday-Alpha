@@ -46,6 +46,51 @@ export const applyShootoutToDecidingGame = (decidingGame, winner, scoresByClub) 
   decidingGame.penalties = decidingGame.shootoutPenalties;
 };
 
+/** Só exibe shootout quando houve empate no tempo regulamentar ou disputa registrada. */
+export const knockoutShootoutLabel = game => {
+  const label = game?.penalties || game?.shootoutPenalties;
+  if (!label) return '';
+  const homeGoals = Number(game.homeGoals ?? 0);
+  const awayGoals = Number(game.awayGoals ?? 0);
+  if (homeGoals !== awayGoals && !game.shootoutWinner) return '';
+  return label;
+};
+
+export const formatKnockoutFixtureScore = (game, { separator = ' — ' } = {}) => {
+  const homeGoals = game?.homeGoals ?? 0;
+  const awayGoals = game?.awayGoals ?? 0;
+  const shootout = knockoutShootoutLabel(game);
+  return `${homeGoals}${separator}${awayGoals}${shootout ? ` (${shootout})` : ''}`;
+};
+
+/** Remove metadados de shootout quando o tempo regulamentar já tem vencedor. */
+export const clearStaleKnockoutShootout = game => {
+  if (!game) return false;
+  const homeGoals = Number(game.homeGoals ?? 0);
+  const awayGoals = Number(game.awayGoals ?? 0);
+  if (homeGoals === awayGoals || game.shootoutWinner) return false;
+  if (!game.penalties && !game.shootoutPenalties && !game.shootoutWinner) return false;
+  delete game.penalties;
+  delete game.shootoutPenalties;
+  delete game.shootoutWinner;
+  return true;
+};
+
+/**
+ * Saneia saves antigos: remove sufixos de pênaltis em jogos já decididos no tempo regulamentar.
+ * @returns {number} quantidade de jogos corrigidos
+ */
+export const sanitizeKnockoutShootoutSave = ({ cupCompetition, serieDFixtures = [] } = {}) => {
+  let fixed = 0;
+  const scan = game => {
+    if (!game || !isKnockoutShootoutCompetition(game)) return;
+    if (clearStaleKnockoutShootout(game)) fixed++;
+  };
+  (cupCompetition?.stages || []).flatMap(stage => stage.fixtures || []).forEach(scan);
+  serieDFixtures.filter(Array.isArray).flat().forEach(scan);
+  return fixed;
+};
+
 /**
  * Simula shootout automático (jogos só CPU) com placar plausível.
  */

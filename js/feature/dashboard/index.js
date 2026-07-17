@@ -1,4 +1,5 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
+import { formatKnockoutFixtureScore, isKnockoutShootoutCompetition as isKnockoutGame } from '../../engine/knockout-shootout.js';
 
 const DASHBOARD_TABLE_ROWS = 5;
 
@@ -348,6 +349,13 @@ export function createDashboardFeature(deps) {
     return { game, result: game, data: null, goals: game.goals || null };
   };
 
+  const dashboardScoreLabel = game => {
+    if (game.competition === 'cup' || game.competition === 'COPA DO BRASIL' || game.competition === 'knockout' || isKnockoutGame(game)) {
+      return formatKnockoutFixtureScore(game);
+    }
+    return `${game.homeGoals} — ${game.awayGoals}`;
+  };
+
   const renderRecentGamesDashboard = () => {
     const panel = $('#recentMatches');
     const roundLabel = $('#recentMatchesRound');
@@ -362,7 +370,7 @@ export function createDashboardFeature(deps) {
     panel.innerHTML = games
       .map((game, index) => {
         const isUser = isUserFixture(game);
-        const score = `${game.homeGoals} — ${game.awayGoals}${game.penalties ? ` (${game.penalties})` : ''}`;
+        const score = dashboardScoreLabel(game);
         const report = dashboardGameReport(game);
         const reportKey = `recent-${index}`;
         if (report) dashboardReportGames.set(reportKey, report);
@@ -383,8 +391,8 @@ export function createDashboardFeature(deps) {
     }
     form.innerHTML = completed
       .map(game => {
-        const score = `${game.home} ${game.homeGoals} — ${game.awayGoals}${game.penalties ? ` (${game.penalties})` : ''} ${game.away}`;
-        return `<b class="${game.result === 'V' ? 'win' : game.result === 'E' ? 'draw' : 'loss'}" title="${game.label}: ${score}">${game.result}</b>`;
+        const score = dashboardScoreLabel(game);
+        return `<b class="${game.result === 'V' ? 'win' : game.result === 'E' ? 'draw' : 'loss'}" title="${game.label}: ${game.home} ${score} ${game.away}">${game.result}</b>`;
       })
       .join('');
     const points = completed.reduce((total, game) => total + game.points, 0);

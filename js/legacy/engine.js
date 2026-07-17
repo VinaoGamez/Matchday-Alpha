@@ -36,6 +36,9 @@ import {
   knockoutCompetitionLabel,
   resolveKnockoutTieWinner,
   projectedKnockoutNeedsShootout,
+  formatKnockoutFixtureScore,
+  clearStaleKnockoutShootout,
+  sanitizeKnockoutShootoutSave,
 } from '../engine/knockout-shootout.js';
 
 /** Motor legado — migração incremental para módulos (Alpha 02). */
@@ -164,8 +167,9 @@ export async function bootEngine({ bus } = {}) {
 
   $('.pause-heading h2').id='pauseHeading';
   document.body.classList.add('dark-mode');
-  const gamePaceConfig={fast:{name:'RÁPIDO',detail:'15 s por tempo · 30 s de jogo contínuo',ms:500},standard:{name:'PADRÃO',detail:'25 s por tempo · 50 s de jogo contínuo',ms:750},detailed:{name:'DETALHADO',detail:'35 s por tempo · 70 s de jogo contínuo',ms:1150}};
+  const gamePaceConfig={ultra:{name:'ULTRA',detail:'8 s por tempo · 16 s de jogo contínuo',ms:250},fast:{name:'RÁPIDO',detail:'15 s por tempo · 30 s de jogo contínuo',ms:500},standard:{name:'PADRÃO',detail:'25 s por tempo · 50 s de jogo contínuo',ms:750},detailed:{name:'DETALHADO',detail:'35 s por tempo · 70 s de jogo contínuo',ms:1150}};
   let gamePace=localStorage.getItem('futmanager-pace')||'standard';
+  if(!gamePaceConfig[gamePace])gamePace='standard';
   let startMatchClock=()=>{};
   const optionsCss=document.createElement('style');optionsCss.textContent='.options-card{display:grid;gap:8px;align-content:start}.options-card strong{font:700 21px Barlow Condensed}.options-card small{line-height:1.35;color:#b6c8ad}.options-card button{justify-self:start;margin-top:4px}.options-modal{width:min(680px,calc(100vw - 28px));text-align:left}.options-modal h2{margin:5px 0 18px;font:700 32px Barlow Condensed}.option-section{padding:14px;border:1px solid #315b68;border-radius:7px;margin-top:12px}.option-section>label{display:block;margin-bottom:10px;color:#63d9ff;font:700 11px DM Sans;letter-spacing:.7px}.option-section p{margin:0 0 10px;color:#9eb6b8;font-size:12px}.option-choices{display:flex;flex-wrap:wrap;gap:8px}.option-choices button{background:#122b35!important;color:#edf8f5!important;border:1px solid #397487!important}.option-choices button.selected{background:#24667c!important;color:#fff!important;border-color:#63d9ff!important}.pace-choice{width:100%;display:grid;grid-template-columns:100px 1fr;text-align:left;gap:5px}.pace-choice small{grid-column:2;color:#9eb6b8;font-size:10px}.new-game-action{display:flex;align-items:center;justify-content:space-between;gap:14px}.new-game-action div{min-width:0}.new-game-action strong{display:block;color:#edf8f5;font:700 19px Barlow Condensed}.new-game-action small{display:block;margin-top:3px;color:#9eb6b8}.new-game-action button{flex:none;background:#b6ff38!important;color:#06131b!important;border:0!important}.new-game-modal{width:min(660px,calc(100vw - 28px));text-align:left}.new-game-modal h2{margin:5px 0 5px;font:700 32px Barlow Condensed}.new-game-modal>p{color:#9eb6b8;font-size:12px}.division-preview{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:16px 0}.division-preview article{padding:12px;background:#102b35;border:1px solid #315b68;border-radius:6px}.division-preview b{display:block;color:#b6ff38}.division-preview small{color:#9eb6b8}.new-game-buttons{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}.new-game-buttons button{padding:11px 16px;font:700 10px DM Sans;letter-spacing:.5px;cursor:pointer;border-radius:6px}.new-game-buttons .secondary{background:#122b35!important;color:#edf8f5!important;border:1px solid #397487!important}.new-game-buttons #confirmNewGame{background:#24667c!important;color:#fff!important;border:1px solid #63d9ff!important;box-shadow:inset 3px 0 #63d9ff!important}.new-game-buttons #confirmNewGame:hover{background:#2d7890!important;border-color:#8ae6ff!important}@media(max-width:560px){.new-game-action{align-items:flex-start;flex-direction:column}.division-preview{grid-template-columns:1fr}}';document.head.append(optionsCss);
   optionsCss.textContent+='.generated-world-summary{display:grid;gap:5px;margin-top:12px;padding-top:11px;border-top:1px solid #28505b}.generated-world-summary>small{color:#63d9ff;font:700 8px DM Sans;letter-spacing:.65px}.generated-world-summary span{display:grid;grid-template-columns:62px 1fr;color:#9eb6b8;font-size:10px}.generated-world-summary b{color:#edf8f5}.career-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}.career-field{display:grid;gap:6px}.career-field label,.division-choice>label{color:#63d9ff;font:700 10px DM Sans;letter-spacing:.7px}.career-field input{width:100%;box-sizing:border-box;padding:12px;background:#0b2029;color:#edf8f5;border:1px solid #315b68;border-radius:5px;outline:0}.career-field input:focus{border-color:#63d9ff;box-shadow:0 0 0 2px #63d9ff22}.division-choice{margin-bottom:16px}.division-choice-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}.division-card{display:grid;gap:3px;padding:11px!important;background:#102b35!important;color:#edf8f5!important;border:1px solid #315b68!important;text-align:left}.division-card b{color:#b6ff38;font:700 18px Barlow Condensed}.division-card small{color:#9eb6b8;font-size:9px}.division-card.selected{border-color:#63d9ff!important;background:#173b48!important;box-shadow:0 0 0 1px #63d9ff}.new-game-error{min-height:16px;margin:0 0 8px!important;color:#ff6b6b!important;font-weight:700}.career-current{color:#b6ff38!important}.treatment-modal{width:min(520px,calc(100vw - 28px));text-align:left}.treatment-injury-name{color:#63d9ff;font-weight:700}.treatment-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}.treatment-actions button{padding:10px 14px;border-radius:5px;font:700 10px DM Sans;letter-spacing:.5px}.treatment-actions #treatmentConservative{background:#122b35!important;color:#edf8f5!important;border:1px solid #397487!important}.treatment-actions #treatmentSurgery{background:#24667c!important;color:#fff!important;border:1px solid #63d9ff!important}@media(max-width:560px){.career-fields{grid-template-columns:1fr}.division-choice-grid{grid-template-columns:repeat(2,1fr)}}';
@@ -778,6 +782,7 @@ export async function bootEngine({ bus } = {}) {
   };
   cupCompetition.stages.forEach(stage=>stage.fixtures.sort((a,b)=>a.date-b.date||a.gameNumber-b.gameNumber));
   refreshCopaDoBrasilFixtures();
+  const knockoutShootoutSanitized=sanitizeKnockoutShootoutSave({cupCompetition,serieDFixtures:nationalCompetitions.D.fixtures});
   let syncUserCalendarSpacing=()=>{rescheduleAllCupFixtures();};
   const calculateRestConflicts=()=>[...clubMatchDates.values()].reduce((total,dates)=>{const ordered=[...dates].sort((a,b)=>a-b);return total+ordered.slice(1).filter((date,index)=>date-ordered[index]<minimumMatchGap).length;},0);
   let restConflictCount=0;
@@ -885,10 +890,10 @@ export async function bootEngine({ bus } = {}) {
     if(game.competition==='COPA DO BRASIL'||isKnockoutShootoutCompetition(game)){
       if(!game.completed&&!game.homeGoals&&game.homeGoals!==0){
         const roundRecord=seasonRoundHistory.find(item=>item.round===game.round),result=roundRecord?.games?.find(item=>item.home===game.home&&item.away===game.away);
-        if(result)return `${result.homeGoals}—${result.awayGoals}${result.penalties?` (${result.penalties})`:''}`;
+        if(result)return formatKnockoutFixtureScore(result,{separator:'—'});
         return null;
       }
-      return `${game.homeGoals}—${game.awayGoals}${game.penalties?` (${game.penalties})`:''}`;
+      return formatKnockoutFixtureScore(game,{separator:'—'});
     }
     const roundRecord=seasonRoundHistory.find(item=>item.round===game.round),result=roundRecord?.games?.find(item=>item.home===game.home&&item.away===game.away);
     if(!result)return null;
@@ -1180,7 +1185,7 @@ export async function bootEngine({ bus } = {}) {
   };
   const DEFAULT_USER_TACTICS={mentality:50,possession:50,press:50,offsideLine:50};
   let tactics;
-  let draw=()=>{},drawBoard=()=>{},renderTacticRoster=()=>{},renderSubstitutionControls=()=>{},makeSubstitution=()=>{},syncTactics=()=>{},applyTacticSuggestion=()=>{},tacticFor;
+  let draw=()=>{},drawBoard=()=>{},renderTacticRoster=()=>{},renderSubstitutionControls=()=>{},makeSubstitution=()=>{},syncTactics=()=>{},applyTacticSuggestion=()=>{},closeFormationSuggestion=()=>{},tacticFor;
   clubs[userClub].roster=squad;
   Object.values(clubs).filter(club=>club.name!==userClub).forEach(club=>orderRosterForFormation(club.roster,club.formation));
   const fieldMarkup='<div class="field-markings"><i class="mid-line"></i><i class="centre-circle"></i><i class="centre-spot"></i><i class="area area-top"></i><i class="area area-bottom"></i><i class="six-yard six-top"></i><i class="six-yard six-bottom"></i><i class="spot spot-top"></i><i class="spot spot-bottom"></i><i class="goal goal-top"></i><i class="goal goal-bottom"></i></div>';
@@ -1660,7 +1665,7 @@ export async function bootEngine({ bus } = {}) {
     if(phaseEl)phaseEl.textContent=liveMatchClockPhase();
   };
   const startLiveSecondTimer=()=>{stopLiveSecondTimer();liveClockSecondTimer=setInterval(()=>{if(matchFinished||preMatchPreparation)return;liveClockSeconds=(liveClockSeconds+1)%60;updateLiveMatchClock();},1000);};
-  startMatchClock=()=>{stopMatchClock();timer=setInterval(tick,gamePaceConfig[gamePace].ms);if(matchStarted&&!matchFinished&&!preMatchPreparation)startLiveSecondTimer();updateLiveMatchClock();};
+  startMatchClock=()=>{stopMatchClock();timer=setInterval(tick,(gamePaceConfig[gamePace]||gamePaceConfig.standard).ms);if(matchStarted&&!matchFinished&&!preMatchPreparation)startLiveSecondTimer();updateLiveMatchClock();};
   const renderLiveMatchHeader=game=>{if(!game)return;const details=fixtureDetails(game),venue=matchVenueFor(game.home),opponent=matchClub();$('#liveMatchDateTime').textContent=`${details.display} · ${details.time}`;$('#liveMatchVenue').textContent=`${venue.name} · ${venue.capacity.toLocaleString('pt-BR')} lugares`;$('#liveHomeCrest').textContent=clubCrestInitials(userClub);$('#liveAwayCrest').textContent=clubCrestInitials(opponent.name);$('#liveHomeName').textContent=userClub.toUpperCase();$('#liveAwayName').textContent=opponent.name.toUpperCase();};
   const score = () => { $('#score').textContent = `${home} — ${away}`; updateLiveMatchClock(); };
   const log = (text, type='') => { timeline.insertAdjacentHTML('beforeend', `<p class="${type}">${minute}' · ${text}</p>`); timeline.scrollTop = timeline.scrollHeight; };
@@ -1700,7 +1705,7 @@ export async function bootEngine({ bus } = {}) {
       return{formation:club.formation,mentality:club.mentality==='Defensiva'?25:club.mentality==='Ofensiva'?75:50,possession:club.style==='Posse de bola'?78:club.style==='Contra-ataque'?22:50,press:club.style==='Pressão alta'?82:club.mentality==='Defensiva'?35:55,offsideLine:50};
     },
   });
-  ({draw,drawBoard,renderTacticRoster,renderSubstitutionControls,makeSubstitution,syncTactics,applyTacticSuggestion,tacticFor}=tactics);
+  ({draw,drawBoard,renderTacticRoster,renderSubstitutionControls,makeSubstitution,syncTactics,applyTacticSuggestion,closeFormationSuggestion,tacticFor}=tactics);
   tactics.init(validSavedSeason?savedSeason?.userTactics:null);
   autoSelectUserLineup(formation);
   renderRoster();
@@ -1811,10 +1816,11 @@ export async function bootEngine({ bus } = {}) {
     const clubsInTie=[games[0].home,games[0].away],firstGoals=aggregate.get(clubsInTie[0])||0,secondGoals=aggregate.get(clubsInTie[1])||0;
     let winner=firstGoals>secondGoals?clubsInTie[0]:secondGoals>firstGoals?clubsInTie[1]:null;
     if(firstGoals===secondGoals)winner=resolveKnockoutTieWinner(games,{pickWinner:cupPenaltyWinner,int});
+    else games.forEach(clearStaleKnockoutShootout);
     games.forEach(game=>{game.winner=winner;});
     return winner;
   };
-  const notifyCupTieResult=(games,winner)=>{games.forEach(game=>{if(game.home!==userClub&&game.away!==userClub)return;const opponent=game.home===userClub?game.away:game.home,scoreLabel=`${game.homeGoals} — ${game.awayGoals}${game.penalties?` (${game.penalties} pên.)`:''}`,qualified=winner===userClub;pushMessage({category:'competition',type:'cup',title:`Copa do Brasil · ${game.phase}`,body:`${game.home} ${scoreLabel} ${game.away} · ${qualified?`${userClub} avança de fase`:`${userClub} eliminado por ${opponent}`}`,round:currentRound,meta:{competition:'Copa do Brasil',phase:game.phase}});});};
+  const notifyCupTieResult=(games,winner)=>{games.forEach(game=>{if(game.home!==userClub&&game.away!==userClub)return;const opponent=game.home===userClub?game.away:game.home,scoreLabel=formatKnockoutFixtureScore(game),qualified=winner===userClub;pushMessage({category:'competition',type:'cup',title:`Copa do Brasil · ${game.phase}`,body:`${game.home} ${scoreLabel} ${game.away} · ${qualified?`${userClub} avança de fase`:`${userClub} eliminado por ${opponent}`}`,round:currentRound,meta:{competition:'Copa do Brasil',phase:game.phase}});});};
   const notifyCupPhaseAdvance=(completedStage,nextStage)=>{
     if(!nextStage?.entrants?.includes(userClub))return;
     pushMessage({category:'competition',type:'phase-advance',title:`Copa do Brasil · ${nextStage.name}`,body:`${userClub} classificado para ${nextStage.name} (${nextStage.entrants.length} clubes). Confira o calendário dos confrontos.`,round:currentRound,meta:{competition:'Copa do Brasil',phase:nextStage.name}});
@@ -1905,6 +1911,7 @@ export async function bootEngine({ bus } = {}) {
   const commitLiveKnockoutResult=()=>{
     if(!liveMatchGame||liveMatchGame.completed||!isKnockoutShootoutCompetition(liveMatchGame))return false;
     Object.assign(liveMatchGame,buildLiveKnockoutStats(),{completed:true});
+    clearStaleKnockoutShootout(liveMatchGame);
     if(!availabilityCommitted)commitLiveAvailability();
     if(liveMatchGame.competition===KNOCKOUT_COMPETITIONS.COPA){
       const stage=cupCompetition.stages.find(item=>item.fixtures.includes(liveMatchGame));
@@ -2011,7 +2018,7 @@ export async function bootEngine({ bus } = {}) {
   calendarView.setPersist(persistSeason);
   tactics.setPersist(persistSeason);
   messages.setPersist(persistSeason);
-  if(validSavedSeason&&savedSeason.currentRound!==currentRound)persistSeason();
+  if(validSavedSeason&&(savedSeason.currentRound!==currentRound||knockoutShootoutSanitized))persistSeason();
   let skipPersistOnUnload=false;
   window.addEventListener('beforeunload',()=>{if(savedNewGame&&!skipPersistOnUnload)persistSeason();});
   advanceCalendarWeek=()=>{
@@ -2719,7 +2726,7 @@ export async function bootEngine({ bus } = {}) {
     if(club===userClub)startShootoutTakerChoice(club);
     else{
       $('#matchStatus').textContent=`${club} prepara a cobrança…`;
-      setTimeout(()=>{const taker=pickShootoutCpuTaker(club);if(taker)executeShootoutKick(club,taker);},Math.max(900,gamePaceConfig[gamePace].ms*2));
+      setTimeout(()=>{const taker=pickShootoutCpuTaker(club);if(taker)executeShootoutKick(club,taker);},Math.max(450,(gamePaceConfig[gamePace]||gamePaceConfig.standard).ms*2));
     }
   };
   const completePenaltyShootout=winner=>{
