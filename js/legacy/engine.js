@@ -1955,7 +1955,8 @@ export async function bootEngine({ bus } = {}) {
   const log = (text, type='') => { timeline.insertAdjacentHTML('beforeend', `<p class="${type}">${minute}' · ${text}</p>`); timeline.scrollTop = timeline.scrollHeight; };
   const percent = (a,b) => b ? `${Math.round(a / b * 100)}%` : '0%';
   const calendarPossessionPair = () => {
-    const userShare = clamp(Number(stats?.home?.possession) || 50, 28, 72);
+    // Faixa alinhada ao motor ao vivo (posse típica BR ~36–64, com vermelho um pouco mais larga).
+    const userShare = clamp(Number(stats?.home?.possession) || 50, 30, 70);
     const homeShare = Math.round(userAtHomeInLiveMatch() ? userShare : 100 - userShare);
     return { home: homeShare, away: 100 - homeShare };
   };
@@ -3193,23 +3194,32 @@ export async function bootEngine({ bus } = {}) {
     // momento, mas atributos individuais e aleatoriedade continuam decisivos.
     const homeProfile={...homeBase,overall:homeLive,attack:homeBase.attack+(homeLive-homeBase.overall)*.30,passing:homeBase.passing+(homeLive-homeBase.overall)*.26,defense:homeBase.defense+(homeLive-homeBase.overall)*.26-cautionPenalty('home')};
     const awayProfile={...awayBase,overall:awayLive,attack:awayBase.attack+(awayLive-awayBase.overall)*.30,passing:awayBase.passing+(awayLive-awayBase.overall)*.26,defense:awayBase.defense+(awayLive-awayBase.overall)*.26-cautionPenalty('away')};
-    // A posse nasce da força e das escolhas táticas; o momento criado pelos lances move a posse a cada atualização.
+    // Posse: força + tática + mando real do calendário (não o "home" interno do motor).
+    // Alinhado ao match-sim: swings perceptíveis sem extremos irreais (ex.: 62–38 constantes).
     const overallGap=homeLive-awayLive;
-    const openingPressure=minute<=15 && Math.abs(overallGap)>5 ? clamp((Math.abs(overallGap)-5)*.65+2,2,7) : 0;
+    const openingPressure=minute<=15 && Math.abs(overallGap)>5 ? clamp((Math.abs(overallGap)-5)*.55+1.5,1.5,5.5) : 0;
     const homeOpeningBias=overallGap>5 ? openingPressure : overallGap<-5 ? -openingPressure : 0;
     stats.home.momentum=clamp(stats.home.momentum*.88,-12,12);
     stats.away.momentum=clamp(stats.away.momentum*.88,-12,12);
     const homeTactic=tacticFor('home'),awayTactic=tacticFor('away');
     const passRate=team=>stats[team].passes?stats[team].accurate/stats[team].passes:.72;
-    const passControl=clamp((passRate('home')-passRate('away'))*9,-2.4,2.4);
-    const attackControl=clamp((stats.home.goodAttacks-stats.away.goodAttacks)*.075+(stats.home.attacks-stats.away.attacks)*.025,-1.7,1.7);
-    const redControl=((cards.away?.filter(card=>card.red).length||0)-(cards.home?.filter(card=>card.red).length||0))*2.8;
-    const structuralControl=(homeProfile.passing-awayProfile.passing)*.44+(homeProfile.overall-awayProfile.overall)*.18+(homeTactic.possession-awayTactic.possession)*.15+(homeTactic.press-awayTactic.press)*.035+(homeTactic.mentality-awayTactic.mentality)*.025+(stats.home.momentum-stats.away.momentum)*.16+passControl+attackControl+redControl+homeOpeningBias*.25+2.5;
+    const passControl=clamp((passRate('home')-passRate('away'))*4,-1.2,1.2);
+    const attackControl=clamp((stats.home.goodAttacks-stats.away.goodAttacks)*.04+(stats.home.attacks-stats.away.attacks)*.015,-1,1);
+    const redControl=((cards.away?.filter(card=>card.red).length||0)-(cards.home?.filter(card=>card.red).length||0))*2;
+    // Motor home = usuário; o bônus de mando segue o calendário (casa/fora de verdade).
+    const venueBias=userAtHomeInLiveMatch()?2.2:-2.2;
+    const structuralControl=(homeProfile.passing-awayProfile.passing)*.40+(homeProfile.overall-awayProfile.overall)*.16+(homeTactic.possession-awayTactic.possession)*.10+(homeTactic.press-awayTactic.press)*.03+(homeTactic.mentality-awayTactic.mentality)*.02+(stats.home.momentum-stats.away.momentum)*.12+passControl+attackControl+redControl+homeOpeningBias*.2+venueBias;
     const hasRed=cards.home?.some(card=>card.red)||cards.away?.some(card=>card.red);
-    const targetPossession=clamp(50+structuralControl,hasRed?29:32,hasRed?71:68);
-    // Motor: home = usuário, away = adversário. Sempre espelhar a posse do visitante
-    // (como no match-sim); senão, em jogos fora a UI lê stats.away travado em 50%.
-    stats.home.possession=stats.home.possession*.74+targetPossession*.26;
+    const possMin=hasRed?30:36,possMax=hasRed?70:64;
+    const targetPossession=clamp(50+structuralControl,possMin,possMax);
+    // Motor: home = usuário, away = adversário. Espelhar visitante (como no match-sim).
+    stats.home.possession=stats.home.possession*.78+targetPossession*.22;
+    // Âncora suave no volume de passes — posse e estatística de passe ficam coerentes.
+    const passTotal=(stats.home.passes||0)+(stats.away.passes||0);
+    if(passTotal>=40){
+      const passShare=(stats.home.passes/passTotal)*100;
+      stats.home.possession=clamp(stats.home.possession*.88+passShare*.12,possMin,possMax);
+    }
     stats.away.possession=100-stats.home.possession;
     const side = Math.random()*100 < stats.home.possession ? 'home' : 'away';
     const otherSide = side === 'home' ? 'away' : 'home';

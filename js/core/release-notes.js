@@ -1,6 +1,21 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-14',
+    date: '2026-07-17',
+    publishedAt: '2026-07-17T16:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Correções',
+        items: [
+          'Posse AO VIVO recalibrada: mando segue o calendário (casa/fora), faixa mais realista e alinhada aos passes.',
+          'Corrige extremos irreais (ex.: 62%–38% constantes) mantendo o efeito das táticas perceptível.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-13',
     date: '2026-07-17',
     publishedAt: '2026-07-17T16:20:00-03:00',
