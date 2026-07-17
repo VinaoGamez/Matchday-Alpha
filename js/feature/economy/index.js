@@ -1,4 +1,18 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
+import { sponsorLogoSlug } from '../../engine/economy.js';
+
+const SPONSOR_LOGO_URLS = Object.fromEntries(
+  Object.entries(
+    import.meta.glob('../../../assets/sponsors/icons/*.png', {
+      eager: true,
+      query: '?url',
+      import: 'default',
+    }),
+  ).map(([path, url]) => {
+    const file = path.split('/').pop()?.replace(/\.png$/i, '') || '';
+    return [file, url];
+  }),
+);
 
 /**
  * Escritório + Estádio — orçamento/investimentos e gestão da arena.
@@ -37,24 +51,32 @@ export function createEconomyFeature(deps) {
 
   const injectStyles = () => {
     const existing = $('#economyOfficeCss');
-    if (existing?.dataset.v === '6') return;
+    if (existing?.dataset.v === '9') return;
     existing?.remove();
     const style = document.createElement('style');
     style.id = 'economyOfficeCss';
-    style.dataset.v = '6';
+    style.dataset.v = '9';
     style.textContent = `
 .office-view .office-layout{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.25fr);gap:16px;align-items:stretch}
 .office-view .office-ledger,.office-view .office-sponsors{grid-column:1 / -1}
 .office-budget-card,.economy-investments,.office-ledger,.office-sponsors,.stadium-summary-card,.stadium-upgrades,.stadium-tickets{display:flex;flex-direction:column;min-height:0;padding:18px 20px}
-.office-budget-card>label,.economy-investments>label,.office-ledger>label,.office-sponsors>label,.stadium-summary-card>label,.stadium-upgrades>label,.stadium-tickets>label{display:block;margin:0 0 14px;color:#63d9ff;font:700 11px DM Sans,sans-serif;letter-spacing:.6px}
+.office-budget-card>label,.economy-investments>label,.office-ledger>label,.office-sponsors>label,.stadium-summary-card>label,.stadium-upgrades>label,.stadium-tickets>label{display:block;margin:0 0 14px;color:#2abee9;font:700 11px DM Sans,sans-serif;letter-spacing:.6px}
 .office-sponsors-meta{margin:0 0 12px;color:#7fa8b0;font-size:10px;line-height:1.4}
-.office-sponsors-list{display:grid;grid-template-columns:minmax(0,1.2fr) repeat(3,minmax(0,1fr));gap:10px}
-.office-sponsor-card{display:grid;gap:6px;align-content:start;min-height:96px;padding:12px;border:1px solid #28505b;border-radius:5px;background:#102b35}
-.office-sponsor-card.master{border-color:#63d9ff;background:linear-gradient(160deg,#12313c,#0d2029)}
-.office-sponsor-card small{color:#7fa8b0;font:700 8px DM Sans,sans-serif;letter-spacing:.45px}
-.office-sponsor-card b{color:#edf8f5;font:700 16px Barlow Condensed,sans-serif;line-height:1.15}
-.office-sponsor-card.master b{font-size:20px;color:#b6ff38}
-.office-sponsor-card strong{color:#63d9ff;font:700 14px Barlow Condensed,sans-serif}
+.office-sponsors-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.office-sponsor-card{display:grid;align-content:center;min-height:0;padding:12px 14px;border:1px solid #1e4a5c;border-radius:8px;background:linear-gradient(165deg,#122b36 0%,#0c1c26 100%)}
+.office-sponsor-card.master{border-color:#2abee9;background:linear-gradient(165deg,#143848 0%,#0d2029 100%);box-shadow:0 0 0 1px #2abee928,0 8px 20px #0005}
+.office-sponsor-brand{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:center;min-width:0}
+.office-sponsor-card.master .office-sponsor-brand{grid-template-columns:96px minmax(0,1fr)}
+.office-sponsor-logo{display:grid;place-items:center;width:88px;height:88px;padding:0;border-radius:10px;box-sizing:border-box;background:#050c14;border:1px solid #3a6d7e;box-shadow:inset 0 1px 0 #ffffff12;overflow:hidden}
+.office-sponsor-card.master .office-sponsor-logo{width:96px;height:96px;border-color:#2abee9aa;box-shadow:inset 0 1px 0 #ffffff18,0 0 14px #2abee914}
+.office-sponsor-logo img{display:block;width:100%;height:100%;object-fit:contain;object-position:center;image-rendering:auto;-webkit-backface-visibility:hidden}
+.office-sponsor-logo.missing{color:#7fa8b0;font:700 28px Barlow Condensed,sans-serif}
+.office-sponsor-copy{display:flex;align-items:center;gap:0;min-width:0;width:100%}
+.office-sponsor-copy b{color:#edf8f5;font:700 15px Barlow Condensed,sans-serif;letter-spacing:.2px;line-height:1.1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.office-sponsor-card.master .office-sponsor-copy b{font-size:16px;color:#bbeb27}
+.office-sponsor-divider{display:block;width:1px;height:36px;margin:0 12px;flex-shrink:0;background:#5fb9d4;opacity:.85;box-shadow:0 0 0 1px #2abee922}
+.office-sponsor-copy strong{margin-left:auto;color:#7fd9f2;font:700 28px Barlow Condensed,sans-serif;letter-spacing:.15px;line-height:1;white-space:nowrap;flex-shrink:0}
+.office-sponsor-card.master .office-sponsor-copy strong{font-size:32px;color:#b6ff38}
 .office-sponsor-empty{grid-column:1 / -1;color:#7fa8b0;font-size:11px;padding:8px 0}
 .office-budget-body{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:88px;margin-bottom:14px}
 .office-budget-card .office-budget-value{margin:0 0 6px;font:700 42px Barlow Condensed,sans-serif;color:#b6ff38;line-height:1}
@@ -184,6 +206,17 @@ export function createEconomyFeature(deps) {
     renderLedger();
   };
 
+  const sponsorCardHtml = (item, { master = false } = {}) => {
+    const name = item?.name || '—';
+    const slug = sponsorLogoSlug(name);
+    const logoUrl = slug ? SPONSOR_LOGO_URLS[slug] : null;
+    const size = master ? 96 : 88;
+    const logo = logoUrl
+      ? `<span class="office-sponsor-logo"><img src="${logoUrl}" alt="${name}" width="${size}" height="${size}" decoding="async"></span>`
+      : `<span class="office-sponsor-logo missing" aria-hidden="true">${String(name).slice(0, 1)}</span>`;
+    return `<div class="office-sponsor-card${master ? ' master' : ''}"><div class="office-sponsor-brand">${logo}<div class="office-sponsor-copy"><b>${name}</b><i class="office-sponsor-divider" aria-hidden="true"></i><strong>${formatBudget(item?.value)}</strong></div></div></div>`;
+  };
+
   const renderSponsors = () => {
     const list = $('#officeSponsorsList');
     const meta = $('#officeSponsorsMeta');
@@ -199,11 +232,8 @@ export function createEconomyFeature(deps) {
       meta.textContent = `Temporada ${season} · Série ${sponsors.division || getUserDivision?.() || 'A'} · total ${formatBudget(sponsors.total || 0)}`;
     }
     const cards = [
-      `<div class="office-sponsor-card master"><small>MASTER</small><b>${sponsors.master.name}</b><strong>${formatBudget(sponsors.master.value)}</strong></div>`,
-      ...(sponsors.secondaries || []).map(
-        item =>
-          `<div class="office-sponsor-card"><small>SECUNDÁRIO</small><b>${item.name}</b><strong>${formatBudget(item.value)}</strong></div>`
-      ),
+      sponsorCardHtml(sponsors.master, { master: true }),
+      ...(sponsors.secondaries || []).map(item => sponsorCardHtml(item)),
     ];
     list.innerHTML = cards.join('');
   };

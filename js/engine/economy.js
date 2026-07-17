@@ -700,6 +700,32 @@ export const SPONSOR_POOL = [
   'FedExpressão',
 ];
 
+/** Slug do arquivo em assets/sponsors/icons/{slug}.png */
+export const SPONSOR_LOGO_SLUG = {
+  Nubanco: 'nubanco',
+  Petrobraz: 'petrobraz',
+  'Magazine Luizão': 'magazine-luizao',
+  iFome: 'ifome',
+  BetRegional: 'betregional',
+  PicPaga: 'picpaga',
+  Sheinpee: 'sheinpee',
+  'Amazônia.com': 'amazonia-com',
+  Googol: 'googol',
+  Metagol: 'metagol',
+  'Starbox Coffee': 'starbox-coffee',
+  Havaianinhas: 'havaianinhas',
+  Naike: 'naike',
+  'Pumba Sport': 'pumba-sport',
+  Perdigol: 'perdigol',
+  Poweraid: 'poweraid',
+  Playstação: 'playstacao',
+  FedExpressão: 'fedexpressao',
+};
+
+export function sponsorLogoSlug(name) {
+  return SPONSOR_LOGO_SLUG[name] || null;
+}
+
 /** Valor do contrato por temporada (R$), conforme divisão. */
 export const SPONSOR_VALUE_BY_DIVISION = {
   A: { master: [9_000_000, 12_000_000], secondary: [1_800_000, 2_500_000] },
@@ -817,6 +843,8 @@ export function createEconomyEngine() {
     TICKET_PRICE_RANGE,
     PITCH_TIERS,
     SPONSOR_POOL,
+    SPONSOR_LOGO_SLUG,
+    sponsorLogoSlug,
     SPONSOR_VALUE_BY_DIVISION,
     CLUB_UPGRADES,
     STADIUM_UPGRADES,

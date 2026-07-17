@@ -1,6 +1,29 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-18',
+    date: '2026-07-17',
+    publishedAt: '2026-07-17T20:20:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Estabilidade',
+        items: [
+          'Uso de memória e save do navegador otimizados: históricos compactos, artilharia magra e proteção contra cota do localStorage.',
+          'Fechar o jogo ao vivo pausa o relógio (evita vazamento de timer em segundo plano).',
+          'Histórico de lesões e títulos do ranking passam a ter teto por carreira longa.',
+        ],
+      },
+      {
+        label: 'Interface',
+        items: [
+          'Logos de patrocínio reenquadrados; valores do Escritório em destaque.',
+          'Badge de Mensagens maior; tabelas da Central realinhadas.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-17',
     date: '2026-07-17',
     publishedAt: '2026-07-17T18:45:00-03:00',

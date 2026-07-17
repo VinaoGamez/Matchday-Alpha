@@ -18,6 +18,7 @@
 | [05-MODELOS-DADOS.md](./05-MODELOS-DADOS.md) | localStorage, entidades, persistência |
 | [06-INTERFACE.md](./06-INTERFACE.md) | Views, modais, navegação |
 | [07-HOSPEDAGEM.md](./07-HOSPEDAGEM.md) | Servidor local, túnel externo, compartilhamento |
+| [08-JOGADAS-E-RITMO.md](./08-JOGADAS-E-RITMO.md) | Jogadas ao vivo/simulação, ritmo do relógio e bases numéricas |
 | [PLANO-MODULARIZACAO.md](./PLANO-MODULARIZACAO.md) | Migração modular Alpha 02 |
 
 ---

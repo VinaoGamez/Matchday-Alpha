@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
   <title>Matchday Football · Simulador de Carreira</title>
+  <link rel="icon" type="image/png" href="./brand/mark.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
@@ -15,11 +16,10 @@
     <div class="home-bg" aria-hidden="true"></div>
     <header class="home-header">
       <div class="home-brand">
-        <span class="home-mark">MF</span>
-        <span class="home-wordmark"><b>MATCHDAY</b><small>FOOTBALL</small></span>
+        <img class="home-logo" src="./brand/lockup.png" alt="Matchday Football" width="280" height="90">
       </div>
       <div class="home-meta">
-        <span class="home-tag">ALPHA · TESTE LOCAL</span>
+        <span class="home-tag">ALPHA · TESTER</span>
         <small id="lastUpdate" class="home-updated">Última atualização: —</small>
       </div>
     </header>
@@ -27,8 +27,8 @@
     <main class="home-main">
       <section class="home-hero">
         <p class="home-kicker">SIMULADOR DE CARREIRA NO BRASIL</p>
-        <h1>Gerencie seu clube do Brasileirão à Copa do Brasil.</h1>
-        <p class="home-lead">Monte elenco, defina táticas, dispute partidas ao vivo e acompanhe lesões, disciplina, calendário e mensagens da temporada em um único hub de gestão.</p>
+        <h1>Comande o clube do gramado ao caixa.</h1>
+        <p class="home-lead">Brasileirão A–D e Copa do Brasil, partidas ao vivo, Escritório, Estádio e rotina de treinos — gestão completa em um só hub.</p>
         <div class="home-actions">
           <a id="newGameBtn" class="home-btn primary" href="index.html?novo=1">NOVO JOGO</a>
           <a id="continueBtn" class="home-btn secondary hidden" href="index.html">CONTINUAR CARREIRA</a>
@@ -36,29 +36,66 @@
         <p id="careerHint" class="home-hint hidden"></p>
       </section>
 
-      <section class="home-features">
+      <section class="home-pillars" aria-label="O que o jogo oferece">
         <article class="feature-card">
           <small>COMPETIÇÕES</small>
           <strong>Brasileirão A–D + Copa</strong>
-          <p>Agenda nacional unificada com intervalos dinâmicos entre jogos e rotina de treinos.</p>
+          <p>Agenda nacional unificada do início ao fim da temporada.</p>
         </article>
         <article class="feature-card">
           <small>PARTIDA AO VIVO</small>
           <strong>Motor com eventos</strong>
-          <p>Gols, cartões, lesões, substituições inteligentes e decisões médicas durante a partida.</p>
+          <p>Gols, cartões, lesões, pausas e público em tempo real.</p>
         </article>
         <article class="feature-card">
-          <small>GESTÃO</small>
-          <strong>Hub de mensagens</strong>
-          <p>Resultados, diagnósticos, suspensões e alertas do clube reunidos em uma caixa de entrada.</p>
+          <small>ELENCO</small>
+          <strong>Plantel completo</strong>
+          <p>Atributos, cansaço, biotipo e condição física do dia a dia.</p>
         </article>
         <article class="feature-card">
-          <small>PERSISTÊNCIA</small>
-          <strong>Salvo no navegador</strong>
-          <p>Sua carreira fica no <code>localStorage</code> deste dispositivo e navegador.</p>
+          <small>TÁTICAS</small>
+          <strong>Prancheta ao vivo</strong>
+          <p>Formação, mentalidade, pressão e substituições na partida.</p>
+        </article>
+        <article class="feature-card">
+          <small>ESCRITÓRIO</small>
+          <strong>Caixa e investimentos</strong>
+          <p>Orçamento, departamento médico, prevenção e patrocínios.</p>
+        </article>
+        <article class="feature-card">
+          <small>ESTÁDIO</small>
+          <strong>Estrutura e bilheteria</strong>
+          <p>Gramado, capacidade, lotação variável e preço de ingresso.</p>
+        </article>
+        <article class="feature-card">
+          <small>TREINAMENTO</small>
+          <strong>Rotina semanal</strong>
+          <p>Pré-jogo, pós-jogo e dias livres com impacto na recuperação.</p>
+        </article>
+        <article class="feature-card">
+          <small>MENSAGENS</small>
+          <strong>Hub da carreira</strong>
+          <p>Resultados, médico, disciplina e alertas do clube.</p>
+        </article>
+        <article class="feature-card feature-card-soon">
+          <small>EM BREVE</small>
+          <strong>Mercado e base</strong>
+          <p>Transferências e Categoria de Base em desenvolvimento.</p>
         </article>
       </section>
     </main>
+
+    <aside class="home-sponsors" aria-label="Patrocínio">
+      <small>PATROCÍNIO</small>
+      <div class="home-sponsors-viewport">
+        <div id="homeSponsorsTrack" class="home-sponsors-track"></div>
+      </div>
+    </aside>
+
+    <footer class="home-footer">
+      <small id="homeBuildVersion">—</small>
+      <span>Carreira salva neste navegador</span>
+    </footer>
   </div>
   <script type="module" src="js/home.js"></script>
 </body>

@@ -1,0 +1,3 @@
+cyan=#2abee9
+lime=#bbeb27
+night=#050c17

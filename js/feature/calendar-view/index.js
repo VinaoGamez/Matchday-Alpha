@@ -199,8 +199,13 @@ export function createCalendarViewFeature(deps) {
 
   const renderTrainingRules = () => {
     const trainingRules = getTrainingRules();
-    $$('#trainingRules [data-training-rule]').forEach(button => {
-      button.querySelector('strong').textContent = trainingRules[button.dataset.trainingRule];
+    $$('#trainingRules [data-training-current]').forEach(el => {
+      el.textContent = trainingRules[el.dataset.trainingCurrent] || '—';
+    });
+    $$('#trainingRules [data-training-option]').forEach(button => {
+      const selected = trainingRules[button.dataset.trainingRule] === button.dataset.trainingOption;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', selected ? 'true' : 'false');
     });
   };
 
@@ -430,13 +435,13 @@ export function createCalendarViewFeature(deps) {
       renderCalendar();
     });
     onClick('#trainingRules', event => {
-      const button = event.target.closest('[data-training-rule]');
+      const button = event.target.closest('[data-training-option]');
       if (!button) return;
       const type = button.dataset.trainingRule;
-      const options = trainingOptions[type];
-      const trainingRules = getTrainingRules();
-      const next = (options.indexOf(trainingRules[type]) + 1) % options.length;
-      setTrainingRule(type, options[next]);
+      const value = button.dataset.trainingOption;
+      if (!type || !value || !trainingOptions[type]?.includes(value)) return;
+      if (getTrainingRules()[type] === value) return;
+      setTrainingRule(type, value);
       writeJson(SAVE_KEYS.training, getTrainingRules());
       if (getHasCareer()) persistSeason();
       renderCalendar();

@@ -14,6 +14,17 @@ import {
   hydrateMessages,
   clearSeasonSave,
   writeJson,
+  MEMORY_LIMITS,
+  compactMatchResult,
+  compactRoundHistory,
+  compactCompetitionHistories,
+  compactCupFixture,
+  slimLeaderboard,
+  slimAvailabilitySnapshot,
+  pruneInjuryHistory,
+  pruneRankingTitles,
+  pruneClubMemory,
+  involvesClub,
 } from '../core/save.js';
 import { createInjuryEngine } from '../engine/injury.js';
 import { createDisciplineEngine } from '../engine/discipline.js';
@@ -253,11 +264,11 @@ export async function bootEngine({ bus } = {}) {
   const optionsCss=document.createElement('style');optionsCss.textContent='.options-card{display:grid;gap:8px;align-content:start}.options-card strong{font:700 21px Barlow Condensed}.options-card small{line-height:1.35;color:#b6c8ad}.options-card button{justify-self:start;margin-top:4px}.options-modal{width:min(680px,calc(100vw - 28px));text-align:left}.options-modal h2{margin:5px 0 18px;font:700 32px Barlow Condensed}.option-section{padding:14px;border:1px solid #315b68;border-radius:7px;margin-top:12px}.option-section>label{display:block;margin-bottom:10px;color:#63d9ff;font:700 11px DM Sans;letter-spacing:.7px}.option-section p{margin:0 0 10px;color:#9eb6b8;font-size:12px}.option-choices{display:flex;flex-wrap:wrap;gap:8px}.option-choices button{background:#122b35!important;color:#edf8f5!important;border:1px solid #397487!important}.option-choices button.selected{background:#24667c!important;color:#fff!important;border-color:#63d9ff!important}.pace-choice{width:100%;display:grid;grid-template-columns:100px 1fr;text-align:left;gap:5px}.pace-choice small{grid-column:2;color:#9eb6b8;font-size:10px}.new-game-action{display:flex;align-items:center;justify-content:space-between;gap:14px}.new-game-action div{min-width:0}.new-game-action strong{display:block;color:#edf8f5;font:700 19px Barlow Condensed}.new-game-action small{display:block;margin-top:3px;color:#9eb6b8}.new-game-action button{flex:none;background:#b6ff38!important;color:#06131b!important;border:0!important}.new-game-modal{width:min(660px,calc(100vw - 28px));text-align:left}.new-game-modal h2{margin:5px 0 5px;font:700 32px Barlow Condensed}.new-game-modal>p{color:#9eb6b8;font-size:12px}.division-preview{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:16px 0}.division-preview article{padding:12px;background:#102b35;border:1px solid #315b68;border-radius:6px}.division-preview b{display:block;color:#b6ff38}.division-preview small{color:#9eb6b8}.new-game-buttons{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}.new-game-buttons button{padding:11px 16px;font:700 10px DM Sans;letter-spacing:.5px;cursor:pointer;border-radius:6px}.new-game-buttons .secondary{background:#122b35!important;color:#edf8f5!important;border:1px solid #397487!important}.new-game-buttons #confirmNewGame{background:#24667c!important;color:#fff!important;border:1px solid #63d9ff!important;box-shadow:inset 3px 0 #63d9ff!important}.new-game-buttons #confirmNewGame:hover{background:#2d7890!important;border-color:#8ae6ff!important}@media(max-width:560px){.new-game-action{align-items:flex-start;flex-direction:column}.division-preview{grid-template-columns:1fr}}';document.head.append(optionsCss);
   optionsCss.textContent+='.generated-world-summary{display:grid;gap:5px;margin-top:12px;padding-top:11px;border-top:1px solid #28505b}.generated-world-summary>small{color:#63d9ff;font:700 8px DM Sans;letter-spacing:.65px}.generated-world-summary span{display:grid;grid-template-columns:62px 1fr;color:#9eb6b8;font-size:10px}.generated-world-summary b{color:#edf8f5}.career-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:18px 0}.career-field{display:grid;gap:6px}.career-field label,.division-choice>label{color:#63d9ff;font:700 10px DM Sans;letter-spacing:.7px}.career-field input{width:100%;box-sizing:border-box;padding:12px;background:#0b2029;color:#edf8f5;border:1px solid #315b68;border-radius:5px;outline:0}.career-field input:focus{border-color:#63d9ff;box-shadow:0 0 0 2px #63d9ff22}.division-choice{margin-bottom:16px}.division-choice-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}.division-card{display:grid;gap:3px;padding:11px!important;background:#102b35!important;color:#edf8f5!important;border:1px solid #315b68!important;text-align:left}.division-card b{color:#b6ff38;font:700 18px Barlow Condensed}.division-card small{color:#9eb6b8;font-size:9px}.division-card.selected{border-color:#63d9ff!important;background:#173b48!important;box-shadow:0 0 0 1px #63d9ff}.new-game-error{min-height:16px;margin:0 0 8px!important;color:#ff6b6b!important;font-weight:700}.career-current{color:#b6ff38!important}.treatment-modal{width:min(520px,calc(100vw - 28px));text-align:left}.treatment-injury-name{color:#63d9ff;font-weight:700}.treatment-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}.treatment-actions button{padding:10px 14px;border-radius:5px;font:700 10px DM Sans;letter-spacing:.5px}.treatment-actions #treatmentConservative{background:#122b35!important;color:#edf8f5!important;border:1px solid #397487!important}.treatment-actions #treatmentSurgery{background:#24667c!important;color:#fff!important;border:1px solid #63d9ff!important}@media(max-width:560px){.career-fields{grid-template-columns:1fr}.division-choice-grid{grid-template-columns:repeat(2,1fr)}}';
   document.body.insertAdjacentHTML('beforeend',`<div id="optionsModal" class="modal hidden"><div class="modal-card options-modal"><button id="closeOptions" class="close">×</button><label>CONFIGURAÇÕES</label><h2>Opções do Jogo</h2><section class="option-section"><label>NOVA CARREIRA</label><div class="new-game-action"><div><strong>Criar clube e iniciar carreira</strong><small>Escolha seu clube, treinador e divisão. O universo nacional será gerado novamente.</small></div><button id="openNewGame" type="button">NOVO JOGO</button></div></section><section class="option-section"><label>RITMO DE JOGO</label><p>Define a duração da simulação contínua. Pausas técnicas e decisões do treinador continuam sob seu controle.</p><div id="paceChoices" class="option-choices">${Object.entries(gamePaceConfig).map(([key,pace])=>`<button class="pace-choice" data-pace="${key}"><b>${pace.name}</b><small>${pace.detail}</small></button>`).join('')}</div></section><section class="option-section"><label>INFORMAÇÕES DE ATUALIZAÇÕES</label><div class="updates-info-row"><div class="updates-info-summary"><strong>Última Atualização</strong><span id="optionsLatestUpdate">—</span></div><button id="openReleaseNotes" type="button">CONSULTAR</button></div></section></div></div><div id="newGameModal" class="modal hidden"><div class="modal-card new-game-modal"><button id="closeNewGame" class="close">×</button><label>NOVA CARREIRA</label><h2>Crie sua história</h2><p>Defina a identidade do seu clube e a divisão em que a carreira começará.</p><div class="career-fields"><div class="career-field"><label for="careerClubName">NOME DO TIME</label><input id="careerClubName" maxlength="32" autocomplete="off" placeholder="Ex.: Atlético Fênix"></div><div class="career-field"><label for="careerManagerName">NOME DO TREINADOR</label><input id="careerManagerName" maxlength="40" autocomplete="off" placeholder="Ex.: Ricardo Almeida"></div></div><div class="division-choice"><label>DIVISÃO INICIAL</label><div class="division-choice-grid"><button class="division-card selected" data-career-division="A"><b>SÉRIE A</b><small>20 clubes · elite nacional</small></button><button class="division-card" data-career-division="B"><b>SÉRIE B</b><small>20 clubes · luta pelo acesso</small></button><button class="division-card" data-career-division="C"><b>SÉRIE C</b><small>20 clubes · primeira fase nacional</small></button><button class="division-card" data-career-division="D"><b>SÉRIE D</b><small>96 clubes · fase regional</small></button></div></div><p id="newGameError" class="new-game-error"></p><div class="new-game-buttons"><button id="cancelNewGame" type="button" class="secondary">CANCELAR</button><button id="confirmNewGame" type="button">CRIAR CARREIRA</button></div></div></div>`);
-  const initialAccessCss=document.createElement('style');initialAccessCss.textContent='.career-welcome{position:fixed;inset:0;z-index:30;display:grid;place-items:center;overflow:hidden;background:radial-gradient(circle at 50% 42%,#113744 0,#071820 34%,#030a0f 72%);color:#edf8f5}.career-welcome:before,.career-welcome:after{content:"";position:absolute;pointer-events:none}.career-welcome:before{inset:0;background:repeating-linear-gradient(135deg,transparent 0 58px,#63d9ff08 59px 60px)}.career-welcome:after{width:min(620px,82vw);aspect-ratio:1;border:1px solid #63d9ff13;border-radius:50%;box-shadow:0 0 0 90px #63d9ff08,0 0 0 180px #63d9ff05}.career-welcome-content{position:relative;z-index:1;display:grid;justify-items:center;gap:34px}.career-welcome-brand{display:flex;align-items:center;gap:13px}.career-welcome-mark{display:grid;place-items:center;width:54px;height:54px;clip-path:polygon(50% 0,95% 22%,95% 76%,50% 100%,5% 76%,5% 22%);background:linear-gradient(135deg,#b6ff38,#63d9ff);color:#06131b;font:900 22px Barlow Condensed;box-shadow:0 0 25px #63d9ff42}.career-welcome-title{display:grid;line-height:.82}.career-welcome-title b{color:#f5fffc;font:900 34px Barlow Condensed;letter-spacing:.7px}.career-welcome-title small{color:#63d9ff;font:800 11px DM Sans;letter-spacing:4px}.career-welcome button{min-width:190px;padding:14px 24px;border:1px solid #63d9ff;border-radius:6px;background:#12313d;color:#f4fffc;font:800 11px DM Sans;letter-spacing:.9px;cursor:pointer;box-shadow:0 10px 28px #0007;transition:transform .18s,background .18s,border-color .18s}.career-welcome button:hover{transform:translateY(-2px);background:#1b4858;border-color:#b6ff38}.career-locked #newGameModal{z-index:40}.career-locked{overflow:hidden!important}@media(max-width:520px){.career-welcome-content{gap:28px}.career-welcome-mark{width:46px;height:46px}.career-welcome-title b{font-size:29px}.career-welcome button{min-width:170px}}';document.head.append(initialAccessCss);
+  const initialAccessCss=document.createElement('style');initialAccessCss.textContent='.career-welcome{position:fixed;inset:0;z-index:30;display:grid;place-items:center;overflow:hidden;background:radial-gradient(circle at 50% 42%,#12344a 0,#07111c 34%,#050c17 72%);color:#edf8f5}.career-welcome:before,.career-welcome:after{content:"";position:absolute;pointer-events:none}.career-welcome:before{inset:0;background:repeating-linear-gradient(135deg,transparent 0 58px,#2abee908 59px 60px)}.career-welcome:after{width:min(620px,82vw);aspect-ratio:1;border:1px solid #2abee913;border-radius:50%;box-shadow:0 0 0 90px #2abee908,0 0 0 180px #bbeb2705}.career-welcome-content{position:relative;z-index:1;display:grid;justify-items:center;gap:34px}.career-welcome-brand{display:grid;justify-items:center}.career-welcome-logo{display:block;width:min(420px,86vw);height:auto;filter:drop-shadow(0 10px 28px #2abee922)}.career-welcome button{min-width:190px;padding:14px 24px;border:1px solid #2abee9;border-radius:6px;background:linear-gradient(90deg,#12313d,#1a3a28);color:#f4fffc;font:800 11px DM Sans;letter-spacing:.9px;cursor:pointer;box-shadow:0 10px 28px #0007,inset 0 -2px #bbeb27;transition:transform .18s,background .18s,border-color .18s}.career-welcome button:hover{transform:translateY(-2px);background:linear-gradient(90deg,#1b4858,#244a2c);border-color:#bbeb27}.career-locked #newGameModal{z-index:40}.career-locked{overflow:hidden!important}@media(max-width:520px){.career-welcome-content{gap:28px}.career-welcome button{min-width:170px}}';document.head.append(initialAccessCss);
   if(!savedNewGame){
     document.body.classList.add('career-locked');
     $('.game-shell').inert=true;$('.game-shell').setAttribute('aria-hidden','true');
-    document.body.insertAdjacentHTML('beforeend','<section id="careerWelcome" class="career-welcome"><div class="career-welcome-content"><div class="career-welcome-brand"><span class="career-welcome-mark">MF</span><span class="career-welcome-title"><b>MATCHDAY</b><small>FOOTBALL</small></span></div><button id="welcomeNewGame" type="button">NOVO JOGO</button></div></section>');
+    document.body.insertAdjacentHTML('beforeend','<section id="careerWelcome" class="career-welcome"><div class="career-welcome-content"><div class="career-welcome-brand"><img class="career-welcome-logo" src="./brand/lockup-lg.png" alt="Matchday Football" width="420" height="140"></div><button id="welcomeNewGame" type="button">NOVO JOGO</button></div></section>');
   }
   const renderOptions=()=>{$$('#paceChoices button').forEach(button=>button.classList.toggle('selected',button.dataset.pace===gamePace));renderOptionsUpdateSummary();};
   initReleaseNotesViewer({ $, onClick });
@@ -612,9 +623,11 @@ export async function bootEngine({ bus } = {}) {
     C:{...divisionRules.C,teams:divisionTeams.C,fixtures:serieCFixtures,standings:[],secondStage:{groups:2,clubsPerGroup:4}},
     D:{...divisionRules.D,teams:divisionTeams.D,groups:serieDGroups,fixtures:serieDGroupFixtures,standings:[],knockout:{qualifiedPerGroup:4,promoted:6,twoLegged:true}}
   };
-  const seasonRoundHistory=validSavedSeason&&Array.isArray(savedSeason.seasonRoundHistory)?savedSeason.seasonRoundHistory:[];
+  const seasonRoundHistory=validSavedSeason&&Array.isArray(savedSeason.seasonRoundHistory)?compactRoundHistory(savedSeason.seasonRoundHistory,userClub):[];
   const initialCareerMessages=hydrateMessages(savedSeason,validSavedSeason);
-  const competitionRoundHistory=validSavedSeason&&savedSeason.competitionRoundHistory?{A:[],B:[],C:[],D:[],...savedSeason.competitionRoundHistory}:{A:[],B:[],C:[],D:[]};
+  const competitionRoundHistory=validSavedSeason&&savedSeason.competitionRoundHistory
+    ?{A:[],B:[],C:[],D:[],...compactCompetitionHistories(savedSeason.competitionRoundHistory,userClub)}
+    :{A:[],B:[],C:[],D:[]};
   Object.values(nationalCompetitions).forEach(competition=>{competition.standings=competition.teams.map(club=>({club,played:0,wins:0,draws:0,losses:0,goalDiff:0,points:0}));});
   const leagueData=teams.map((club,index)=>{if(savedNewGame)return{club,played:0,wins:0,draws:0,losses:0,goalDiff:0,points:0};const played=13,wins=int(2,9),draws=int(1,5),losses=played-wins-draws,goalDiff=int(-8,14);return{club,played,wins,draws,losses,goalDiff,points:wins*3+draws};}).sort((a,b)=>b.points-a.points||b.goalDiff-a.goalDiff);
   nationalCompetitions[userDivision].standings=leagueData;
@@ -640,6 +653,7 @@ export async function bootEngine({ bus } = {}) {
     player.injury=record;
     player.injuryHistory=player.injuryHistory||[];
     player.injuryHistory.push({type:record.type,bodyPart:record.bodyPart,side:record.side,severity:record.severity,season:careerSeason,daysOut:record.totalDays,recoveredAt:null});
+    if(player.injuryHistory.length>MEMORY_LIMITS.injuryHistory)player.injuryHistory=player.injuryHistory.slice(-MEMORY_LIMITS.injuryHistory);
     return record;
   };
   // Disponibilidade do atleta persiste entre rodadas. Suspensões: 3 amarelos
@@ -687,7 +701,7 @@ export async function bootEngine({ bus } = {}) {
     }
     club.roster.forEach(player=>{
     const restored=restoredAvailability[clubName]?.[player.name]||{};
-    player.injuryHistory=Array.isArray(restored.injuryHistory)?restored.injuryHistory.map(entry=>({...entry})):Array.isArray(player.injuryHistory)?player.injuryHistory:[];
+    player.injuryHistory=pruneInjuryHistory(Array.isArray(restored.injuryHistory)?restored.injuryHistory:Array.isArray(player.injuryHistory)?player.injuryHistory:[]);
     player.workload={minutesLast7Days:0,minutesLast14Days:0,matchesLast14Days:0,consecutiveStarts:0,highIntensityLoad:0,lastMatchRound:0,...player.workload,...restored.workload};
     player.injury=restored.injury?normalizeInjury({...restored.injury}):player.injury?normalizeInjury({...player.injury}):null;
     player.discipline=normalizePlayerDiscipline(restored.discipline,{defaultLeagueKey:`LEAGUE:${clubs[clubName]?.division||userDivision}`});
@@ -733,8 +747,9 @@ export async function bootEngine({ bus } = {}) {
     // Bases antigas eram uma média simples e os pontos não tinham peso por
     // divisão. A migração recalcula a base e ajusta aproximadamente o histórico.
     const championshipPoints=legacyFormula?roundRankingScore(storedChampionshipPoints*nationalLeaguePointWeights[club.division]):roundRankingScore(storedChampionshipPoints);
-    return [club.name,{club:club.name,base,championshipPoints,titlePoints:roundRankingScore(stored?.titlePoints||0),titles:Array.isArray(stored?.titles)?[...stored.titles]:[]}];
+    return [club.name,{club:club.name,base,championshipPoints,titlePoints:roundRankingScore(stored?.titlePoints||0),titles:pruneRankingTitles(Array.isArray(stored?.titles)?stored.titles:[])}];
   }));
+  pruneClubMemory(clubs,nationalRankingEntries);
   const allScorers=Object.values(clubs).flatMap(club=>club.roster.map(player=>({name:player.name,club:club.name,division:club.division,games:savedNewGame?0:int(9,13),goals:savedNewGame?0:int(0,8),tieValue:player.finishing+player.heading*.2}))).sort((a,b)=>b.goals-a.goals||b.tieValue-a.tieValue);
   const allAssistants=Object.values(clubs).flatMap(club=>club.roster.filter(player=>player.pos!=='GOL').map(player=>({name:player.name,club:club.name,division:club.division,games:savedNewGame?0:int(9,13),assists:savedNewGame?0:int(0,7),tieValue:player.passing+player.playmaking}))).sort((a,b)=>b.assists-a.assists||b.tieValue-a.tieValue);
   if(validSavedSeason){(savedSeason.scorers||[]).forEach(saved=>{const row=allScorers.find(item=>item.club===saved.club&&item.name===saved.name);if(row)Object.assign(row,saved);});(savedSeason.assistants||[]).forEach(saved=>{const row=allAssistants.find(item=>item.club===saved.club&&item.name===saved.name);if(row)Object.assign(row,saved);});allScorers.sort((a,b)=>b.goals-a.goals);allAssistants.sort((a,b)=>b.assists-a.assists);}
@@ -1476,7 +1491,7 @@ export async function bootEngine({ bus } = {}) {
   const penaltyDecisionCss=document.createElement('style');penaltyDecisionCss.textContent='.timeline p.penalty{display:block!important;width:100%!important;box-sizing:border-box;margin:8px 0!important;padding:10px 12px!important;border:1px solid #d79b29!important;border-left:5px solid #ffc94f!important;border-radius:5px;background:#3a2a0b!important;color:#ffe6a2!important;font-size:14px!important;font-weight:800!important;line-height:1.35;box-shadow:0 0 14px #ffc94f20}.timeline p.shootout-miss{display:block!important;width:100%!important;box-sizing:border-box;margin:8px 0!important;padding:8px 10px!important;border:1px solid #d84242!important;border-left:5px solid #ff5555!important;border-radius:5px;background:#3a1012!important;color:#ffb5b5!important;font-size:13px!important;font-weight:700!important}.timeline p.goal.shootout-standard,.timeline p.goal.shootout-specialist{display:block!important;width:100%!important;box-sizing:border-box;margin:8px 0!important;padding:8px 10px!important;border:1px solid #74b80f!important;border-left:5px solid #ffc94f!important;border-radius:5px;background:#1d3509!important;color:#c9ff63!important;font-size:14px!important;font-weight:800!important}.shootout-panel{order:-1;margin:10px 0 14px!important;padding:14px!important;border:1px solid #d79b29!important;background:linear-gradient(135deg,#251d0d,#10232b)!important;border-radius:7px!important}.shootout-panel label{display:block;color:#ffc94f!important;font-size:10px!important;font-weight:800!important;letter-spacing:1px}.shootout-panel strong{display:block;margin:4px 0 10px;color:#fff;font:700 18px Barlow Condensed}.shootout-track{display:grid;grid-template-columns:1fr 1fr;gap:10px}.shootout-track article{padding:10px;border:1px solid #315b68;border-radius:6px;background:#0d2029}.shootout-track b{display:block;margin-bottom:8px;color:#63d9ff;font-size:10px}.shootout-kicks{display:flex;flex-wrap:wrap;gap:6px}.shootout-kicks i{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;font-size:12px;font-weight:900;font-style:normal}.shootout-kicks i.hit{background:#1d3509;color:#b6ff38;border:1px solid #78b91a}.shootout-kicks i.miss{background:#3a1012;color:#ffb5b5;border:1px solid #df4646}.shootout-kicks i.pending{background:#152229;color:#8ba7aa;border:1px dashed #315b68}.shootout-hint{margin:10px 0 0;color:#9eb6b8;font-size:11px}.penalty-choice{order:-1;margin:10px 0 14px!important;padding:14px!important;border:1px solid #d79b29!important;background:linear-gradient(135deg,#251d0d,#10232b)!important;border-radius:7px!important;box-shadow:0 8px 22px #0006}.penalty-choice-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:11px;padding-bottom:10px;border-bottom:1px solid #6e5726}.penalty-choice-heading label{display:block;color:#ffc94f!important;font-size:10px!important;font-weight:800!important;letter-spacing:1px}.penalty-choice-heading strong{display:block;margin:4px 0 0!important;color:#fff;font-size:18px}.penalty-goalkeeper{display:grid;gap:2px;text-align:right;color:#9eb6b8;font-size:10px}.penalty-goalkeeper b{color:#edf8f5;font-size:11px}.penalty-goalkeeper em{color:#63d9ff;font-style:normal;font-weight:800}.penalty-choice #penaltyTakers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.penalty-choice #penaltyTakers button{position:relative;display:grid;grid-template-columns:1fr auto;gap:7px 12px;align-items:center;margin:0!important;padding:11px!important;text-align:left;border:1px solid #315b68!important;background:#0d2029!important;color:#edf8f5!important;border-radius:6px!important}.penalty-choice #penaltyTakers button:hover{border-color:#63d9ff!important;background:#13303b!important}.penalty-choice #penaltyTakers button.best-option{border-color:#ffc94f!important;background:linear-gradient(145deg,#31250d,#10252d)!important;box-shadow:inset 3px 0 0 #ffc94f,0 0 13px #ffc94f20}.penalty-taker-title{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:6px}.penalty-taker-title b{font-size:12px}.penalty-best-badge{padding:3px 5px;border-radius:3px;background:#ffc94f;color:#171003;font-size:7px;font-weight:900;letter-spacing:.45px}.penalty-specialist{color:#b6ff38;font-size:8px;font-weight:800}.penalty-metric{display:grid;gap:2px}.penalty-metric small{color:#8ba7aa;font-size:7px;letter-spacing:.35px}.penalty-metric strong{margin:0!important;color:#f2fbf8;font-size:13px}.penalty-metric.chance strong{color:#ffc94f}.penalty-choice-note{grid-column:1/-1;color:#9eb6b8;font-size:8px}@media(max-width:720px){.penalty-choice #penaltyTakers{grid-template-columns:1fr}.penalty-choice-heading{align-items:flex-start;flex-direction:column}.penalty-goalkeeper{text-align:left}.shootout-track{grid-template-columns:1fr}}';document.head.append(penaltyDecisionCss);
   const neonDarkCss=document.createElement('style');neonDarkCss.textContent='body.dark-mode{background:#050807;color:#f4f8f2}body.dark-mode .sidebar{background:#070b08;border-right:1px solid #203313}body.dark-mode header{background:#0a0f0b;border-color:#2a4218;color:#d7e6cb}body.dark-mode .card,body.dark-mode .modal-card{background:#101811;border-color:#344d1d;box-shadow:0 0 0 1px #9cff1612}body.dark-mode .nav{color:#d2dfcb}body.dark-mode .nav:hover,body.dark-mode .nav.active{background:#a8ff19;color:#071004}body.dark-mode .brand>span:first-child,body.dark-mode .brand span:last-child,body.dark-mode .hero p,body.dark-mode .title p,body.dark-mode .card label{color:#a8ff19}body.dark-mode .season,body.dark-mode .club small,body.dark-mode .hero>div>span,body.dark-mode .teams small,body.dark-mode .teams strong small,body.dark-mode .match footer,body.dark-mode .mood small,body.dark-mode .form+small,body.dark-mode .controls p{color:#b6c8ad}body.dark-mode .match footer,body.dark-mode .club{border-color:#2d4619}body.dark-mode .match button{background:#a8ff19;color:#071004}body.dark-mode .theme-toggle{background:transparent;border-color:#8cdb13;color:#b6ff38;border-radius:999px}body.dark-mode .theme-toggle:hover{background:#a8ff19;color:#071004}body.dark-mode .formation-buttons button,body.dark-mode .controls select,body.dark-mode .match-actions button{background:#0b110c;border-color:#6da51a;color:#ecf8df}body.dark-mode .formation-buttons button.selected{background:#a8ff19;border-color:#a8ff19;color:#071004}body.dark-mode .roster-head,body.dark-mode .league-head,body.dark-mode .timeline{background:#121c13;color:#edf7e6}body.dark-mode .player-row,body.dark-mode .roster-head,body.dark-mode .league-row,body.dark-mode .standing-row,body.dark-mode .stat{border-color:#2b431a}body.dark-mode .badge{background:#a8ff19;color:#071004}body.dark-mode .standing-row.highlight{background:#263d12;color:#d7ff8c}body.dark-mode .form b{background:#a8ff19;color:#071004}body.dark-mode .form .loss{background:#5a221d;color:#ffd8d2}body.dark-mode .timeline .goal{color:#b6ff38}';document.head.append(neonDarkCss);
   const menuVisualCss=document.createElement('style');menuVisualCss.textContent='.modal-card.options-modal{padding:26px 28px!important;border:1px solid #365d42!important;box-shadow:0 20px 55px #000a!important}.options-modal>label{display:block;color:#78d4ff!important;font:700 10px DM Sans;letter-spacing:1px}.options-modal h2{margin:7px 0 20px!important;font-size:34px!important}.option-section{padding:16px!important;margin-top:12px!important;border:1px solid #315637!important;background:#0d1710!important;border-radius:8px!important}.option-section>label{color:#b6ff38!important;font-size:10px!important}.option-section p{color:#c5d3c7!important;line-height:1.45}.option-choices{gap:9px!important}.option-choices button{min-height:38px!important;background:#15231a!important;color:#edf7e6!important;border:1px solid #42664b!important;border-radius:6px!important;box-shadow:none!important}.option-choices button:hover{background:#1c3023!important;border-color:#75b884!important;transform:none!important}.option-choices button.selected{background:linear-gradient(115deg,#a8ff19,#72e1ff)!important;color:#071004!important;border-color:#a8ff19!important;box-shadow:0 0 0 1px #d6ff8d55!important}.option-choices button.selected small{color:#102316!important}.option-choices button.selected b{color:#071004!important}.pace-choice{grid-template-columns:108px 1fr!important;align-items:center!important}.pace-choice b{font-size:11px}.pace-choice small{font-size:10px!important;line-height:1.25}.future-options li{padding:10px 12px!important;background:#152019!important;border-left:3px solid #3d6650!important;color:#bdcdbf!important}.future-options b{color:#8dff44!important}.sidebar nav{gap:5px!important}.nav{border-left:3px solid transparent!important;border-radius:5px!important}.nav.active{border-left-color:#72e1ff!important}.formation-buttons button,.match-actions button{background:#132018!important;color:#e8f4e9!important;border:1px solid #416a4e!important;border-radius:5px!important;box-shadow:none!important}.formation-buttons button:hover,.match-actions button:hover{background:#1b3022!important;border-color:#75c68b!important;transform:none!important}.formation-buttons button.selected{background:linear-gradient(115deg,#a8ff19,#72e1ff)!important;color:#071004!important;border-color:#b6ff38!important}.match-actions button{padding:10px 13px!important}.close{color:#d5e6d6!important}.close:hover{color:#72e1ff!important}@media(max-width:560px){.options-modal{padding:20px!important}.pace-choice{grid-template-columns:1fr!important}.pace-choice small{grid-column:1!important}}';document.head.append(menuVisualCss);
-  const matchdayPaletteCss=document.createElement('style');matchdayPaletteCss.textContent=':root{--md-night:#06131b;--md-surface:#0d2029;--md-surface-2:#122b35;--md-line:#28505b;--md-text:#edf8f5;--md-muted:#9eb6b8;--md-lime:#b6ff38;--md-cyan:#63d9ff;--md-yellow:#ffc94f;--md-red:#ff6370}body,body.dark-mode{background:radial-gradient(circle at 80% -10%,#17485a55,transparent 34%),var(--md-night)!important;color:var(--md-text)!important}header,body.dark-mode header{background:#091a23!important;border-color:var(--md-line)!important;color:var(--md-muted)!important}.sidebar,body.dark-mode .sidebar{background:linear-gradient(180deg,#06131d,#082126 68%,#061116)!important;border-color:var(--md-line)!important}.card,body.dark-mode .card,.modal-card,body.dark-mode .modal-card{background:linear-gradient(145deg,#0d2029,#0b1a22)!important;border-color:var(--md-line)!important;color:var(--md-text)!important;box-shadow:0 8px 24px #00000024!important}.card label,body.dark-mode .card label,.hero p,.title p{color:var(--md-cyan)!important}.hero>div>span,.season,.club small,.match footer,.teams small,.teams strong small,.controls p,.roster-note{color:var(--md-muted)!important}.nav,body.dark-mode .nav{color:#c8dcdd!important}.nav:hover,.nav.active,body.dark-mode .nav:hover,body.dark-mode .nav.active{background:#143947!important;color:#f7fffa!important}.nav.active{box-shadow:inset 3px 0 0 var(--md-lime)}.theme-toggle,body.dark-mode .theme-toggle{background:#102933!important;border-color:#397488!important;color:var(--md-cyan)!important}.theme-toggle:hover,body.dark-mode .theme-toggle:hover{background:#174052!important;color:#f5fffa!important}.crest,.club>b{background:linear-gradient(135deg,var(--md-lime),var(--md-cyan))!important;color:#06131b!important}.teams i{background:#164d5a!important;border:1px solid #398197}.teams i.away{background:#1b547d!important}.match footer,.club{border-color:var(--md-line)!important}.roster,.league,.standings,.scout-roster,.live-opponent-roster,.championship-grid section,.championship-grid aside,.final-basic,.final-goals{background:#0b1a22!important;border-color:var(--md-line)!important}.roster-head,.league-head,.champ-head,.live-opponent-head,.analysis-head,.stat-group,.final-basic h3,.final-goals h3{background:#102b35!important;color:var(--md-cyan)!important;border-color:var(--md-line)!important}.player-row,.league-row,.standing-row,.champ-row,.scorer-row,.fixture-row,.analysis-player,.live-opponent-player,.stat{border-color:#234650!important;color:var(--md-text)!important}.player-row:hover,.league-row:hover,.standing-row:hover,.champ-row:hover,.scorer-row:hover,.fixture-row:hover,.analysis-player:hover,.live-opponent-player:hover{background:#132c36!important}.standing-row.highlight,.league-row.highlight,.champ-row.highlight{background:#203b26!important;color:#dcffa9!important}.badge{background:#183d49!important;color:var(--md-cyan)!important}.fatigue{background:#25424b!important}.fatigue i{background:linear-gradient(90deg,var(--md-cyan),var(--md-lime))!important}.timeline,body.dark-mode .timeline{background:#091820!important;color:#e6f2ef!important;border:1px solid #244752}.pause-controls,.substitution-panel,.option-section{background:#0c1d25!important;border-color:#315b68!important}.pause-controls label,.substitution-panel label{color:var(--md-cyan)!important}.pause-controls select,.controls select,body.dark-mode .pause-controls select,body.dark-mode .controls select{background:#102833!important;color:var(--md-text)!important;border-color:#397487!important}.formation-buttons button,.match-actions button{background:#112832!important;border-color:#397487!important;color:var(--md-text)!important}.formation-buttons button.selected{background:linear-gradient(115deg,var(--md-lime),var(--md-cyan))!important;color:#06131b!important;border-color:var(--md-lime)!important}.tactical-board{background:linear-gradient(90deg,#007e45,#079b68 50%,#007e45)!important;box-shadow:inset 0 0 24px #001f20aa,0 0 0 1px #54dbff33!important}.tactical-board .field-markings,.tactical-board:before{color:#d9fff3!important;border-color:#d9fff3!important}.tactical-board .mid-line,.tactical-board .area,.tactical-board .six-yard,.tactical-board .goal,.tactical-board .centre-circle{border-color:#d9fff3!important}.timeline p.goal{background:#1b3b20!important;border-color:#84d329!important;color:#ddffa5!important}.timeline p.yellow{background:#3a2d0b!important;border-color:#e7b83c!important;color:#ffe794!important}.timeline p.red{background:#3d1520!important;border-color:#ef6572!important;color:#ffbec5!important}.stat.yellow span:first-child,.stat.yellow span:last-child{color:var(--md-yellow)!important}.stat.red span:first-child,.stat.red span:last-child{color:var(--md-red)!important}.environment-gauge.positive{background:conic-gradient(var(--md-cyan) calc(var(--environment)*1%),#234c57 0)!important}.overall-box{background:#102b35!important;border-color:#397487!important}.overall-box strong{color:var(--md-lime)!important}.leader-table{background:#0d2029!important;border-color:var(--md-line)!important}.leader-table span{color:var(--md-muted)!important}.modal{background:#02080cbb!important}.close{color:var(--md-muted)!important}.close:hover{color:var(--md-cyan)!important}';document.head.append(matchdayPaletteCss);
+  const matchdayPaletteCss=document.createElement('style');matchdayPaletteCss.textContent=':root{--md-night:#050c17;--md-surface:#0b1824;--md-surface-2:#122436;--md-line:#1e4a5c;--md-text:#edf8f5;--md-muted:#9eb6b8;--md-lime:#bbeb27;--md-cyan:#2abee9;--md-yellow:#ffc94f;--md-red:#ff6370}body,body.dark-mode{background:radial-gradient(circle at 78% -8%,#2abee933,transparent 36%),radial-gradient(circle at 12% 90%,#bbeb2714,transparent 28%),var(--md-night)!important;color:var(--md-text)!important}header,body.dark-mode header{background:#07111c!important;border-color:var(--md-line)!important;color:var(--md-muted)!important}.sidebar,body.dark-mode .sidebar{background:linear-gradient(180deg,#050c17,#0a1624 62%,#061018)!important;border-color:var(--md-line)!important}.card,body.dark-mode .card,.modal-card,body.dark-mode .modal-card{background:linear-gradient(145deg,#0d2029,#0b1a22)!important;border-color:var(--md-line)!important;color:var(--md-text)!important;box-shadow:0 8px 24px #00000024!important}.card label,body.dark-mode .card label,.hero p,.title p{color:var(--md-cyan)!important}.hero>div>span,.season,.club small,.match footer,.teams small,.teams strong small,.controls p,.roster-note{color:var(--md-muted)!important}.nav,body.dark-mode .nav{color:#c8dcdd!important}.nav:hover,.nav.active,body.dark-mode .nav:hover,body.dark-mode .nav.active{background:#143947!important;color:#f7fffa!important}.nav.active{box-shadow:inset 3px 0 0 var(--md-lime)}.theme-toggle,body.dark-mode .theme-toggle{background:#102933!important;border-color:#397488!important;color:var(--md-cyan)!important}.theme-toggle:hover,body.dark-mode .theme-toggle:hover{background:#174052!important;color:#f5fffa!important}.crest,.club>b{background:linear-gradient(135deg,var(--md-lime),var(--md-cyan))!important;color:#06131b!important}.teams i{background:#164d5a!important;border:1px solid #398197}.teams i.away{background:#1b547d!important}.match footer,.club{border-color:var(--md-line)!important}.roster,.league,.standings,.scout-roster,.live-opponent-roster,.championship-grid section,.championship-grid aside,.final-basic,.final-goals{background:#0b1a22!important;border-color:var(--md-line)!important}.roster-head,.league-head,.champ-head,.live-opponent-head,.analysis-head,.stat-group,.final-basic h3,.final-goals h3{background:#102b35!important;color:var(--md-cyan)!important;border-color:var(--md-line)!important}.player-row,.league-row,.standing-row,.champ-row,.scorer-row,.fixture-row,.analysis-player,.live-opponent-player,.stat{border-color:#234650!important;color:var(--md-text)!important}.player-row:hover,.league-row:hover,.standing-row:hover,.champ-row:hover,.scorer-row:hover,.fixture-row:hover,.analysis-player:hover,.live-opponent-player:hover{background:#132c36!important}.standing-row.highlight,.league-row.highlight,.champ-row.highlight{background:#203b26!important;color:#dcffa9!important}.badge{background:#183d49!important;color:var(--md-cyan)!important}.fatigue{background:#25424b!important}.fatigue i{background:linear-gradient(90deg,var(--md-cyan),var(--md-lime))!important}.timeline,body.dark-mode .timeline{background:#091820!important;color:#e6f2ef!important;border:1px solid #244752}.pause-controls,.substitution-panel,.option-section{background:#0c1d25!important;border-color:#315b68!important}.pause-controls label,.substitution-panel label{color:var(--md-cyan)!important}.pause-controls select,.controls select,body.dark-mode .pause-controls select,body.dark-mode .controls select{background:#102833!important;color:var(--md-text)!important;border-color:#397487!important}.formation-buttons button,.match-actions button{background:#112832!important;border-color:#397487!important;color:var(--md-text)!important}.formation-buttons button.selected{background:linear-gradient(115deg,var(--md-lime),var(--md-cyan))!important;color:#06131b!important;border-color:var(--md-lime)!important}.tactical-board{background:linear-gradient(90deg,#007e45,#079b68 50%,#007e45)!important;box-shadow:inset 0 0 24px #001f20aa,0 0 0 1px #54dbff33!important}.tactical-board .field-markings,.tactical-board:before{color:#d9fff3!important;border-color:#d9fff3!important}.tactical-board .mid-line,.tactical-board .area,.tactical-board .six-yard,.tactical-board .goal,.tactical-board .centre-circle{border-color:#d9fff3!important}.timeline p.goal{background:#1b3b20!important;border-color:#84d329!important;color:#ddffa5!important}.timeline p.yellow{background:#3a2d0b!important;border-color:#e7b83c!important;color:#ffe794!important}.timeline p.red{background:#3d1520!important;border-color:#ef6572!important;color:#ffbec5!important}.stat.yellow span:first-child,.stat.yellow span:last-child{color:var(--md-yellow)!important}.stat.red span:first-child,.stat.red span:last-child{color:var(--md-red)!important}.environment-gauge.positive{background:conic-gradient(var(--md-cyan) calc(var(--environment)*1%),#234c57 0)!important}.overall-box{background:#102b35!important;border-color:#397487!important}.overall-box strong{color:var(--md-lime)!important}.leader-table{background:#0d2029!important;border-color:var(--md-line)!important}.leader-table span{color:var(--md-muted)!important}.modal{background:#02080cbb!important}.close{color:var(--md-muted)!important}.close:hover{color:var(--md-cyan)!important}';document.head.append(matchdayPaletteCss);
   const optionsRefinedCss=document.createElement('style');optionsRefinedCss.textContent='body .modal-card.options-modal{background:linear-gradient(145deg,#0c1d26,#0a171e)!important;border-color:#2d6578!important;box-shadow:0 24px 70px #000c!important}body .options-modal>label{color:#63d9ff!important}body .options-modal h2{color:#eef8f6!important}body .options-modal .option-section{background:#0b1921!important;border-color:#285769!important;padding:15px!important}body .options-modal .option-section>label{color:#79cce7!important}body .options-modal .option-section p{color:#b4c6c8!important}body .options-modal #themeChoices{display:flex!important;gap:8px!important}body .options-modal #themeChoices button{width:auto!important;min-width:132px!important}body .options-modal #paceChoices{display:grid!important;grid-template-columns:1fr!important;gap:7px!important}body .options-modal .option-choices button{background:#102630!important;color:#dce9e8!important;border:1px solid #315f70!important;border-radius:6px!important;box-shadow:none!important}body .options-modal .option-choices button:hover{background:#15323e!important;border-color:#58bcd8!important;color:#fff!important}body .options-modal .option-choices button.selected{background:linear-gradient(90deg,#174a5c,#1b6177)!important;color:#f2fbfb!important;border-color:#67d4ef!important;box-shadow:inset 3px 0 0 #8be7ff!important}body .options-modal .option-choices button.selected b,body .options-modal .option-choices button.selected small{color:#f2fbfb!important}body .options-modal .pace-choice{grid-template-columns:120px 1fr!important;min-height:44px!important;padding:10px 13px!important}body .options-modal .pace-choice b{color:#dff4f5!important;letter-spacing:.35px}body .options-modal .pace-choice small{color:#a8c5c8!important}body .options-modal .future-options li{background:#10232b!important;border-left:2px solid #397e92!important;color:#afc6c8!important}body .options-modal .future-options b{color:#77cfe9!important}body .options-modal .close{color:#a8c5c8!important}body .options-modal .close:hover{color:#86e2fb!important}@media(max-width:560px){body .options-modal .pace-choice{grid-template-columns:1fr!important}body .options-modal .pace-choice small{grid-column:1!important}}';document.head.append(optionsRefinedCss);
   const optionsReferenceCss=document.createElement('style');optionsReferenceCss.textContent='body .modal-card.options-modal{background:#071b24!important;border:1px solid #2a6980!important;border-radius:10px!important;box-shadow:0 18px 58px #000b!important}body .options-modal .option-section{background:#071923!important;border:1px solid #28637a!important;border-radius:8px!important}body .options-modal .option-section>label,body .options-modal>label{color:#63d9ff!important}body .options-modal #paceChoices{gap:7px!important}body .options-modal .option-choices button{background:#0d2732!important;border-color:#286278!important;color:#d7e8ea!important}body .options-modal .option-choices button:hover{background:#123442!important;border-color:#5bc6e2!important}body .options-modal .option-choices button.selected{background:#1d5a6d!important;border-color:#d4f4fb!important;box-shadow:0 0 0 1px #76dbf355!important;color:#f4fcfc!important}body .options-modal .pace-choice{min-height:45px!important}body .options-modal .pace-choice b{color:#e5f4f5!important}body .options-modal .pace-choice small{color:#b8d0d3!important}body .options-modal .future-options li{background:#0d2530!important;border-left-color:#31788e!important;color:#b8ced1!important}body .options-modal .future-options b{color:#65d5ef!important}';document.head.append(optionsReferenceCss);
   const scoutScaleCss=document.createElement('style');scoutScaleCss.textContent='#teamScoutModal .environment-gauge{width:82px!important}#teamScoutModal .environment-gauge strong{font-size:26px!important}#teamScoutModal .overall-box{width:82px!important;height:82px!important}.mood .dashboard-overall strong{font-size:30px}.mood .dashboard-overall small{color:#64786b}.dark-mode .mood .dashboard-overall small{color:#b9ccbe}';document.head.append(scoutScaleCss);
@@ -2000,7 +2015,11 @@ export async function bootEngine({ bus } = {}) {
     $('#liveAwayName').classList.toggle('user-club-live',!userHome);
   };
   const score=()=>{const {home:homeGoals,away:awayGoals}=calendarLiveScores();$('#score').textContent=`${homeGoals} — ${awayGoals}`;updateLiveMatchClock();};
-  const log = (text, type='') => { timeline.insertAdjacentHTML('beforeend', `<p class="${type}">${minute}' · ${text}</p>`); timeline.scrollTop = timeline.scrollHeight; };
+  const log = (text, type='') => {
+    timeline.insertAdjacentHTML('beforeend', `<p class="${type}">${minute}' · ${text}</p>`);
+    while (timeline.children.length > MEMORY_LIMITS.liveTimeline) timeline.removeChild(timeline.firstChild);
+    timeline.scrollTop = timeline.scrollHeight;
+  };
   const percent = (a,b) => b ? `${Math.round(a / b * 100)}%` : '0%';
   const calendarPossessionPair = () => {
     // Faixa alinhada ao motor ao vivo (posse típica BR ~36–64, com vermelho um pouco mais larga).
@@ -2100,7 +2119,7 @@ export async function bootEngine({ bus } = {}) {
     if(liveMatchGame){
       const matchDate=liveMatchGame.competition==='COPA DO BRASIL'?new Date(liveMatchGame.date):fixtureDetails(liveMatchGame).date;
       if(matchDate)advanceCareerCalendarTo(matchDate);
-      if(savedNewGame)persistSeason();
+      if(savedNewGame)persistSeason(true);
     }
     $('#matchActions').classList.remove('hidden');
     $('#matchActions').innerHTML='<button id="finalDashboard">CLASSIFICAÇÃO</button><button id="finalTable">TABELA DE JOGOS</button><button id="finalNext">SAIR</button>';
@@ -2310,7 +2329,7 @@ export async function bootEngine({ bus } = {}) {
     renderRoster();draw();
     advanceCupComputerTies(cupCompetition.stages.find(item=>!item.completed));
     roundCommitted=true;
-    persistSeason();
+    persistSeason(true);
     refreshSeasonPresentation();
     $('#roundResultsModal').classList.add('hidden');modal.classList.add('hidden');
     stopMatchClock();matchStarted=false;matchFinished=false;liveMatchGame=null;liveDayMatchSnapshots=null;roundResults=null;roundResultMessagePushed=false;roundPreviewResults={};roundCommitted=false;
@@ -2391,11 +2410,28 @@ export async function bootEngine({ bus } = {}) {
     }
   });
   let roundCommitted=false;
-  persistSeason=()=>{
-    if(!savedNewGame)return;
-    const standings=Object.fromEntries(Object.entries(nationalCompetitions).map(([division,competition])=>[division,competition.standings.map(row=>({...row}))])),fatigue=Object.fromEntries(Object.entries(clubs).map(([clubName,club])=>[clubName,Object.fromEntries(club.roster.map(player=>[player.name,Math.round(player.fatigue*10)/10]))])),compactHistory=history=>history.map(item=>({round:item.round,games:(item.games||[]).map(game=>({home:game.home,away:game.away,homeGoals:game.homeGoals,awayGoals:game.awayGoals,data:game.data?{...game.data}:null,goals:game.goals?{home:[...(game.goals.home||[])],away:[...(game.goals.away||[])]}:null})),userStats:item.userStats?{home:{...item.userStats.home},away:{...item.userStats.away},goals:{home:[...(item.userStats.goals?.home||[])],away:[...(item.userStats.goals?.away||[])]}}:null})),compactCompetitions=Object.fromEntries(Object.entries(competitionRoundHistory).map(([division,history])=>[division,compactHistory(history)]));
-    const compactCup={currentPhase:cupCompetition.currentPhase,champion:cupCompetition.champion,stages:cupCompetition.stages.map(stage=>({index:stage.index,name:stage.name,twoLegged:stage.twoLegged,entrants:stage.entrants,completed:stage.completed,winners:stage.winners,fixtures:stage.fixtures.map(game=>({home:game.home,away:game.away,competition:game.competition,phase:game.phase,phaseIndex:game.phaseIndex,leg:game.leg,date:game.date,time:game.time,gameNumber:game.gameNumber,tieId:game.tieId,completed:game.completed,homeGoals:game.homeGoals,awayGoals:game.awayGoals,penalties:game.penalties,winner:game.winner,data:game.data?{...game.data}:null,goals:game.goals?{home:[...(game.goals.home||[])],away:[...(game.goals.away||[])]}:null}))}))};
-    const availability=Object.fromEntries(Object.entries(clubs).map(([clubName,club])=>[clubName,Object.fromEntries(club.roster.map(player=>[player.name,{injury:player.injury?{...player.injury}:null,injuryHistory:Array.isArray(player.injuryHistory)?player.injuryHistory.map(entry=>({...entry})):[],workload:player.workload?{...player.workload}:null,discipline:{...player.discipline}}]))]));
+  let persistSeasonTimer=null;
+  let saveQuotaWarned=false;
+  const writeSeasonSave=()=>{
+    if(!savedNewGame)return false;
+    pruneClubMemory(clubs,nationalRankingEntries);
+    const standings=Object.fromEntries(Object.entries(nationalCompetitions).map(([division,competition])=>[division,competition.standings.map(row=>({...row}))]));
+    const fatigue=Object.fromEntries(Object.entries(clubs).map(([clubName,club])=>[clubName,Object.fromEntries(club.roster.map(player=>[player.name,Math.round(player.fatigue*10)/10]))]));
+    const compactCompetitions=compactCompetitionHistories(competitionRoundHistory,userClub);
+    const compactCup={
+      currentPhase:cupCompetition.currentPhase,
+      champion:cupCompetition.champion,
+      stages:cupCompetition.stages.map(stage=>({
+        index:stage.index,
+        name:stage.name,
+        twoLegged:stage.twoLegged,
+        entrants:stage.entrants,
+        completed:stage.completed,
+        winners:stage.winners,
+        fixtures:stage.fixtures.map(game=>compactCupFixture(game,userClub)),
+      })),
+    };
+    const availability=slimAvailabilitySnapshot(clubs,userClub);
     const clubMedical=Object.fromEntries(Object.entries(clubs).map(([clubName,club])=>[clubName,{medicalInvestment:club.medicalInvestment??0,preventionProgram:club.preventionProgram??0,pitchCondition:club.pitchCondition||'good',pitchLevel:club.pitchLevel??null,stadiumStructure:club.stadiumStructure??null}]));
     const userClubState=clubs[userClub];
     ensureStadium(userClubState,userDivision);
@@ -2416,15 +2452,62 @@ export async function bootEngine({ bus } = {}) {
       master:userClubState.sponsors.master?{...userClubState.sponsors.master}:null,
       secondaries:Array.isArray(userClubState.sponsors.secondaries)?userClubState.sponsors.secondaries.map(item=>({...item})):[],
     }:null;
-    writeJson(SAVE_KEYS.season,{seed:savedNewGame.seed,currentRound,careerCalendarDate:calendarKey(careerCalendarDate),trainingRules:{...trainingRules},standings,fatigue,availability,clubMedical,userBudget:getBalance(userClubState),userBudgetLedger:Array.isArray(userClubState?.budgetLedger)?userClubState.budgetLedger.map(entry=>({...entry})):[],userStadium,userSponsors,userTactics:{...tactics.getTacticalValues()},careerMessages:messages.getMessages().map(message=>({...message})),scorers:allScorers,assistants:allAssistants,serieDGroups,dFixtures:nationalCompetitions.D.fixtures,dKnockout:nationalCompetitions.D.knockout,cupCompetition:compactCup,nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:nationalRankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},seasonRoundHistory:compactHistory(seasonRoundHistory),competitionRoundHistory:compactCompetitions,updatedAt:new Date().toISOString()});
+    const rankingEntries=Object.fromEntries(Object.entries(nationalRankingEntries).map(([clubName,entry])=>[clubName,{
+      ...entry,
+      titles:pruneRankingTitles(entry.titles),
+    }]));
+    const ok=writeJson(SAVE_KEYS.season,{
+      seed:savedNewGame.seed,
+      currentRound,
+      careerCalendarDate:calendarKey(careerCalendarDate),
+      trainingRules:{...trainingRules},
+      standings,
+      fatigue,
+      availability,
+      clubMedical,
+      userBudget:getBalance(userClubState),
+      userBudgetLedger:Array.isArray(userClubState?.budgetLedger)?userClubState.budgetLedger.map(entry=>({...entry})):[],
+      userStadium,
+      userSponsors,
+      userTactics:{...tactics.getTacticalValues()},
+      careerMessages:messages.getMessages().map(message=>({...message})),
+      scorers:slimLeaderboard(allScorers,'goals'),
+      assistants:slimLeaderboard(allAssistants,'assists'),
+      serieDGroups,
+      dFixtures:nationalCompetitions.D.fixtures,
+      dKnockout:nationalCompetitions.D.knockout,
+      cupCompetition:compactCup,
+      nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:rankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},
+      seasonRoundHistory:compactRoundHistory(seasonRoundHistory,userClub),
+      competitionRoundHistory:compactCompetitions,
+      updatedAt:new Date().toISOString(),
+    });
+    if(!ok&&!saveQuotaWarned){
+      saveQuotaWarned=true;
+      console.warn('[matchday] Não foi possível salvar a temporada (memória do navegador cheia).');
+    }
+    return ok;
+  };
+  persistSeason=(immediate=false)=>{
+    if(!savedNewGame)return;
+    if(immediate===true){
+      if(persistSeasonTimer){clearTimeout(persistSeasonTimer);persistSeasonTimer=null;}
+      writeSeasonSave();
+      return;
+    }
+    if(persistSeasonTimer)clearTimeout(persistSeasonTimer);
+    persistSeasonTimer=setTimeout(()=>{
+      persistSeasonTimer=null;
+      writeSeasonSave();
+    },MEMORY_LIMITS.persistDebounceMs);
   };
   dashboard.setPersist(persistSeason);
   calendarView.setPersist(persistSeason);
   tactics.setPersist(persistSeason);
   messages.setPersist(persistSeason);
-  if(validSavedSeason&&(savedSeason.currentRound!==currentRound||knockoutShootoutSanitized))persistSeason();
+  if(validSavedSeason&&(savedSeason.currentRound!==currentRound||knockoutShootoutSanitized))persistSeason(true);
   let skipPersistOnUnload=false;
-  window.addEventListener('beforeunload',()=>{if(savedNewGame&&!skipPersistOnUnload)persistSeason();});
+  window.addEventListener('beforeunload',()=>{if(savedNewGame&&!skipPersistOnUnload)persistSeason(true);});
   advanceCalendarWeek=()=>{
     if(!savedNewGame||seasonComplete()||isUserSeasonIdle())return null;
     rebuildCalendarGames();
@@ -2445,7 +2528,7 @@ export async function bootEngine({ bus } = {}) {
         advanceCupThroughDate(nextDay);
         setSelectedCalendarDate(nextDay);
         simulatedDays++;
-        persistSeason();
+        persistSeason(true);
         pushMatchDayBrief(pendingMatch);
         refreshSeasonPresentation();
         renderCalendar();
@@ -2458,7 +2541,7 @@ export async function bootEngine({ bus } = {}) {
     }
     setSelectedCalendarDate(careerCalendarDate);
     if(simulatedDays>0){
-      persistSeason();
+      persistSeason(true);
       refreshSeasonPresentation();
     }
     renderCalendar();
@@ -2495,12 +2578,12 @@ export async function bootEngine({ bus } = {}) {
     setSelectedCalendarDate(careerCalendarDate);
     const reachedTarget=sameCalendarDay(careerCalendarDate,targetDate)&&!isFixtureCompleted(nextEntry.game);
     if(reachedTarget||isOnPendingMatchDay()){
-      persistSeason();
+      persistSeason(true);
       pushMatchDayBrief(nextEntry.game);
       refreshSeasonPresentation();
       return {stopped:'match',days:simulatedDays,game:nextEntry.game};
     }
-    if(simulatedDays>0){persistSeason();refreshSeasonPresentation();}
+    if(simulatedDays>0){persistSeason(true);refreshSeasonPresentation();}
     return {stopped:'failed',days:simulatedDays};
   };
   onClick('#openDashboardCalendar',advanceToMatchDay);
@@ -2511,7 +2594,7 @@ export async function bootEngine({ bus } = {}) {
     $('#calendar .title span').textContent=`Agenda nacional de janeiro a dezembro · ${championshipFixtures.flat().length} jogos do Brasileiro · ${copaDoBrasilFixtures.length} jogos confirmados da Copa do Brasil · ${calendarIntervalLabel(restConflictCount)}.`;
     refreshSeasonPresentation();
   }
-  if(savedNewGame)persistSeason();
+  if(savedNewGame)persistSeason(true);
   const commitLiveAvailability=()=>{
     if(availabilityCommitted||!matchStarted||!liveMatchGame)return;
     const userDisciplineLines=[];
@@ -2550,7 +2633,7 @@ export async function bootEngine({ bus } = {}) {
     if(game.fatigueAfter)[['home',game.home],['away',game.away]].forEach(([side,clubName])=>Object.entries(game.fatigueAfter[side]||{}).forEach(([playerName,value])=>{const player=clubs[clubName].roster.find(candidate=>candidate.name===playerName);if(player)player.fatigue=clamp(value,0,100);}));
     applyMatchAvailability(game,game.fixture||game);
   };
-  const simulateNationalRound=()=>Object.keys(nationalCompetitions).filter(division=>division!==userDivision).forEach(division=>{const competition=nationalCompetitions[division],fixtures=competition.fixtures[currentRound-1]||[];if(!fixtures.length)return;const previewKey=`${division}-${currentRound}`,results=roundPreviewResults[previewKey]||fixtures.map(game=>simulateRoundMatch(game.home,game.away));results.forEach(recordGameLeaders);if(division!=='D'||currentRound<=10)results.forEach(game=>applySecondaryResult(game,competition));competition.standings.sort((a,b)=>b.points-a.points||b.goalDiff-a.goalDiff||b.wins-a.wins);competition.standings.forEach((row,index)=>clubs[row.club].position=index+1);competitionRoundHistory[division].push({round:currentRound,games:results.map(game=>({home:game.home,away:game.away,homeGoals:game.homeGoals,awayGoals:game.awayGoals,data:game.data,goals:game.goals}))});});
+  const simulateNationalRound=()=>Object.keys(nationalCompetitions).filter(division=>division!==userDivision).forEach(division=>{const competition=nationalCompetitions[division],fixtures=competition.fixtures[currentRound-1]||[];if(!fixtures.length)return;const previewKey=`${division}-${currentRound}`,results=roundPreviewResults[previewKey]||fixtures.map(game=>simulateRoundMatch(game.home,game.away));results.forEach(recordGameLeaders);if(division!=='D'||currentRound<=10)results.forEach(game=>applySecondaryResult(game,competition));competition.standings.sort((a,b)=>b.points-a.points||b.goalDiff-a.goalDiff||b.wins-a.wins);competition.standings.forEach((row,index)=>clubs[row.club].position=index+1);competitionRoundHistory[division].push({round:currentRound,games:results.map(game=>compactMatchResult(game,{keepData:false}))});});
   const dKnockout=nationalCompetitions.D.knockout;
   dKnockout.stages=dKnockout.stages||{};dKnockout.promoted=dKnockout.promoted||[];
   const dRoundResults=round=>(userDivision==='D'?seasonRoundHistory:competitionRoundHistory.D).find(item=>item.round===round)?.games||[];
@@ -2574,7 +2657,7 @@ export async function bootEngine({ bus } = {}) {
     if(nationalRankingFinalizedSeasons.has(careerSeason))return;
     Object.entries(nationalCompetitions).forEach(([division,competition])=>competition.standings.forEach(row=>{const entry=nationalRankingEntries[row.club];if(entry)entry.championshipPoints=roundRankingScore(entry.championshipPoints+row.points*nationalLeaguePointWeights[division]);}));
     const champions={A:ranked('A')[0],B:ranked('B')[0],C:ranked('C')[0],D:dKnockout.champion||ranked('D')[0],CUP:cupCompetition.champion};
-    Object.entries(champions).forEach(([competition,clubName])=>{if(!clubName)return;const entry=nationalRankingEntries[clubName],label=competition==='CUP'?'COPA DO BRASIL':`SÉRIE ${competition}`,token=`${careerSeason}-${competition}`;if(!entry||entry.titles.some(title=>title.token===token))return;const points=nationalTitleBonuses[competition];entry.titlePoints=roundRankingScore(entry.titlePoints+points);entry.titles.push({token,season:careerSeason,competition:label,points});});
+    Object.entries(champions).forEach(([competition,clubName])=>{if(!clubName)return;const entry=nationalRankingEntries[clubName],label=competition==='CUP'?'COPA DO BRASIL':`SÉRIE ${competition}`,token=`${careerSeason}-${competition}`;if(!entry||entry.titles.some(title=>title.token===token))return;const points=nationalTitleBonuses[competition];entry.titlePoints=roundRankingScore(entry.titlePoints+points);entry.titles.push({token,season:careerSeason,competition:label,points});if(entry.titles.length>MEMORY_LIMITS.rankingTitles)entry.titles=entry.titles.slice(-MEMORY_LIMITS.rankingTitles);});
     nationalRankingFinalizedSeasons.add(careerSeason);renderNationalRanking();
   };
   let pendingDivisionTeams=null,pendingUserDivision=userDivision,nonHumanSimRunning=false,idleSeasonWasSimulated=false;
@@ -2584,7 +2667,26 @@ export async function bootEngine({ bus } = {}) {
     onStartNextSeason:()=>{
       if(!pendingDivisionTeams||!savedNewGame)return;
       skipPersistOnUnload=true;
-      const nextSave={...savedNewGame,division:pendingUserDivision,divisionTeams:pendingDivisionTeams,userRoster:clubs[userClub].roster.map(player=>({...player,fatigue:100})),clubStatus:{...savedNewGame.clubStatus,budget:clubs[userClub].budget??savedNewGame.clubStatus?.budget??initialBudget(pendingUserDivision)},nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:nationalRankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},season:(savedNewGame.season||2026)+1,createdAt:new Date().toISOString(),version:4};
+      pruneClubMemory(clubs,nationalRankingEntries);
+      const nextSave={
+        ...savedNewGame,
+        division:pendingUserDivision,
+        divisionTeams:pendingDivisionTeams,
+        userRoster:clubs[userClub].roster.map(player=>({
+          ...player,
+          fatigue:100,
+          injuryHistory:pruneInjuryHistory(player.injuryHistory),
+        })),
+        clubStatus:{...savedNewGame.clubStatus,budget:clubs[userClub].budget??savedNewGame.clubStatus?.budget??initialBudget(pendingUserDivision)},
+        nationalRanking:{
+          formulaVersion:nationalRankingFormulaVersion,
+          entries:Object.fromEntries(Object.entries(nationalRankingEntries).map(([name,entry])=>[name,{...entry,titles:pruneRankingTitles(entry.titles)}])),
+          finalizedSeasons:[...nationalRankingFinalizedSeasons],
+        },
+        season:(savedNewGame.season||2026)+1,
+        createdAt:new Date().toISOString(),
+        version:4,
+      };
       writeJson(SAVE_KEYS.career,nextSave);
       clearSeasonSave();
       pendingDivisionTeams=null;
@@ -2595,7 +2697,7 @@ export async function bootEngine({ bus } = {}) {
   seasonSummary.init();
   const ranked=division=>[...nationalCompetitions[division].standings].sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff).map(row=>row.club);
   const playoffEdge=(first,second,division)=>{const table=nationalCompetitions[division].standings,a=table.find(row=>row.club===first),b=table.find(row=>row.club===second),aScore=a.points+clubs[first].power*.18+rnd(-2.5,2.5),bScore=b.points+clubs[second].power*.18+rnd(-2.5,2.5);return aScore>=bScore?first:second;};
-  const finishRemainingNationalRounds=fromRound=>{for(let round=fromRound;round<=38;round++)['A','B','C'].forEach(division=>{const competition=nationalCompetitions[division],fixtures=competition.fixtures[round-1]||[],results=fixtures.map(game=>simulateRoundMatch(game.home,game.away));results.forEach(recordGameLeaders);results.forEach(game=>applySecondaryResult(game,competition));competitionRoundHistory[division].push({round,games:results.map(game=>({home:game.home,away:game.away,homeGoals:game.homeGoals,awayGoals:game.awayGoals,data:game.data,goals:game.goals}))});});Object.values(nationalCompetitions).forEach(competition=>competition.standings.sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff));};
+  const finishRemainingNationalRounds=fromRound=>{for(let round=fromRound;round<=38;round++)['A','B','C'].forEach(division=>{const competition=nationalCompetitions[division],fixtures=competition.fixtures[round-1]||[],results=fixtures.map(game=>simulateRoundMatch(game.home,game.away));results.forEach(recordGameLeaders);results.forEach(game=>applySecondaryResult(game,competition));competitionRoundHistory[division].push({round,games:results.map(game=>compactMatchResult(game,{keepData:false}))});});Object.values(nationalCompetitions).forEach(competition=>competition.standings.sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff));};
   const prepareSeasonTransition=()=>{
     const a=ranked('A'),b=ranked('B'),c=ranked('C'),relA=a.slice(-4),promB=[b[0],b[1],playoffEdge(b[2],b[5],'B'),playoffEdge(b[3],b[4],'B')],relB=b.slice(-4),promC=c.slice(0,4),relC=c.slice(-2);let promD=[...(dKnockout.promoted||[])];if(promD.length<6){const groupWinners=serieDGroups.map(group=>group.map(name=>nationalCompetitions.D.standings.find(row=>row.club===name)).sort((x,y)=>y.points-x.points||y.wins-x.wins||y.goalDiff-x.goalDiff)[0]?.club).filter(Boolean);promD=[...new Set([...promD,...groupWinners])].slice(0,6);}
     const next={A:[...divisionTeams.A.filter(name=>!relA.includes(name)),...promB],B:[...divisionTeams.B.filter(name=>!promB.includes(name)&&!relB.includes(name)),...relA,...promC],C:[...divisionTeams.C.filter(name=>!promC.includes(name)&&!relC.includes(name)),...relB,...promD],D:[...divisionTeams.D.filter(name=>!promD.includes(name)),...relC]};
@@ -2680,7 +2782,11 @@ export async function bootEngine({ bus } = {}) {
         const completedGames=simulateRoundResults(true);
         completedGames.forEach(recordGameLeaders);if(userDivision!=='D'||currentRound<=10)completedGames.forEach(applyRoundToTable);
         simulateNationalRound();
-        seasonRoundHistory.push({round:currentRound,games:completedGames.map(game=>({...game})),userStats:{home:{...stats.home},away:{...stats.away},goals:{home:[...goals.home],away:[...goals.away]}}});
+        seasonRoundHistory.push({
+          round:currentRound,
+          games:completedGames.map(game=>compactMatchResult(game,{keepData:involvesClub(game,userClub)})),
+          userStats:{home:{...stats.home},away:{...stats.away},goals:{home:[...goals.home],away:[...goals.away]}},
+        });
         updateSeriesDKnockout(currentRound);
         Object.values(clubs).forEach(club=>orderRosterForFormation(club.roster,club.formation));
         renderRoster();draw();
@@ -2693,7 +2799,7 @@ export async function bootEngine({ bus } = {}) {
       const cupReferenceDate=completedSeason?new Date(careerSeason,11,31,12):fixtureDate(clamp(currentRound,1,championshipFixtures.length));
       advanceCupThroughDate(cupReferenceDate);
       if(completedSeason)finalizeNationalRankingSeason();
-      persistSeason();
+      persistSeason(true);
       refreshSeasonPresentation();
       $('#roundResultsModal').classList.add('hidden');modal.classList.add('hidden');
       stopMatchClock();matchStarted=false;matchFinished=false;liveMatchGame=null;liveDayMatchSnapshots=null;roundResults=null;roundResultMessagePushed=false;roundPreviewResults={};
@@ -2716,7 +2822,11 @@ export async function bootEngine({ bus } = {}) {
       completedGames.forEach(recordGameLeaders);
       if(userDivision!=='D'||currentRound<=10)completedGames.forEach(applyRoundToTable);
       simulateNationalRound();
-      seasonRoundHistory.push({round:currentRound,games:completedGames.map(game=>({home:game.home,away:game.away,homeGoals:game.homeGoals,awayGoals:game.awayGoals,data:game.data?{...game.data}:null,goals:game.goals?{home:[...(game.goals.home||[])],away:[...(game.goals.away||[])]}:null})),userStats:null});
+      seasonRoundHistory.push({
+        round:currentRound,
+        games:completedGames.map(game=>compactMatchResult(game,{keepData:involvesClub(game,userClub)})),
+        userStats:null,
+      });
       updateSeriesDKnockout(currentRound);
       recoverPlayers(Math.max(1,Math.round(restDays*recoveryMod)));
       Object.values(clubs).forEach(club=>orderRosterForFormation(club.roster,club.formation));
@@ -2745,7 +2855,7 @@ export async function bootEngine({ bus } = {}) {
         if(currentRound>maxRound){
           idleSeasonWasSimulated=true;
           finalizeNationalRankingSeason();
-          persistSeason();
+          persistSeason(true);
           refreshSeasonPresentation();
           seasonSummary.closeIdleSim();
           nonHumanSimRunning=false;
@@ -2758,7 +2868,7 @@ export async function bootEngine({ bus } = {}) {
         if(finished||currentRound>maxRound){
           idleSeasonWasSimulated=true;
           finalizeNationalRankingSeason();
-          persistSeason();
+          persistSeason(true);
           refreshSeasonPresentation();
           seasonSummary.closeIdleSim();
           nonHumanSimRunning=false;
@@ -2771,7 +2881,7 @@ export async function bootEngine({ bus } = {}) {
         console.error('Falha ao simular restante da temporada',error);
         seasonSummary.closeIdleSim();
         nonHumanSimRunning=false;
-        persistSeason();
+        persistSeason(true);
         refreshSeasonPresentation();
       }
     };
@@ -3333,6 +3443,7 @@ export async function bootEngine({ bus } = {}) {
   onClick('#simulateRemainder',()=>simulateNonHumanSeasonRemainder());
   onClick('#closeMatch',()=>{
     if(matchFinished&&!roundCommitted){exitLiveMatch();return;}
+    stopMatchClock();
     modal.classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');closeFormationSuggestion();
   });
   onClick('#closeLiveOpponent',()=>$('#liveOpponentModal').classList.add('hidden'));
