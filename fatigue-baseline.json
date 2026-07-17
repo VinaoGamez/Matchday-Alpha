@@ -1,0 +1,264 @@
+{
+  "sampleSize": 10,
+  "summary": {
+    "avgEndFatigueHome": 87.2,
+    "avgEndFatigueAway": 86.7,
+    "avgFatigueDropPerStarter": 13.1,
+    "avgSubsPerMatch": 4.2,
+    "matchesWithStarterBelow70": 0,
+    "matchesWithStarterBelow55": 0
+  },
+  "matches": [
+    {
+      "home": "Atl\u00e9tico F\u00eanix",
+      "away": "Uni\u00e3o Londrina",
+      "score": "0-1",
+      "subs": 6,
+      "homeEnd": {
+        "avg": 88.3,
+        "min": 80.9,
+        "max": 96.8,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 86.1,
+        "min": 80.2,
+        "max": 95.1,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 11.7,
+      "awayDrop": 13.9,
+      "fatigueSubs": 6
+    },
+    {
+      "home": "Uni\u00e3o An\u00e1polis",
+      "away": "Esporte Clube Cuiab\u00e1",
+      "score": "9-0",
+      "subs": 5,
+      "homeEnd": {
+        "avg": 87.5,
+        "min": 81,
+        "max": 89.6,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 87.9,
+        "min": 83.6,
+        "max": 91.4,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 12.5,
+      "awayDrop": 12.1,
+      "fatigueSubs": 5
+    },
+    {
+      "home": "Esporte Clube Nova Esperan\u00e7a",
+      "away": "Uni\u00e3o Campo Grande",
+      "score": "2-0",
+      "subs": 3,
+      "homeEnd": {
+        "avg": 87.5,
+        "min": 83.2,
+        "max": 89.4,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 87.4,
+        "min": 80.3,
+        "max": 96.5,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 12.5,
+      "awayDrop": 12.6,
+      "fatigueSubs": 3
+    },
+    {
+      "home": "Uni\u00e3o Londrina",
+      "away": "Esporte Clube Juiz de Fora",
+      "score": "0-0",
+      "subs": 2,
+      "homeEnd": {
+        "avg": 86.2,
+        "min": 80.2,
+        "max": 96.4,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 85.3,
+        "min": 81.3,
+        "max": 89.8,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 13.8,
+      "awayDrop": 14.7,
+      "fatigueSubs": 2
+    },
+    {
+      "home": "Esporte Clube Joinville",
+      "away": "Atl\u00e9tico Joinville",
+      "score": "2-0",
+      "subs": 4,
+      "homeEnd": {
+        "avg": 85.7,
+        "min": 81.1,
+        "max": 89.7,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 87.3,
+        "min": 80.4,
+        "max": 97.7,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 14.3,
+      "awayDrop": 12.7,
+      "fatigueSubs": 4
+    },
+    {
+      "home": "Atl\u00e9tico Uberaba",
+      "away": "Futebol Clube Monte Azul",
+      "score": "7-0",
+      "subs": 2,
+      "homeEnd": {
+        "avg": 86.3,
+        "min": 81.2,
+        "max": 89.7,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 87,
+        "min": 80.1,
+        "max": 96.8,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 13.7,
+      "awayDrop": 13,
+      "fatigueSubs": 2
+    },
+    {
+      "home": "Uni\u00e3o Macap\u00e1",
+      "away": "Atl\u00e9tico Juiz de Fora",
+      "score": "8-0",
+      "subs": 5,
+      "homeEnd": {
+        "avg": 87.9,
+        "min": 83.8,
+        "max": 89.8,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 85.3,
+        "min": 80.1,
+        "max": 93,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 12.1,
+      "awayDrop": 14.7,
+      "fatigueSubs": 5
+    },
+    {
+      "home": "Atl\u00e9tico Campinas",
+      "away": "Futebol Clube Cerrado",
+      "score": "8-0",
+      "subs": 4,
+      "homeEnd": {
+        "avg": 86.7,
+        "min": 81,
+        "max": 89.6,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 85.8,
+        "min": 80.4,
+        "max": 96.5,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 13.3,
+      "awayDrop": 14.2,
+      "fatigueSubs": 4
+    },
+    {
+      "home": "Esporte Clube An\u00e1polis",
+      "away": "Esporte Clube Monte Azul",
+      "score": "3-0",
+      "subs": 5,
+      "homeEnd": {
+        "avg": 86.8,
+        "min": 80.2,
+        "max": 96.5,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 88.4,
+        "min": 81,
+        "max": 96.9,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 13.2,
+      "awayDrop": 11.6,
+      "fatigueSubs": 5
+    },
+    {
+      "home": "Uni\u00e3o Juiz de Fora",
+      "away": "Uni\u00e3o Cuiab\u00e1",
+      "score": "4-0",
+      "subs": 6,
+      "homeEnd": {
+        "avg": 88.6,
+        "min": 83.2,
+        "max": 96.4,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "awayEnd": {
+        "avg": 86.8,
+        "min": 80.6,
+        "max": 97.5,
+        "below70": 0,
+        "below55": 0,
+        "count": 11
+      },
+      "homeDrop": 11.4,
+      "awayDrop": 13.2,
+      "fatigueSubs": 6
+    }
+  ],
+  "elapsedMs": 305
+}
