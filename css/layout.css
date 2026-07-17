@@ -546,11 +546,15 @@ main > .view.active {
   height: auto !important;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 2px;
 }
 
 .environment-card > label {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .summary-top,
@@ -558,10 +562,10 @@ main > .view.active {
   display: flex !important;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 18px;
   width: auto;
   max-width: none;
-  margin: 6px auto 0 !important;
+  margin: 0 auto !important;
 }
 
 .overall-box {
@@ -647,8 +651,8 @@ main > .view.active {
 
 .dashboard-environment-note {
   text-align: center;
-  margin: 14px 0 16px;
-  padding: 0 4px;
+  margin: 0;
+  padding: 0 8px;
 }
 
 .dashboard-environment-note strong,
@@ -662,16 +666,16 @@ main > .view.active {
 }
 
 .dashboard-environment-note small {
-  margin-top: 4px;
+  margin-top: 8px;
   font-size: 11px;
   color: #9eb6b8;
-  line-height: 1.35;
+  line-height: 1.45;
 }
 
 #dashboard .dashboard-factors {
   display: grid !important;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-  gap: 8px !important;
+  grid-template-columns: 1fr !important;
+  gap: 10px !important;
   width: 100%;
   margin-top: 0 !important;
 }
@@ -679,10 +683,10 @@ main > .view.active {
 .dashboard-factors > div {
   display: grid;
   align-content: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
-  min-height: 64px;
-  padding: 11px 8px !important;
+  min-height: 58px;
+  padding: 12px 14px !important;
   border: 1px solid #28505b !important;
   border-radius: 5px;
   background: #102b35 !important;
@@ -794,12 +798,13 @@ main > .view.active {
     width: auto !important;
     max-width: none !important;
     justify-content: center !important;
-    margin: 6px auto 0 !important;
+    margin: 0 auto !important;
+    gap: 20px !important;
   }
 
   #dashboard .dashboard-factors > div {
-    min-height: 66px;
-    padding: 11px 8px !important;
+    min-height: 58px;
+    padding: 12px 14px !important;
   }
 
   #dashboard .dashboard-factors small {
