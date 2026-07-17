@@ -1,6 +1,28 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-3',
+    date: '2026-07-16',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Novidades',
+        items: [
+          'Sidebar fixa: menu lateral sempre visível; só o conteúdo central rola.',
+          'Partidas em Andamento abre em TODOS os jogos do dia, com filtros por campeonato e grupos da Série D.',
+          'Lista de partidas ao vivo com scroll para ver todos os jogos em andamento.',
+        ],
+      },
+      {
+        label: 'Melhorias',
+        items: [
+          'Home sem bloco de compartilhamento de link — foco em novo jogo e continuar carreira.',
+          'Mensagens de cartão amarelo mais claras, sem contagem acumulada na partida.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-2',
     date: '2026-07-16',
     title: 'Matchday Football foi atualizado',
