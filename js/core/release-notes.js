@@ -1,6 +1,38 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-10',
+    date: '2026-07-17',
+    publishedAt: '2026-07-17T13:10:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Novidades',
+        items: [
+          'Sistema disciplinar reformulado: 3 amarelos acumulados = 1 jogo suspenso, com contador separado por competição.',
+          'Vermelho direto com punição de 1 a 3 jogos conforme a gravidade da falta.',
+          'Confronto tático visual na pausa, tela de táticas e estatísticas ao vivo (ataque, passe e defesa).',
+          'Orçamento fictício do clube no dashboard e premiação de fim de temporada (participação, colocação, título, Copa e acesso).',
+        ],
+      },
+      {
+        label: 'Correções',
+        items: [
+          'Cartões em jogos fora de casa passam a ser registrados corretamente no elenco.',
+          'Placar ao vivo e estatísticas seguem mandante × visitante do calendário (seu time destacado em verde).',
+        ],
+      },
+      {
+        label: 'Melhorias',
+        items: [
+          'Badges e mensagens mostram contador X/3 amarelos por competição.',
+          'Timeline registra o plano tático no apito inicial; pós-jogo compara plano vs resultado.',
+          'Balanço de temporada exibe detalhamento da premiação creditada.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-9',
     date: '2026-07-16',
     publishedAt: '2026-07-16T23:15:00-03:00',
@@ -79,8 +111,8 @@ export const RELEASE_NOTES = [
       {
         label: 'Novidades',
         items: [
-          'Calendário nacional modularizado: rotinas, relatório de partida e persistência em js/feature/calendar-view.',
-          'Células de jogador compartilhadas entre elenco, táticas e calendário (player-cells).',
+          'Calendário extraído para módulo dedicado com agenda mensal e relatórios de partida.',
+          'Badges de status do jogador (cartões, lesão, suspensão) compartilhados entre elenco e táticas.',
         ],
       },
     ],
@@ -88,14 +120,14 @@ export const RELEASE_NOTES = [
   {
     version: 'alpha-02-tester-5',
     date: '2026-07-16',
-    publishedAt: '2026-07-16T22:06:00-03:00',
+    publishedAt: '2026-07-16T21:55:00-03:00',
     title: 'Matchday Football foi atualizado',
     topics: [
       {
-        label: 'Novidades',
+        label: 'Correções',
         items: [
-          'Opções do Jogo: consulte o histórico de atualizações com data, hora e detalhes de cada build.',
-          'Modal de consulta no padrão das mensagens, com navegação entre versões anteriores.',
+          'Copa do Brasil não simula mais jogos do usuário sem participação.',
+          'Calendário respeita intervalos de descanso entre rodadas.',
         ],
       },
     ],
@@ -103,22 +135,20 @@ export const RELEASE_NOTES = [
   {
     version: 'alpha-02-tester-4',
     date: '2026-07-16',
-    publishedAt: '2026-07-16T22:00:00-03:00',
+    publishedAt: '2026-07-16T21:40:00-03:00',
     title: 'Matchday Football foi atualizado',
     topics: [
       {
         label: 'Novidades',
         items: [
-          'Cansaço mais intenso: titulares terminam partidas visivelmente mais fatigados (~75% em média).',
-          'Adversário troca jogadores por cansaço ao vivo (55\', 58\', 70\'…) para rodar elenco e evitar lesões.',
-          'Aba TODOS em Partidas em Andamento agrupa jogos por divisão (Série A/B/C, Copa, Série D por grupo).',
+          'Slider Linha de Impedimento nas táticas (pré-jogo e pausa ao vivo).',
+          'Táticas do usuário persistidas no save da temporada.',
         ],
       },
       {
         label: 'Melhorias',
         items: [
-          'Recuperação de cansaço equilibrada: todos os clubes recuperam no calendário, não só o seu time.',
-          'Substituições simuladas priorizam reservas mais frescos quando o titular está abaixo de 72%.',
+          'Inbox de mensagens reorganizado por categorias (competição, médico, disciplina).',
         ],
       },
     ],
@@ -126,22 +156,21 @@ export const RELEASE_NOTES = [
   {
     version: 'alpha-02-tester-3',
     date: '2026-07-16',
-    publishedAt: '2026-07-16T20:30:00-03:00',
+    publishedAt: '2026-07-16T21:20:00-03:00',
     title: 'Matchday Football foi atualizado',
     topics: [
       {
-        label: 'Novidades',
+        label: 'Correções',
         items: [
-          'Sidebar fixa: menu lateral sempre visível; só o conteúdo central rola.',
-          'Partidas em Andamento abre em TODOS os jogos do dia, com filtros por campeonato e grupos da Série D.',
-          'Lista de partidas ao vivo com scroll para ver todos os jogos em andamento.',
+          'Jogo do dia avança corretamente ao sair da partida ou abrir a classificação.',
+          'Expulsão do adversário não pausa mais o jogo.',
         ],
       },
       {
-        label: 'Melhorias',
+        label: 'Novidades',
         items: [
-          'Home sem bloco de compartilhamento de link — foco em novo jogo e continuar carreira.',
-          'Mensagens de cartão amarelo mais claras, sem contagem acumulada na partida.',
+          'Botão Partidas em Andamento na pausa ao vivo.',
+          'Prancheta tática redesenhada com marcadores menores e badges de status.',
         ],
       },
     ],
@@ -149,7 +178,7 @@ export const RELEASE_NOTES = [
   {
     version: 'alpha-02-tester-2',
     date: '2026-07-16',
-    publishedAt: '2026-07-16T17:00:00-03:00',
+    publishedAt: '2026-07-16T20:50:00-03:00',
     title: 'Matchday Football foi atualizado',
     topics: [
       {
@@ -163,14 +192,12 @@ export const RELEASE_NOTES = [
         label: 'Novidades',
         items: [
           'Botão "Partidas em Andamento" mostra placares parciais da rodada na pausa ao vivo.',
-          'Partidas em andamento listam jogos de todas as divisões e da Copa, com filtros por competição.',
           'Prancheta tática redesenhada: marcadores menores, sobrenomes e badges de status.',
         ],
       },
       {
         label: 'Melhorias',
         items: [
-          'Hub de mensagens com leitor em modal e navegação entre mensagens.',
           'Alerta de atualização para testers ao abrir uma versão nova.',
         ],
       },

@@ -16,6 +16,14 @@ import {
   writeJson,
 } from '../core/save.js';
 import { createInjuryEngine } from '../engine/injury.js';
+import { createDisciplineEngine } from '../engine/discipline.js';
+import { createEconomyEngine } from '../engine/economy.js';
+import {
+  injectTacticalConfrontationCss,
+  tacticalConfrontationMarkup,
+  tacticalImpactSummaryMarkup,
+  tacticalKickoffMessage,
+} from '../feature/tactics/tactical-confrontation.js';
 import {
   ENGINE_TUNING,
   engineFoulRisk,
@@ -133,17 +141,57 @@ export async function bootEngine({ bus } = {}) {
     beginRestrictedReturn,
     advanceRestrictedRehab,
     clearInjuryFully,
-    YELLOW_SUSPENSION_LIMIT,
-    playerUnavailable,
-    playerStarterBlocked,
+    playerUnavailable: playerInjuryUnavailable,
     injurySeverityLabel,
   } = injuryEngine;
+  const discipline = createDisciplineEngine();
+  const {
+    YELLOW_SUSPENSION_LIMIT,
+    normalizePlayerDiscipline,
+    competitionKeyFromFixture,
+    competitionLabel,
+    getYellowAccumulation,
+    activeSuspensions,
+    isSuspendedForCompetition,
+    isSuspendedAnywhere,
+    directRedDismissalType,
+    directRedSuspensionGames,
+    applyDisciplineCard,
+    serveCompetitionSuspensions,
+    disciplineBadgeCompetitionKeys,
+  } = discipline;
+  const economy = createEconomyEngine();
+  const { initialBudget, formatBudget, computeSeasonPrize } = economy;
+  const userLeagueDisciplineKey = () => `LEAGUE:${userDivision}`;
+  const fixtureCompetitionKey = fixture =>
+    competitionKeyFromFixture(fixture, { isKnockoutShootout: isKnockoutShootoutCompetition, clubs });
+  const playerUnavailable = (player, competitionKey = undefined) => {
+    if (playerInjuryUnavailable(player)) return true;
+    const resolvedKey =
+      competitionKey !== undefined && competitionKey !== null
+        ? competitionKey
+        : liveMatchGame || nextUserGame
+          ? fixtureCompetitionKey(liveMatchGame || nextUserGame)
+          : null;
+    if (resolvedKey) return isSuspendedForCompetition(player, resolvedKey);
+    return isSuspendedAnywhere(player);
+  };
+  const playerUnavailableForFixture = (player, fixture) =>
+    playerUnavailable(player, fixture ? fixtureCompetitionKey(fixture) : null);
+  const playerStarterBlocked = player =>
+    playerUnavailableForFixture(player, liveMatchGame || nextUserGame) || playerInRestrictedReturn(player);
   injectPlayerStatusCss();
+  injectTacticalConfrontationCss();
   const { playerNameCell, playerStatusBadges } = createPlayerCells({
     injuryInAcutePhase,
     injuryInRestrictedPhase,
     injurySeverityLabel,
     YELLOW_SUSPENSION_LIMIT,
+    getYellowAccumulation,
+    activeSuspensions,
+    disciplineBadgeCompetitionKeys,
+    competitionLabel,
+    userLeagueDisciplineKey,
   });
   const engineTuning = ENGINE_TUNING;
   let buildSimLineup;
@@ -205,7 +253,7 @@ export async function bootEngine({ bus } = {}) {
     if(clubName.length<3){error.textContent='Informe um nome de time com pelo menos 3 caracteres.';$('#careerClubName').focus();return;}
     if(managerName.length<3){error.textContent='Informe o nome do treinador com pelo menos 3 caracteres.';$('#careerManagerName').focus();return;}
     const seed=(Date.now()^Math.floor(Math.random()*0xffffffff))>>>0,status=(min,max)=>Math.floor(Math.random()*(max-min+1))+min,environmentRange=initialEnvironmentRanges[selectedCareerDivision];
-    const clubStatus={environment:status(...environmentRange),support:status(55,88),board:status(55,88),finances:status(55,88)};
+    const clubStatus={environment:status(...environmentRange),support:status(55,88),board:status(55,88),finances:status(55,88),budget:initialBudget(selectedCareerDivision)};
     writeJson(SAVE_KEYS.career,{seed,clubName,managerName,division:selectedCareerDivision,clubStatus,season:DEFAULT_CAREER_SEASON,createdAt:new Date().toISOString(),version:4});
     clearSeasonSave();
     $('#newGameModal').classList.add('hidden');$('#optionsModal').classList.add('hidden');
@@ -318,6 +366,7 @@ export async function bootEngine({ bus } = {}) {
     user.support=clamp(initialStatus.support,55,88);
     user.board=clamp(initialStatus.board,55,88);
     user.finances=clamp(initialStatus.finances,55,88);
+    user.budget=Math.max(0,Number(initialStatus.budget??initialBudget(userDivision)));
   }
   else teams.forEach((club,index)=>{if(club===userClub){clubs[club]={name:club,division:'A',roster:squad,formation:'4-3-3',style:'Posse de bola',mentality:'Equilibrada',position:4};return;}const power=clamp(78-index*.45+int(-3,3),68,82),roster=[...starterRoles,...benchRoles].map((role,i)=>generatedPlayer(role,i+index*5,power));clubs[club]={name:club,division:'A',roster,formation:formationsForClubs[int(0,formationsForClubs.length-1)],style:['Posse de bola','Contra-ataque','Pressão alta'][int(0,2)],mentality:['Defensiva','Equilibrada','Ofensiva'][int(0,2)],position:index+1};});
   Object.values(clubs).forEach(club=>{
@@ -327,6 +376,7 @@ export async function bootEngine({ bus } = {}) {
     club.support=club.support??int(42,92);
     club.board=club.board??int(42,92);
     club.finances=club.finances??int(40,94);
+    if(club.name===userClub)club.budget=club.budget??initialBudget(club.division||userDivision);
     club.medicalInvestment=club.medicalInvestment??0;
     club.preventionProgram=club.preventionProgram??0;
     club.pitchCondition=club.pitchCondition||'good';
@@ -434,9 +484,21 @@ export async function bootEngine({ bus } = {}) {
     }
     const environmentLabel=environment>75?['Vestiário em alta','O elenco está motivado.']:environment>40?['Ambiente estável','O grupo trabalha sem grande pressão.']:['Vestiário pressionado','O elenco precisa reagir.'];$('.dashboard-environment-note strong').textContent=environmentLabel[0];$('.dashboard-environment-note small').textContent=environmentLabel[1];
     [user.support,user.board,user.finances].forEach((value,index)=>{const element=$$('[data-dashboard-factor]')[index];if(!element)return;element.textContent=`${value}%`;setIndicatorTone(element.parentElement,value);});
+    renderClubBudget();
     const specialistRows=Object.keys(divisionRules).map(division=>{const divisionClubs=divisionTeams[division],freeClubs=divisionClubs.filter(name=>clubs[name].roster.some(player=>player.freeKick>85)).length,penaltyClubs=divisionClubs.filter(name=>clubs[name].roster.some(player=>player.penaltyTaking>85)).length;return `<span><b>Série ${division}</b>${divisionClubs.length} clubes · ${freeClubs} com especialista em faltas · ${penaltyClubs} em pênaltis</span>`;}).join('');
     $('.new-game-action').insertAdjacentHTML('afterend',`<div class="generated-world-summary"><small>CARREIRA ATUAL</small><span class="career-current"><b>${userClub}</b>${careerProfile.managerName} · Série ${userDivision}</span><small>UNIVERSO NACIONAL</small>${specialistRows}</div>`);
   }
+  const renderClubBudget=()=>{
+    const budget=clubs[userClub]?.budget;
+    const label=formatBudget(budget??0);
+    const headerBudget=$('#headerBudget');
+    if(headerBudget)headerBudget.textContent=label;
+    const dashboardBudget=$('#dashboardBudget');
+    if(dashboardBudget){
+      dashboardBudget.textContent=label;
+      setIndicatorTone(dashboardBudget.parentElement,Math.min(100,Math.round((Number(budget)||0)/200_000)));
+    }
+  };
   const matchClub=()=>clubs[(typeof nextUserGame!=='undefined'&&nextUserGame?(nextUserGame.home===userClub?nextUserGame.away:nextUserGame.home):'Estrela do Cerrado')];
   // Série A: 20 clubes em pontos corridos, com turno e returno. Em cada uma
   // das 38 rodadas, os 20 clubes entram em campo uma única vez (10 jogos).
@@ -524,11 +586,12 @@ export async function bootEngine({ bus } = {}) {
     player.injuryHistory.push({type:record.type,bodyPart:record.bodyPart,side:record.side,severity:record.severity,season:careerSeason,daysOut:record.totalDays,recoveredAt:null});
     return record;
   };
-  // Disponibilidade do atleta persiste entre rodadas. Suspensões seguem o
-  // regulamento brasileiro (três amarelos ou expulsão) e o segundo amarelo
-  // sempre é convertido em vermelho, conforme a regra disciplinar do jogo.
+  // Disponibilidade do atleta persiste entre rodadas. Suspensões: 3 amarelos
+  // por competição ou expulsão (vermelho direto com gravidade variável).
   const restoredAvailability=validSavedSeason?savedSeason.availability||{}:{};
   const restoredClubMedical=validSavedSeason?savedSeason.clubMedical||{}:{};
+  const restoredUserBudget=validSavedSeason&&Number.isFinite(Number(savedSeason.userBudget))?Number(savedSeason.userBudget):null;
+  if(restoredUserBudget!=null&&clubs[userClub])clubs[userClub].budget=restoredUserBudget;
   Object.entries(clubs).forEach(([clubName,club])=>{
     const medical=restoredClubMedical[clubName];
     if(medical){
@@ -541,7 +604,7 @@ export async function bootEngine({ bus } = {}) {
     player.injuryHistory=Array.isArray(restored.injuryHistory)?restored.injuryHistory.map(entry=>({...entry})):Array.isArray(player.injuryHistory)?player.injuryHistory:[];
     player.workload={minutesLast7Days:0,minutesLast14Days:0,matchesLast14Days:0,consecutiveStarts:0,highIntensityLoad:0,lastMatchRound:0,...player.workload,...restored.workload};
     player.injury=restored.injury?normalizeInjury({...restored.injury}):player.injury?normalizeInjury({...player.injury}):null;
-    player.discipline={yellowAccumulation:0,suspensionMatches:0,redCards:0,...restored.discipline};
+    player.discipline=normalizePlayerDiscipline(restored.discipline,{defaultLeagueKey:`LEAGUE:${clubs[clubName]?.division||userDivision}`});
     if(player.injury&&!injuryInAcutePhase(player.injury)&&!injuryInRestrictedPhase(player.injury)){
       if(player.injury.legacy||player.injury.rehabilitationStage==='fit')player.injury=null;
       else beginRestrictedReturn(player,club);
@@ -616,22 +679,11 @@ export async function bootEngine({ bus } = {}) {
   const renderMessages=messages.renderMessages.bind(messages);
   const renderDashboardMessagesFeed=messages.renderDashboardMessagesFeed.bind(messages);
   const updateMessageBadge=messages.updateMessageBadge.bind(messages);
-  const applyDisciplineToPlayer=(player,card,round=currentRound,clubName=null)=>{
+  const applyDisciplineToPlayer=(player,card,round=currentRound,clubName=null,fixture=null)=>{
     if(!player||!card)return [];
-    const discipline=player.discipline||(player.discipline={yellowAccumulation:0,suspensionMatches:0,redCards:0});
-    const owner=clubName||Object.entries(clubs).find(([,club])=>club.roster.includes(player))?.[0];
-    const opponent=owner===userClub&&liveMatchGame?(liveMatchGame.home===userClub?liveMatchGame.away:liveMatchGame.home):null;
-    const matchCtx=opponent?` na partida contra ${opponent}`:'';
-    const lines=[];
-    if(card.dismissal){discipline.suspensionMatches+=1;discipline.redCards+=1;discipline.issuedRound=round;
-      if(owner===userClub)lines.push(`${player.name} recebeu cartão vermelho${matchCtx} por ${card.dismissal==='second-yellow'?'segundo amarelo na mesma partida':'falta grave'} e ficará fora da próxima partida.`);
-      return lines;}
-    if(card.yellow){discipline.yellowAccumulation+=card.yellow;
-      if(owner===userClub&&card.yellow)lines.push(`${player.name} recebeu cartão amarelo${matchCtx}.`);
-      if(discipline.yellowAccumulation>=YELLOW_SUSPENSION_LIMIT){discipline.yellowAccumulation-=YELLOW_SUSPENSION_LIMIT;discipline.suspensionMatches+=1;discipline.issuedRound=round;
-      if(owner===userClub)lines.push(`${player.name} está suspenso na próxima partida por acúmulo de cartões amarelos${matchCtx}.`);}
-    }
-    return lines;
+    const competitionKey=fixtureCompetitionKey(fixture||liveMatchGame||{division:clubs[clubName||userClub]?.division||userDivision});
+    const opponent=clubName===userClub&&fixture?fixture.home===userClub?fixture.away:fixture.home:clubName===userClub&&liveMatchGame?liveMatchGame.home===userClub?liveMatchGame.away:liveMatchGame.home:null;
+    return applyDisciplineCard(player,card,{competitionKey,round,isUserClub:clubName===userClub,opponent});
   };
   const pushDisciplineDigest=(lines,round,contextLabel)=>{
     if(!lines.length)return;
@@ -642,15 +694,16 @@ export async function bootEngine({ bus } = {}) {
     const club=clubs[clubName];if(!club)return;
     entries.forEach(entry=>{const player=club.roster.find(candidate=>candidate.name===entry.name);if(player)recordPlayerMatchWorkload(player,entry.minutes,!!entry.started,tactic||roundTactic(club),currentRound);});
   };
-  const applyMatchAvailability=game=>{
+  const applyMatchAvailability=(game,fixture=null)=>{
     if(!game)return;
+    const matchFixture=fixture||game.fixture||game;
     const userDisciplineLines=[];
-    const userOpponent=game.home===userClub?game.away:game.away===userClub?game.home:null;
-    [['home',game.home],['away',game.away]].forEach(([side,clubName])=>{
+    const userOpponent=matchFixture.home===userClub?matchFixture.away:matchFixture.away===userClub?matchFixture.home:null;
+    [['home',matchFixture.home],['away',matchFixture.away]].forEach(([side,clubName])=>{
       const club=clubs[clubName];if(!club)return;
       applyMatchWorkload(clubName,game.workload?.[side],game.tactics?.[side]||roundTactic(club));
       (game.discipline?.[side]||[]).forEach(entry=>{
-        const lines=applyDisciplineToPlayer(club.roster.find(player=>player.name===entry.name),entry,currentRound,clubName);
+        const lines=applyDisciplineToPlayer(club.roster.find(player=>player.name===entry.name),entry,currentRound,clubName,matchFixture);
         if(clubName===userClub)userDisciplineLines.push(...lines);
       });
       (game.injuries?.[side]||[]).forEach(entry=>{const player=club.roster.find(candidate=>candidate.name===entry.name);if(player&&!player.injury)assignPlayerInjury(player,entry.injury,currentRound,{club});});
@@ -667,8 +720,21 @@ export async function bootEngine({ bus } = {}) {
         if(!player.injury.daysRemaining)beginRestrictedReturn(player,club);
       }else if(injuryInRestrictedPhase(player.injury))advanceRestrictedRehab(player,days,club);
     }
-    const discipline=player.discipline;if(participants.has(club.name)&&discipline?.suspensionMatches>0&&Number(discipline.issuedRound??-1)<currentRound)discipline.suspensionMatches=Math.max(0,discipline.suspensionMatches-1);
   }));
+  const serveDisciplineSuspensionsForRound=()=>{
+    Object.entries(nationalCompetitions).forEach(([division,competition])=>{
+      const fixtures=competition.fixtures?.[currentRound-1]||[];
+      if(!fixtures.length)return;
+      const participants=new Set(fixtures.flatMap(game=>[game.home,game.away]));
+      const competitionKey=division==='D'&&currentRound>SERIE_D_GROUP_ROUNDS&&fixtures.some(isKnockoutShootoutCompetition)?'SERIE_D_KO':`LEAGUE:${division}`;
+      serveCompetitionSuspensions(clubs,participants,competitionKey,currentRound);
+    });
+    const cupFixturesOnRound=copaDoBrasilFixtures.filter(game=>!game.completed&&game.round===currentRound);
+    if(cupFixturesOnRound.length){
+      const participants=new Set(cupFixturesOnRound.flatMap(game=>[game.home,game.away]));
+      serveCompetitionSuspensions(clubs,participants,'COPA',currentRound);
+    }
+  };
   let futureMatches=championshipFixtures[currentRound-1] || championshipFixtures[0];
   const currentRoundFixtures=()=>{
     if(userDivision==='D'&&currentRound>10){
@@ -955,9 +1021,10 @@ export async function bootEngine({ bus } = {}) {
     const leaders=clubSeasonLeaders(opponent),venue=game.home===userClub?'Casa':'Fora';
     pushMessage({category:'competition',type:'matchday',title:`Jogo do dia · ${opponent}`,body:`${details.display} · ${details.time} · ${venue}. ${competitionLabelForGame(game)}. Destaques do adversário: artilheiro ${leaders.scorer.name} (${leaders.goals} gols) · assistências ${leaders.assistant.name} (${leaders.assists}).`,round:currentRound,meta:{competition:competitionLabelForGame(game),briefKey,opponent}});
   };
-  const pushSeasonEndBrief=()=>{
+  const pushSeasonEndBrief=({prizeTotal=0,budgetAfter=null}={})=>{
     const row=nationalCompetitions[userDivision]?.standings?.find(item=>item.club===userClub),position=displayedClubPosition(userClub);
-    pushMessage({category:'competition',type:'season-end',title:`Temporada ${careerSeason} encerrada`,body:`${userClub} terminou em ${position}º na Série ${userDivision}${row?` · ${row.points} pts (${row.wins}V-${row.draws}E-${row.losses}D · saldo ${row.goalDiff>=0?'+':''}${row.goalDiff})`:''}. Confira acessos, rebaixamentos e campeões na transição de temporada.`,round:currentRound,meta:{competition:`Brasileirão Série ${userDivision}`}});
+    const prizeLine=prizeTotal>0?` Premiação creditada: +${formatBudget(prizeTotal)} · orçamento ${formatBudget(budgetAfter??clubs[userClub]?.budget??0)}.`:'';
+    pushMessage({category:'competition',type:'season-end',title:`Temporada ${careerSeason} encerrada`,body:`${userClub} terminou em ${position}º na Série ${userDivision}${row?` · ${row.points} pts (${row.wins}V-${row.draws}E-${row.losses}D · saldo ${row.goalDiff>=0?'+':''}${row.goalDiff})`:''}.${prizeLine} Confira acessos, rebaixamentos, campeões e premiação na transição de temporada.`,round:currentRound,meta:{competition:`Brasileirão Série ${userDivision}`}});
   };
   const notifySerieDKnockoutPhase=(startRound,label)=>{
     const fixtures=(nationalCompetitions.D.fixtures[startRound-1]||[]).concat(nationalCompetitions.D.fixtures[startRound]||[]);
@@ -1087,6 +1154,7 @@ export async function bootEngine({ bus } = {}) {
     renderDashboardUpcoming();
     $('.upcoming-dashboard label em').textContent=`RODADA ${currentRound}`;
     renderUserMatchPresentation();
+    renderClubBudget();
     renderNationalRanking();
     renderCalendar(); renderLeaders(); renderRecentResults();
   };
@@ -1164,6 +1232,7 @@ export async function bootEngine({ bus } = {}) {
     buildDeferredInjuryEntry,
     calculatePlayThroughSubChance,
     pickInjuryVictim,
+    directRedDismissalType,
   }));
   const orderRosterForFormation=(roster,targetFormation)=>{
     const roles=formationRoles[targetFormation]||formationRoles['4-3-3'],eligible=roster.filter(player=>!playerUnavailable(player)),starterPool=eligible.filter(player=>!playerStarterBlocked(player)),pool=starterPool.length>=roles.length?starterPool:eligible,assignment=lineupForRoles(pool,roles),lineup=roles.map((_,slot)=>assignment.get(slot)).filter(Boolean),selected=new Set(lineup),availableBench=eligible.filter(player=>!selected.has(player)&&!playerInRestrictedReturn(player)),restrictedBench=eligible.filter(player=>!selected.has(player)&&playerInRestrictedReturn(player)),unavailable=roster.filter(player=>!selected.has(player)&&playerUnavailable(player));
@@ -1410,7 +1479,7 @@ export async function bootEngine({ bus } = {}) {
     const drawDominance=home===away && own && rival ? clamp((own.goodAttacks-rival.goodAttacks)*.24+(own.shots-rival.shots)*.10+(own.xg-rival.xg)*.5,-3.2,3.2) : 0;
     return clamp(power.overall-(100-fatigue)*.055-reds*6.5+momentum+passForm+attackForm+drawDominance,50,95);
   };
-  let timer, liveClockSeconds=0, liveClockSecondTimer=null, minute, home, away, pauses, stats, cards, halftimeShown, pendingPenalty, shootoutState=null, matchFactors, goals, disciplineEvents, matchStarted=false, matchFinished=false, preMatchPreparation=false, substitutions=0, awaySubstitutions=0, awaySubWindows=0, substitutedOut=new Set(), activePreparationTitle='', matchDiscipline={home:new Map(),away:new Map()},liveInjuries={home:[],away:[]},liveDeferredInjuries={home:[],away:[]},liveOpeningLineup={home:[],away:[]},liveMinutesPlayed={home:new Map(),away:new Map()},availabilityCommitted=false,roundResultMessagePushed=false,liveMatchGame=null,liveDayMatchSnapshots=null;
+  let timer, liveClockSeconds=0, liveClockSecondTimer=null, minute, home, away, pauses, stats, cards, halftimeShown, pendingPenalty, shootoutState=null, matchFactors, goals, disciplineEvents, matchStarted=false, matchFinished=false, preMatchPreparation=false, substitutions=0, awaySubstitutions=0, awaySubWindows=0, substitutedOut=new Set(), activePreparationTitle='', matchDiscipline={home:new Map(),away:new Map()},liveInjuries={home:[],away:[]},liveDeferredInjuries={home:[],away:[]},liveOpeningLineup={home:[],away:[]},liveMinutesPlayed={home:new Map(),away:new Map()},availabilityCommitted=false,roundResultMessagePushed=false,liveMatchGame=null,liveDayMatchSnapshots=null,preMatchTacticSnapshot=null;
   const liveMatchDayKey=()=>{
     if(!liveMatchGame)return null;
     if(liveMatchGame.competition==='COPA DO BRASIL')return calendarKey(new Date(liveMatchGame.date));
@@ -1666,18 +1735,80 @@ export async function bootEngine({ bus } = {}) {
   };
   const startLiveSecondTimer=()=>{stopLiveSecondTimer();liveClockSecondTimer=setInterval(()=>{if(matchFinished||preMatchPreparation)return;liveClockSeconds=(liveClockSeconds+1)%60;updateLiveMatchClock();},1000);};
   startMatchClock=()=>{stopMatchClock();timer=setInterval(tick,(gamePaceConfig[gamePace]||gamePaceConfig.standard).ms);if(matchStarted&&!matchFinished&&!preMatchPreparation)startLiveSecondTimer();updateLiveMatchClock();};
-  const renderLiveMatchHeader=game=>{if(!game)return;const details=fixtureDetails(game),venue=matchVenueFor(game.home),opponent=matchClub();$('#liveMatchDateTime').textContent=`${details.display} · ${details.time}`;$('#liveMatchVenue').textContent=`${venue.name} · ${venue.capacity.toLocaleString('pt-BR')} lugares`;$('#liveHomeCrest').textContent=clubCrestInitials(userClub);$('#liveAwayCrest').textContent=clubCrestInitials(opponent.name);$('#liveHomeName').textContent=userClub.toUpperCase();$('#liveAwayName').textContent=opponent.name.toUpperCase();};
-  const score = () => { $('#score').textContent = `${home} — ${away}`; updateLiveMatchClock(); };
+  const userAtHomeInLiveMatch=()=>!liveMatchGame||liveMatchGame.home===userClub;
+  const calendarLiveScores=()=>userAtHomeInLiveMatch()?{home,away}:{home:away,away:home};
+  const calendarLiveSideStats=()=>userAtHomeInLiveMatch()?{home:stats.home,away:stats.away}:{home:stats.away,away:stats.home};
+  const calendarLiveSideGoals=()=>userAtHomeInLiveMatch()?{home:goals.home,away:goals.away}:{home:goals.away,away:goals.home};
+  const ensureTacticalConfrontationSlots=()=>{
+    if(!$('#tacticalConfrontationPause')&&$('#pausePanel')){
+      const heading=$('#pausePanel .pause-heading');
+      if(heading)heading.insertAdjacentHTML('afterend','<div id="tacticalConfrontationPause"></div>');
+    }
+    if(!$('#tacticalConfrontationTactics')&&$('#tactics .controls')){
+      $('#tactics .controls').insertAdjacentHTML('afterbegin','<div id="tacticalConfrontationTactics"></div>');
+    }
+  };
+  const calendarLiveTeamLabels=()=>{
+    const game=liveMatchGame||nextUserGame;
+    if(!game)return {home:userClub,away:matchClub().name,userIsCalendarHome:true};
+    return {home:game.home,away:game.away,userIsCalendarHome:game.home===userClub};
+  };
+  const confrontationProfiles=()=>{
+    const userProfile=profile();
+    const oppProfile=opponentForMatch();
+    const {home,away,userIsCalendarHome}=calendarLiveTeamLabels();
+    return userIsCalendarHome
+      ? {homeLabel:home,awayLabel:away,homeProfile:userProfile,awayProfile:oppProfile}
+      : {homeLabel:home,awayLabel:away,homeProfile:oppProfile,awayProfile:userProfile};
+  };
+  const renderTacticalConfrontation=({context='pause'}={})=>{
+    ensureTacticalConfrontationSlots();
+    const labels=confrontationProfiles();
+    const homeTactics=tactics?.getTacticalValues?.()??DEFAULT_USER_TACTICS;
+    const markup=tacticalConfrontationMarkup({
+      ...labels,
+      homeTactics,
+      showSettings:context==='pause'||context==='tactics',
+      subtitle:matchStarted&&!matchFinished?'Força tática estimada com os ajustes atuais':'Projeção antes da partida',
+    });
+    const slot=context==='tactics'?$('#tacticalConfrontationTactics'):$('#tacticalConfrontationPause');
+    if(slot)slot.innerHTML=markup;
+  };
+  const renderLiveMatchHeader=game=>{
+    if(!game)return;
+    const details=fixtureDetails(game),venue=matchVenueFor(game.home);
+    const homeClub=game.home,awayClub=game.away,userHome=homeClub===userClub;
+    $('#liveMatchDateTime').textContent=`${details.display} · ${details.time}`;
+    $('#liveMatchVenue').textContent=`${venue.name} · ${venue.capacity.toLocaleString('pt-BR')} lugares · ${userHome?'EM CASA':'FORA DE CASA'}`;
+    const homeCrest=$('#liveHomeCrest'),awayCrest=$('#liveAwayCrest');
+    homeCrest.textContent=clubCrestInitials(homeClub);
+    awayCrest.textContent=clubCrestInitials(awayClub);
+    homeCrest.classList.remove('away');
+    awayCrest.classList.add('away');
+    $('#liveHomeName').textContent=homeClub.toUpperCase();
+    $('#liveAwayName').textContent=awayClub.toUpperCase();
+    $('#liveHomeName').classList.toggle('user-club-live',userHome);
+    $('#liveAwayName').classList.toggle('user-club-live',!userHome);
+  };
+  const score=()=>{const {home:homeGoals,away:awayGoals}=calendarLiveScores();$('#score').textContent=`${homeGoals} — ${awayGoals}`;updateLiveMatchClock();};
   const log = (text, type='') => { timeline.insertAdjacentHTML('beforeend', `<p class="${type}">${minute}' · ${text}</p>`); timeline.scrollTop = timeline.scrollHeight; };
   const percent = (a,b) => b ? `${Math.round(a / b * 100)}%` : '0%';
   const renderStats = () => {
-    const h = stats.home, a = stats.away, hp = clamp(Math.round(h.possession),28,72), ap = 100-hp;
+    const {home:h,away:a}=calendarLiveSideStats(),hp=clamp(Math.round(h.possession),28,72),ap=100-hp;
     const rows = [['Posse de bola',`${hp}%`,`${ap}%`,'possession'],['Passes','','','group'],['Total de Passes',h.passes,a.passes],['% passes certos',percent(h.accurate,h.passes),percent(a.accurate,a.passes)],['Passes errados',h.passes-h.accurate,a.passes-a.accurate],['Ataque','','','group'],['Finalizações',h.shots,a.shots],['Para Fora',h.off,a.off],['No Gol',h.on,a.on],['Defendidas',h.saved,a.saved],['Pênaltis',h.penalties,a.penalties],['Escanteios',h.corners,a.corners],['Impedimentos',h.offsides,a.offsides],['Defesa','','','group'],['Defesas do Goleiro',h.keeperSaves,a.keeperSaves],['Desarmes',h.tackles,a.tackles],['Faltas Cometidas',h.fouls,a.fouls],['Cartões Amarelos',h.yellow,a.yellow,'yellow'],['Cartões Vermelhos',h.red,a.red,'red']];
-    $('#stats').innerHTML = rows.map(r => r[3] === 'group' ? `<div class="stat-group">${r[0]}</div>` : `<div class="stat ${r[3] || ''}"><span>${r[1]}</span><span>${r[0]}</span><span>${r[2]}</span></div>`).join('');
+    const statsBody=rows.map(r => r[3] === 'group' ? `<div class="stat-group">${r[0]}</div>` : `<div class="stat ${r[3] || ''}"><span>${r[1]}</span><span>${r[0]}</span><span>${r[2]}</span></div>`).join('');
+    const confrontation=tacticalConfrontationMarkup({
+      ...confrontationProfiles(),
+      homeTactics:tactics?.getTacticalValues?.()??DEFAULT_USER_TACTICS,
+      showSettings:false,
+      subtitle:'Confronto tático ao vivo',
+    });
+    $('#stats').innerHTML=`${confrontation}${statsBody}`;
     renderLiveOpponent?.();
   };
   tactics=createTacticsFeature({
     $,$$,playerNameCell,
+    onTacticsChanged:()=>{renderTacticalConfrontation({context:'tactics'});if(matchStarted&&!matchFinished&&!preMatchPreparation&&$('#stats')&&!$('#stats').classList.contains('hidden'))renderStats();},
     getFormations:()=>formations,
     getFormationRoles:()=>formationRoles,
     getFormationNotes:()=>formationNotes,
@@ -1719,6 +1850,7 @@ export async function bootEngine({ bus } = {}) {
   autoSelectUserLineup(formation);
   renderRoster();
   draw();
+  renderTacticalConfrontation({context:'tactics'});
   const renderFinalSummary = () => {
     const medicalReports=[['home',liveInjuries.home,clubs[userClub]],['away',liveInjuries.away,matchClub()]].flatMap(([side,entries,club])=>entries.map(entry=>{entry.injury.diagnosisPending=false;return {text:injuryDiagnosisComment({name:entry.name},entry.injury,club),outcome:'confirmed'};}));
     [['home',userClub],['away',matchClub().name]].forEach(([side,clubName])=>{
@@ -1730,12 +1862,34 @@ export async function bootEngine({ bus } = {}) {
         medicalReports.push({text:result.report,outcome:result.outcome});
       });
     });
-    const h=stats.home,a=stats.away,hp=clamp(Math.round(h.possession),28,72),ap=100-hp;
-    const scorers=side=>goals[side].length?goals[side].map(goal=>`<span>${goal.minute}' ${goal.name}</span>`).join(''):'<span>Nenhum gol</span>';
+    const h=calendarLiveSideStats().home,a=calendarLiveSideStats().away,hp=clamp(Math.round(h.possession),28,72),ap=100-hp;
+    const sideGoals=calendarLiveSideGoals();
+    const scorers=side=>sideGoals[side].length?sideGoals[side].map(goal=>`<span>${goal.minute}' ${goal.name}</span>`).join(''):'<span>Nenhum gol</span>';
     const rows=[['Posse de bola',`${hp}%`,`${ap}%`],['Total de Passes',h.passes,a.passes],['Finalizações',h.shots,a.shots],['Faltas Cometidas',h.fouls,a.fouls],['Cartões Amarelos',h.yellow,a.yellow],['Cartões Vermelhos',h.red,a.red]];
     const injuryReports=medicalReports.map(item=>item.text);
     const injurySection=injuryReports.length?`<section class="final-injuries"><h3>DIAGNÓSTICOS MÉDICOS</h3>${medicalReports.map(item=>`<p class="${item.outcome==='cleared'?'cleared':item.outcome==='monitoring'?'monitoring':''}">${item.text}</p>`).join('')}</section>`:'';
-    $('#stats').innerHTML=`<section class="final-goals"><h3>GOLS</h3><div><article><b>${userClub.toUpperCase()}</b>${scorers('home')}</article><article><b>${matchClub().name.toUpperCase()}</b>${scorers('away')}</article></div></section><section class="final-basic"><h3>ESTATÍSTICAS DA PARTIDA</h3>${rows.map(row=>`<div class="stat"><span>${row[1]}</span><span>${row[0]}</span><span>${row[2]}</span></div>`).join('')}</section>${injurySection}`;
+    const homeClub=(liveMatchGame||nextUserGame)?.home||userClub,awayClub=(liveMatchGame||nextUserGame)?.away||matchClub().name;
+    const userSideStats=userAtHomeInLiveMatch()?calendarLiveSideStats().home:calendarLiveSideStats().away;
+    const planned=preMatchTacticSnapshot||{possession:tactics?.getTacticalValues?.()?.possession??50,press:tactics?.getTacticalValues?.()?.press??50};
+    const tacticalImpact=tacticalImpactSummaryMarkup({
+      homeLabel:homeClub,
+      awayLabel:awayClub,
+      planned:{
+        possession:planned.possession,
+        passAccuracy:planned.possession>65?68:planned.possession<35?58:62,
+        shots:planned.press>65?'Alta':'Moderada',
+        offsides:planned.offsideLine>65?'Mais provável':'Contida',
+        fouls:planned.press>65?'Mais duelos':'Contida',
+      },
+      actual:{
+        possession:Math.round(userSideStats.possession||0),
+        passAccuracy:userSideStats.passes?Math.round(userSideStats.accurate/userSideStats.passes*100):0,
+        shots:userSideStats.shots||0,
+        offsides:userSideStats.offsides||0,
+        fouls:userSideStats.fouls||0,
+      },
+    });
+    $('#stats').innerHTML=`<section class="final-goals"><h3>GOLS</h3><div><article><b>${homeClub.toUpperCase()}</b>${scorers('home')}</article><article><b>${awayClub.toUpperCase()}</b>${scorers('away')}</article></div></section><section class="final-basic"><h3>ESTATÍSTICAS DA PARTIDA</h3>${rows.map(row=>`<div class="stat"><span>${row[1]}</span><span>${row[0]}</span><span>${row[2]}</span></div>`).join('')}</section>${tacticalImpact}${injurySection}`;
     $('#stats').classList.remove('hidden');
     if(postMatchMedicalQueue.length){
       if(postMatchMedicalQueue.length===1){
@@ -1810,7 +1964,7 @@ export async function bootEngine({ bus } = {}) {
   };
   let roundResults = null, roundPreviewResults={};
   const cupPenaltyWinner=(first,second)=>{const strength=name=>{const club=clubs[name],lineup=club.roster.slice(0,11),takers=[...lineup].filter(player=>player.pos!=='GOL').sort((a,b)=>b.penaltyTaking-a.penaltyTaking).slice(0,5),keeper=lineup.find(player=>player.pos==='GOL')||lineup[0];return takers.reduce((sum,player)=>sum+player.penaltyTaking,0)/Math.max(1,takers.length)+(keeper?.penaltySaving||50)*.32+club.power*.18+rnd(-9,9);};return strength(first)>=strength(second)?first:second;};
-  const applyCupFatigue=(game,result)=>{[['home',game.home],['away',game.away]].forEach(([side,clubName])=>Object.entries(result.fatigueAfter?.[side]||{}).forEach(([playerName,value])=>{const player=clubs[clubName].roster.find(candidate=>candidate.name===playerName);if(player)player.fatigue=clamp(value,0,100);}));applyMatchAvailability(result);};
+  const applyCupFatigue=(game,result)=>{[['home',game.home],['away',game.away]].forEach(([side,clubName])=>Object.entries(result.fatigueAfter?.[side]||{}).forEach(([playerName,value])=>{const player=clubs[clubName].roster.find(candidate=>candidate.name===playerName);if(player)player.fatigue=clamp(value,0,100);}));applyMatchAvailability(result,game);};
   const nextCupEntrants=(phase,winners)=>phase===1?[...winners,...cupSecondDirect]:phase===2?[...winners,...cupSpecialEntrants]:phase===4?[...winners,...cupSerieAEntrants]:[...winners];
   const cupTieGames=(stage,tieId)=>stage.fixtures.filter(game=>game.tieId===tieId).sort((a,b)=>a.date-b.date||a.gameNumber-b.gameNumber);
   const simulateCupComputerGame=game=>{
@@ -1955,9 +2109,12 @@ export async function bootEngine({ bus } = {}) {
   const simulateRoundResults=(force=false)=>{
     if(roundResults&&!force) return roundResults;
     roundResults=currentRoundFixtures().map(game=>{
-      if(!isUserFixture(game)) return simulateRoundMatch(game.home,game.away);
+      if(!isUserFixture(game)){
+        const result=simulateRoundMatch(game.home,game.away);
+        return {...result,fixture:game,home:game.home,away:game.away,round:game.round,competition:game.competition};
+      }
       const userAtHome=game.home===userClub;
-      const result={home:game.home,away:game.away,homeGoals:userAtHome?home:away,awayGoals:userAtHome?away:home,user:true,goals:userAtHome?{home:[...goals.home],away:[...goals.away]}:{home:[...goals.away],away:[...goals.home]}};
+      const result={home:game.home,away:game.away,homeGoals:userAtHome?home:away,awayGoals:userAtHome?away:home,user:true,fixture:game,round:game.round,competition:game.competition,goals:userAtHome?{home:[...goals.home],away:[...goals.away]}:{home:[...goals.away],away:[...goals.home]}};
       if(liveMatchGame&&liveMatchGame.home===game.home&&liveMatchGame.away===game.away){
         Object.assign(result,{penalties:liveMatchGame.penalties,shootoutWinner:liveMatchGame.shootoutWinner,tieId:game.tieId,leg:game.leg,competition:game.competition,data:liveMatchGame.data,completed:isKnockoutShootoutCompetition(game)?true:undefined});
       }
@@ -2021,7 +2178,7 @@ export async function bootEngine({ bus } = {}) {
     const compactCup={currentPhase:cupCompetition.currentPhase,champion:cupCompetition.champion,stages:cupCompetition.stages.map(stage=>({index:stage.index,name:stage.name,twoLegged:stage.twoLegged,entrants:stage.entrants,completed:stage.completed,winners:stage.winners,fixtures:stage.fixtures.map(game=>({home:game.home,away:game.away,competition:game.competition,phase:game.phase,phaseIndex:game.phaseIndex,leg:game.leg,date:game.date,time:game.time,gameNumber:game.gameNumber,tieId:game.tieId,completed:game.completed,homeGoals:game.homeGoals,awayGoals:game.awayGoals,penalties:game.penalties,winner:game.winner,data:game.data?{...game.data}:null,goals:game.goals?{home:[...(game.goals.home||[])],away:[...(game.goals.away||[])]}:null}))}))};
     const availability=Object.fromEntries(Object.entries(clubs).map(([clubName,club])=>[clubName,Object.fromEntries(club.roster.map(player=>[player.name,{injury:player.injury?{...player.injury}:null,injuryHistory:Array.isArray(player.injuryHistory)?player.injuryHistory.map(entry=>({...entry})):[],workload:player.workload?{...player.workload}:null,discipline:{...player.discipline}}]))]));
     const clubMedical=Object.fromEntries(Object.entries(clubs).map(([clubName,club])=>[clubName,{medicalInvestment:club.medicalInvestment??0,preventionProgram:club.preventionProgram??0,pitchCondition:club.pitchCondition||'good'}]));
-    writeJson(SAVE_KEYS.season,{seed:savedNewGame.seed,currentRound,careerCalendarDate:calendarKey(careerCalendarDate),trainingRules:{...trainingRules},standings,fatigue,availability,clubMedical,userTactics:{...tactics.getTacticalValues()},careerMessages:messages.getMessages().map(message=>({...message})),scorers:allScorers,assistants:allAssistants,serieDGroups,dFixtures:nationalCompetitions.D.fixtures,dKnockout:nationalCompetitions.D.knockout,cupCompetition:compactCup,nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:nationalRankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},seasonRoundHistory:compactHistory(seasonRoundHistory),competitionRoundHistory:compactCompetitions,updatedAt:new Date().toISOString()});
+    writeJson(SAVE_KEYS.season,{seed:savedNewGame.seed,currentRound,careerCalendarDate:calendarKey(careerCalendarDate),trainingRules:{...trainingRules},standings,fatigue,availability,clubMedical,userBudget:clubs[userClub]?.budget??0,userTactics:{...tactics.getTacticalValues()},careerMessages:messages.getMessages().map(message=>({...message})),scorers:allScorers,assistants:allAssistants,serieDGroups,dFixtures:nationalCompetitions.D.fixtures,dKnockout:nationalCompetitions.D.knockout,cupCompetition:compactCup,nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:nationalRankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},seasonRoundHistory:compactHistory(seasonRoundHistory),competitionRoundHistory:compactCompetitions,updatedAt:new Date().toISOString()});
   };
   dashboard.setPersist(persistSeason);
   calendarView.setPersist(persistSeason);
@@ -2121,9 +2278,10 @@ export async function bootEngine({ bus } = {}) {
     if(availabilityCommitted||!matchStarted||!liveMatchGame)return;
     const userDisciplineLines=[];
     const userOpponent=liveMatchGame.home===userClub?liveMatchGame.away:liveMatchGame.home;
-    [['home',liveMatchGame.home],['away',liveMatchGame.away]].forEach(([side,clubName])=>{
+    const opponentClub=liveMatchGame.home===userClub?liveMatchGame.away:liveMatchGame.home;
+    [['home',userClub],['away',opponentClub]].forEach(([side,clubName])=>{
       const club=clubs[clubName];
-      matchDiscipline[side].forEach(entry=>userDisciplineLines.push(...applyDisciplineToPlayer(club.roster.find(player=>player.name===entry.name),entry,currentRound,clubName)));
+      matchDiscipline[side].forEach(entry=>userDisciplineLines.push(...applyDisciplineToPlayer(club.roster.find(player=>player.name===entry.name),entry,currentRound,clubName,liveMatchGame)));
       const entries=[...liveMinutesPlayed[side].entries()].filter(([,mins])=>mins>0).map(([name,mins])=>({name,minutes:mins,started:liveOpeningLineup[side].includes(name)}));
       applyMatchWorkload(clubName,entries,tacticFor(side));
     });
@@ -2145,14 +2303,14 @@ export async function bootEngine({ bus } = {}) {
     if(game.fatigueAfter){
       [['home',game.home],['away',game.away]].forEach(([side,clubName])=>Object.entries(game.fatigueAfter[side]||{}).forEach(([playerName,value])=>{const player=clubs[clubName].roster.find(candidate=>candidate.name===playerName);if(player)player.fatigue=clamp(value,0,100);}));
     }
-    applyMatchAvailability(game);
+    applyMatchAvailability(game,game.fixture||game);
   };
   const applySecondaryResult=(game,competition)=>{
     const homeRow=competition.standings.find(row=>row.club===game.home),awayRow=competition.standings.find(row=>row.club===game.away);if(!homeRow||!awayRow)return;
     homeRow.played++;awayRow.played++;homeRow.goalDiff+=game.homeGoals-game.awayGoals;awayRow.goalDiff+=game.awayGoals-game.homeGoals;
     if(game.homeGoals>game.awayGoals){homeRow.wins++;awayRow.losses++;homeRow.points+=3;}else if(game.homeGoals<game.awayGoals){awayRow.wins++;homeRow.losses++;awayRow.points+=3;}else{homeRow.draws++;awayRow.draws++;homeRow.points++;awayRow.points++;}
     if(game.fatigueAfter)[['home',game.home],['away',game.away]].forEach(([side,clubName])=>Object.entries(game.fatigueAfter[side]||{}).forEach(([playerName,value])=>{const player=clubs[clubName].roster.find(candidate=>candidate.name===playerName);if(player)player.fatigue=clamp(value,0,100);}));
-    applyMatchAvailability(game);
+    applyMatchAvailability(game,game.fixture||game);
   };
   const simulateNationalRound=()=>Object.keys(nationalCompetitions).filter(division=>division!==userDivision).forEach(division=>{const competition=nationalCompetitions[division],fixtures=competition.fixtures[currentRound-1]||[];if(!fixtures.length)return;const previewKey=`${division}-${currentRound}`,results=roundPreviewResults[previewKey]||fixtures.map(game=>simulateRoundMatch(game.home,game.away));results.forEach(recordGameLeaders);if(division!=='D'||currentRound<=10)results.forEach(game=>applySecondaryResult(game,competition));competition.standings.sort((a,b)=>b.points-a.points||b.goalDiff-a.goalDiff||b.wins-a.wins);competition.standings.forEach((row,index)=>clubs[row.club].position=index+1);competitionRoundHistory[division].push({round:currentRound,games:results.map(game=>({home:game.home,away:game.away,homeGoals:game.homeGoals,awayGoals:game.awayGoals,data:game.data,goals:game.goals}))});});
   const dKnockout=nationalCompetitions.D.knockout;
@@ -2188,7 +2346,7 @@ export async function bootEngine({ bus } = {}) {
     onStartNextSeason:()=>{
       if(!pendingDivisionTeams||!savedNewGame)return;
       skipPersistOnUnload=true;
-      const nextSave={...savedNewGame,division:pendingUserDivision,divisionTeams:pendingDivisionTeams,userRoster:clubs[userClub].roster.map(player=>({...player,fatigue:100})),nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:nationalRankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},season:(savedNewGame.season||2026)+1,createdAt:new Date().toISOString(),version:4};
+      const nextSave={...savedNewGame,division:pendingUserDivision,divisionTeams:pendingDivisionTeams,userRoster:clubs[userClub].roster.map(player=>({...player,fatigue:100})),clubStatus:{...savedNewGame.clubStatus,budget:clubs[userClub].budget??savedNewGame.clubStatus?.budget??initialBudget(pendingUserDivision)},nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:nationalRankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},season:(savedNewGame.season||2026)+1,createdAt:new Date().toISOString(),version:4};
       writeJson(SAVE_KEYS.career,nextSave);
       clearSeasonSave();
       pendingDivisionTeams=null;
@@ -2213,6 +2371,12 @@ export async function bootEngine({ bus } = {}) {
       :`${userClub} segue na Série ${pendingUserDivision} na próxima temporada.`;
     const idleNote=idleSeasonWasSimulated?` Sem jogos restantes do clube — o calendário nacional de ${careerSeason} foi simulado até o fim.`: '';
     const userStatus=userPromoted?'promoted':userRelegated?'relegated':'neutral';
+    const position=displayedClubPosition(userClub);
+    const leagueChampion=champions[userDivision];
+    const prize=computeSeasonPrize({division:userDivision,position,totalTeams:divisionTeams[userDivision]?.length||20,champion:leagueChampion,cupChampion:champions.CUP,promoted:userPromoted,userClub});
+    const userClubState=clubs[userClub];
+    userClubState.budget=(userClubState.budget??initialBudget(userDivision))+prize.total;
+    const budgetAfter=userClubState.budget;
     const leadersByDivision={
       A:{scorers:leadersFor('A','scorers'),assistants:leadersFor('A','assists')},
       B:{scorers:leadersFor('B','scorers'),assistants:leadersFor('B','assists')},
@@ -2220,7 +2384,9 @@ export async function bootEngine({ bus } = {}) {
       D:{scorers:leadersFor('D','scorers'),assistants:leadersFor('D','assists')},
       CUP:{scorers:championshipLeadersFor('CUP','scorers'),assistants:championshipLeadersFor('CUP','assists')},
     };
-    pushSeasonEndBrief();
+    pushSeasonEndBrief({prizeTotal:prize.total,budgetAfter});
+    persistSeason();
+    renderClubBudget();
     seasonSummary.open({
       userClub,
       careerSeason,
@@ -2229,6 +2395,8 @@ export async function bootEngine({ bus } = {}) {
       userStatus,
       champions,
       leadersByDivision,
+      seasonRewards:{total:prize.total,lines:prize.lines,budgetAfter},
+      formatBudget,
       movements:[
         {title:'Série B → Série A',clubs:promB,type:'promote'},
         {title:'Série A → Série B',clubs:relA,type:'relegate'},
@@ -2265,6 +2433,7 @@ export async function bootEngine({ bus } = {}) {
         // depois entram em vigor as novas suspensões e lesões deste jogo.
         const roundParticipants=new Set(Object.values(nationalCompetitions).flatMap(competition=>(competition.fixtures[currentRound-1]||[]).flatMap(game=>[game.home,game.away])));
         const restDays=intervalDaysForRoundAdvance();
+        serveDisciplineSuspensionsForRound();
         serveAvailability(restDays,roundParticipants);
         commitLiveAvailability();
         const completedGames=simulateRoundResults(true);
@@ -2576,15 +2745,17 @@ export async function bootEngine({ bus } = {}) {
       log(message,'foul');
       if(directFreeKick) takeFreeKick(otherSide,attacking,defending);
     }else{
-    // Vermelho direto só em falta muito grave; dois amarelos sempre geram expulsão.
+    // Vermelho direto: punição de 1 a 3 jogos conforme gravidade da falta.
     const directRed=threat>.90 && type.includes('contra') && Math.random()<.012;
     if(!directRed){ state.yellow++; s.yellow++; }
     if(directRed || state.yellow>=2){
-      state.red=true;state.dismissal=directRed?'direct':'secondYellow'; s.red++;
+      const dismissalType=directRed?directRedDismissalType({threat,type,zone}):'secondYellow';
+      state.red=true;state.dismissal=dismissalType; s.red++;
       disciplineEvents++;
-      message+=directRed ? ' Cartão vermelho direto.' : ' Segundo amarelo: cartão vermelho.';
+      const gamesLabel=directRed?` Suspenso por ${directRedSuspensionGames({threat,type,zone})} jogo${directRedSuspensionGames({threat,type,zone})===1?'':'s'}.`:'';
+      message+=directRed ? ` Cartão vermelho direto.${gamesLabel}` : ' Segundo amarelo: cartão vermelho.';
       log(message,'red');
-      matchDiscipline[side].set(fouler,{name:fouler,yellow:state.dismissal?0:state.yellow,dismissal:state.dismissal||null});
+      matchDiscipline[side].set(fouler,{name:fouler,yellow:0,dismissal:state.dismissal,redContext:directRed?{threat,type,zone}:null});
       const attackerPlayer=actorData(otherSide,attacker),foulerPlayer=actorData(side,fouler);
       const foulVictim=pickInjuryVictim({eventPhase:details.phase||'duel',contact:true,intensity:clamp(threat,.45,.9),phase:details.phase,zone:details.phase==='final'?'entrada da área':undefined},attackerPlayer,foulerPlayer);
       if(side==='home'){
@@ -2643,7 +2814,7 @@ export async function bootEngine({ bus } = {}) {
     $('#matchActions').classList.add('hidden');
     $('#stats').classList.toggle('hidden',preMatchPreparation);
     $('#pausePanel').classList.remove('hidden');
-    syncTactics(); drawBoard(); renderSubstitutionControls();
+    syncTactics(); drawBoard(); renderSubstitutionControls(); renderTacticalConfrontation({context:'pause'});
     if(!preMatchPreparation) renderStats();
     updateLiveMatchClock();
   };
@@ -2870,10 +3041,12 @@ export async function bootEngine({ bus } = {}) {
     pushMatchDayBrief(nextEntry?.game);
     liveMatchGame=nextEntry?.game||nextUserGame;
     renderLiveMatchHeader(liveMatchGame);
+    const matchCompKey=fixtureCompetitionKey(liveMatchGame);
+    serveCompetitionSuspensions(clubs,new Set([userClub,matchClub().name]),matchCompKey,currentRound);
     // Após SAIR, a partida é consolidada e o calendário avança para o dia seguinte.
     if(reopenMatchWindow()) return;
     orderRosterForFormation(squad,formation);orderRosterForFormation(matchClub().roster,matchClub().formation);
-    matchStarted=true; matchFinished=false; preMatchPreparation=true; minute=0;home=0;away=0;pauses=0;halftimeShown=false;pendingPenalty=null;shootoutState=null;disciplineEvents=0;substitutions=0;awaySubstitutions=0;awaySubWindows=0;substitutedOut=new Set();roundResults=null;roundResultMessagePushed=false;postMatchMedicalQueue=[];matchDiscipline={home:new Map(),away:new Map()};liveInjuries={home:[],away:[]};liveDeferredInjuries={home:[],away:[]};liveOpeningLineup={home:starters().map(player=>player.name),away:matchClub().roster.slice(0,11).map(player=>player.name)};liveMinutesPlayed={home:new Map(starters().map(player=>[player.name,0])),away:new Map(matchClub().roster.slice(0,11).map(player=>[player.name,0]))};availabilityCommitted=false;liveDayMatchSnapshots=null;matchFactors={home:contextFactor({...seasonContext.home,position:clubs[userClub].position,isHome:nextUserGame?.home===userClub}),away:contextFactor({...seasonContext.away,position:matchClub().position,isHome:nextUserGame?.home!==userClub})};cards={home:starters().map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false})),away:matchClub().roster.slice(0,11).map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false}))};goals={home:[],away:[]};stats={home:blank(),away:blank()};score();timeline.innerHTML="<p>PRÉ-JOGO · Aguardando a confirmação do treinador.</p>";$('#matchActions').innerHTML='<button id="pauseMatch">Ⅱ PAUSA TÉCNICA <small id="pauseCounter">0/3</small></button><button id="liveStats">ESTATÍSTICAS AO VIVO</button><button id="liveOpponent">VER ADVERSÁRIO</button>';bindLiveActions();$('#pauseCounter').textContent='0/3';$('#matchStatus').textContent='Organize sua equipe antes de iniciar a partida.';modal.classList.remove('hidden');$('#penaltyChoice').classList.add('hidden');$('#shootoutPanel').classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');updateLiveMatchClock();openPreparation('PRÉ-JOGO');
+    matchStarted=true; matchFinished=false; preMatchPreparation=true; minute=0;home=0;away=0;pauses=0;halftimeShown=false;pendingPenalty=null;shootoutState=null;disciplineEvents=0;substitutions=0;awaySubstitutions=0;awaySubWindows=0;substitutedOut=new Set();roundResults=null;roundResultMessagePushed=false;postMatchMedicalQueue=[];matchDiscipline={home:new Map(),away:new Map()};liveInjuries={home:[],away:[]};liveDeferredInjuries={home:[],away:[]};liveOpeningLineup={home:starters().map(player=>player.name),away:matchClub().roster.slice(0,11).map(player=>player.name)};liveMinutesPlayed={home:new Map(starters().map(player=>[player.name,0])),away:new Map(matchClub().roster.slice(0,11).map(player=>[player.name,0]))};availabilityCommitted=false;liveDayMatchSnapshots=null;preMatchTacticSnapshot=null;matchFactors={home:contextFactor({...seasonContext.home,position:clubs[userClub].position,isHome:nextUserGame?.home===userClub}),away:contextFactor({...seasonContext.away,position:matchClub().position,isHome:nextUserGame?.home!==userClub})};cards={home:starters().map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false})),away:matchClub().roster.slice(0,11).map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false}))};goals={home:[],away:[]};stats={home:blank(),away:blank()};score();timeline.innerHTML="<p>PRÉ-JOGO · Aguardando a confirmação do treinador.</p>";$('#matchActions').innerHTML='<button id="pauseMatch">Ⅱ PAUSA TÉCNICA <small id="pauseCounter">0/3</small></button><button id="liveStats">ESTATÍSTICAS AO VIVO</button><button id="liveOpponent">VER ADVERSÁRIO</button>';bindLiveActions();$('#pauseCounter').textContent='0/3';$('#matchStatus').textContent='Organize sua equipe antes de iniciar a partida.';modal.classList.remove('hidden');$('#penaltyChoice').classList.add('hidden');$('#shootoutPanel').classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');updateLiveMatchClock();openPreparation('PRÉ-JOGO');
   });
   onClick('#simulateRemainder',()=>simulateNonHumanSeasonRemainder());
   onClick('#closeMatch',()=>{
@@ -2888,7 +3061,14 @@ export async function bootEngine({ bus } = {}) {
     $('#stats').classList.add('hidden');
     $('#matchActions').classList.remove('hidden');
     $('#matchStatus').textContent='A partida está em andamento…';
-    if(startingMatch){liveClockSeconds=0;liveDayMatchSnapshots=null;ensureLiveDayMatches();applyPreMatchTraining();renderRoster();const venue=matchVenueFor(liveMatchGame?.home||userClub);timeline.innerHTML=`<p>0' · A bola está rolando no ${venue.name}!</p>`; }
+    if(startingMatch){
+      liveClockSeconds=0;liveDayMatchSnapshots=null;ensureLiveDayMatches();applyPreMatchTraining();renderRoster();
+      preMatchTacticSnapshot={...(tactics?.getTacticalValues?.()??DEFAULT_USER_TACTICS)};
+      const venue=matchVenueFor(liveMatchGame?.home||userClub);
+      timeline.innerHTML=`<p>0' · A bola está rolando no ${venue.name}!</p>`;
+      const kickoff=tacticalKickoffMessage(preMatchTacticSnapshot);
+      if(kickoff)log(kickoff,'tactic');
+    }
     updateLiveMatchClock();
     startMatchClock();
   });

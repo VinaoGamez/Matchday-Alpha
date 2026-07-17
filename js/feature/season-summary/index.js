@@ -424,6 +424,43 @@ const CSS = `
   font-weight:700;
   line-height:1.25;
 }
+.season-rewards{
+  display:grid;
+  gap:10px;
+  padding:12px;
+  border:1px solid #28505b;
+  border-radius:10px;
+  background:#0b1a22;
+}
+.season-rewards-total{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding-bottom:10px;
+  border-bottom:1px solid #234b55;
+}
+.season-rewards-total strong{
+  color:#b6ff38;
+  font:700 24px Barlow Condensed;
+}
+.season-rewards-total span{
+  color:#9eb6b8;
+  font-size:11px;
+}
+.season-reward-line{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-size:10px;
+  color:#9eb6b8;
+}
+.season-reward-line b{
+  color:#63d9ff;
+  font-weight:700;
+  white-space:nowrap;
+}
+.season-summary-section.hidden{display:none!important}
 .season-summary-actions{
   display:flex;
   justify-content:flex-end;
@@ -484,6 +521,10 @@ const MODAL_HTML = `
     <section class="season-summary-section">
       <header><h3>Líderes de estatística</h3><small>Artilheiro e assistências por competição</small></header>
       <div id="seasonLeaders" class="season-leaders-grid"></div>
+    </section>
+    <section class="season-summary-section" id="seasonRewardsSection">
+      <header><h3>Premiação da temporada</h3><small>Orçamento do clube atualizado para a próxima temporada</small></header>
+      <div id="seasonRewards" class="season-rewards"></div>
     </section>
     <section class="season-summary-section">
       <header><h3>Acessos e rebaixamentos</h3><small>Movimentos para a próxima temporada</small></header>
@@ -588,6 +629,17 @@ export function createSeasonSummaryFeature(deps) {
     return `<article class="season-movement-card ${type}"><h4><i>${icon}</i>${title}</h4><div class="season-movement-list">${items}</div></article>`;
   };
 
+  const rewardsCard = ({ total, lines, budgetAfter, formatBudget }) => {
+    if (!total) {
+      return '<div class="season-rewards"><div class="season-rewards-total"><span>Premiação</span><strong>—</strong></div><p style="margin:0;color:#9eb6b8;font-size:11px">Nenhuma premiação registrada nesta temporada.</p></div>';
+    }
+    return `<div class="season-rewards">
+      <div class="season-rewards-total"><span>Total creditado</span><strong>+ ${formatBudget(total)}</strong></div>
+      ${lines.map(line => `<div class="season-reward-line"><span>${line.label}</span><b>+ ${formatBudget(line.amount)}</b></div>`).join('')}
+      <div class="season-reward-line" style="margin-top:6px;padding-top:8px;border-top:1px solid #234b55"><span>Orçamento do clube</span><b>${formatBudget(budgetAfter)}</b></div>
+    </div>`;
+  };
+
   const open = ({
     userClub,
     careerSeason,
@@ -598,6 +650,8 @@ export function createSeasonSummaryFeature(deps) {
     leadersByDivision,
     movements,
     leadText,
+    seasonRewards = null,
+    formatBudget = value => `R$ ${value}`,
   }) => {
     injectDom();
     $('#seasonSummaryTitle').textContent = `Balanço da temporada ${careerSeason}`;
@@ -616,6 +670,17 @@ export function createSeasonSummaryFeature(deps) {
       const leaders = leadersByDivision[key] || { scorers: [], assistants: [] };
       return leadersCard(key, label, leaders.scorers, leaders.assistants);
     }).join('');
+    const rewardsEl = $('#seasonRewards');
+    const rewardsSection = $('#seasonRewardsSection');
+    if (rewardsEl && rewardsSection) {
+      if (seasonRewards?.total) {
+        rewardsSection.classList.remove('hidden');
+        rewardsEl.innerHTML = rewardsCard({ ...seasonRewards, formatBudget });
+      } else {
+        rewardsSection.classList.add('hidden');
+        rewardsEl.innerHTML = '';
+      }
+    }
     $('#seasonMovements').innerHTML = movements
       .map(({ title, clubs, type }) => movementCard(title, clubs, userClub, type))
       .join('');

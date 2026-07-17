@@ -412,8 +412,7 @@ export function createInjuryEngine(deps) {
     }
     finalizeInjuryRecovery(player);
   };
-  const YELLOW_SUSPENSION_LIMIT=2;
-  const playerUnavailable=player=>!!(injuryInAcutePhase(player?.injury)||player?.discipline?.suspensionMatches>0);
+  const playerUnavailable=player=>!!injuryInAcutePhase(player?.injury);
   const playerStarterBlocked=player=>playerUnavailable(player)||playerInRestrictedReturn(player);
   const availabilityLabel=player=>workloadLabel(player)||'';
 
@@ -483,7 +482,6 @@ export function createInjuryEngine(deps) {
     beginRestrictedReturn,
     advanceRestrictedRehab,
     clearInjuryFully,
-    YELLOW_SUSPENSION_LIMIT,
     playerUnavailable,
     playerStarterBlocked,
     availabilityLabel,

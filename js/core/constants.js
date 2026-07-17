@@ -1,5 +1,5 @@
 /** Build e versões de save — contrato estável entre módulos. */
-export const BUILD_VERSION = 'alpha-02-tester-9';
+export const BUILD_VERSION = 'alpha-02-tester-10';
 
 export const SAVE_KEYS = {
   career: 'matchday-new-game',
@@ -27,6 +27,8 @@ export const MODULE_VERSIONS = {
   dashboard: 1,
   tactics: 1,
   seasonSummary: 1,
+  discipline: 1,
+  economy: 1,
 };
 
 /** Flags para builds de testers — evoluir sem quebrar fluxo congelado. */

@@ -7,25 +7,48 @@ export const outfield = value => value || '—';
  * Badges de status (cartões, lesão, suspensão) para células de jogador.
  * @param {object} injuryHelpers — funções do motor de lesões
  */
-export function createPlayerCells({ injuryInAcutePhase, injuryInRestrictedPhase, injurySeverityLabel, YELLOW_SUSPENSION_LIMIT }) {
+export function createPlayerCells({
+  injuryInAcutePhase,
+  injuryInRestrictedPhase,
+  injurySeverityLabel,
+  YELLOW_SUSPENSION_LIMIT,
+  getYellowAccumulation,
+  activeSuspensions,
+  disciplineBadgeCompetitionKeys,
+  competitionLabel,
+  userLeagueDisciplineKey,
+}) {
   const playerStatusBadges = (player, liveState = null) => {
     const badges = [];
     const limit = YELLOW_SUSPENSION_LIMIT;
-    const pushYellow = count => {
-      for (let index = 0; index < count; index++) {
-        badges.push('<i class="player-badge player-badge-yellow" aria-hidden="true" title="Cartão amarelo"></i>');
+    const pushYellow = (count, title) => {
+      const total = clamp(Number(count) || 0, 0, limit);
+      for (let index = 0; index < total; index++) {
+        badges.push(`<i class="player-badge player-badge-yellow" aria-hidden="true" title="${title || 'Cartão amarelo'}"></i>`);
       }
     };
     if (liveState) {
       if (liveState.red) badges.push('<i class="player-badge player-badge-red" aria-hidden="true" title="Cartão vermelho"></i>');
-      else if (liveState.yellow) pushYellow(clamp(Number(liveState.yellow) || 1, 1, limit));
+      else if (liveState.yellow) pushYellow(liveState.yellow, 'Cartão amarelo nesta partida');
       if (liveState.injured) badges.push('<i class="player-badge player-badge-injury severe" aria-hidden="true" title="Lesionado"></i>');
       else if (liveState.playThroughRisk) badges.push('<i class="player-badge player-badge-injury mild" aria-hidden="true" title="Incômodo físico"></i>');
     } else {
       const discipline = player.discipline || {};
-      pushYellow(clamp(Number(discipline.yellowAccumulation) || 0, 0, limit));
-      if (Number(discipline.redCards) > 0) badges.push('<i class="player-badge player-badge-red" aria-hidden="true" title="Cartão vermelho"></i>');
-      else if (Number(discipline.suspensionMatches) > 0) badges.push('<i class="player-badge player-badge-suspended" aria-hidden="true" title="Suspenso"></i>');
+      const leagueKey = userLeagueDisciplineKey?.() || 'LEAGUE:A';
+      const compKeys = disciplineBadgeCompetitionKeys?.(discipline, { leagueKey, includeCup: true }) || [leagueKey];
+      compKeys.forEach(key => {
+        const count = getYellowAccumulation?.(discipline, key) || 0;
+        if (count > 0) pushYellow(count, `${count}/${limit} amarelos · ${competitionLabel?.(key) || key}`);
+      });
+      const suspensions = activeSuspensions?.(discipline) || [];
+      if (suspensions.length) {
+        const summary = suspensions
+          .map(entry => `${entry.gamesRemaining} jogo${entry.gamesRemaining === 1 ? '' : 's'} · ${competitionLabel?.(entry.competitionKey) || entry.competitionKey}`)
+          .join('; ');
+        badges.push(`<i class="player-badge player-badge-suspended" aria-hidden="true" title="Suspenso: ${summary}"></i>`);
+      } else if (Number(discipline.redCards) > 0) {
+        badges.push('<i class="player-badge player-badge-red" aria-hidden="true" title="Histórico de expulsão"></i>');
+      }
       const injury = player.injury;
       if (injury && (injuryInAcutePhase(injury) || injuryInRestrictedPhase(injury))) {
         const grade = injury.grade ?? (injury.severity === 'Grave' ? 3 : injury.severity === 'Mediana' ? 2 : 1);

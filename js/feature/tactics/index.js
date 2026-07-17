@@ -4,12 +4,7 @@ import { clamp, on, onClick } from '../../ui/dom.js';
 const TACTIC_SLIDER_KEYS = ['mentality', 'possession', 'press', 'offsideLine'];
 const DEFAULT_USER_TACTICS = { mentality: 50, possession: 50, press: 50, offsideLine: 50 };
 
-const tacticReadout = {
-  mentality: value => (value < 35 ? 'Defensiva' : value > 65 ? 'Ofensiva' : 'Equilibrada'),
-  possession: value => (value < 35 ? 'Contra-ataque' : value > 65 ? 'Posse de bola' : 'Misto'),
-  press: value => (value < 35 ? 'Baixa' : value > 65 ? 'Alta' : 'Média'),
-  offsideLine: value => (value < 35 ? 'Baixa' : value > 65 ? 'Alta' : 'Normal'),
-};
+import { TACTIC_READOUT as tacticReadout } from './tactical-confrontation.js';
 
 const tacticControls = {
   mentality: [
@@ -261,6 +256,7 @@ export function createTacticsFeature(deps) {
     $('#formationDescription').textContent = `${formationNotes[formation]} Titulares sugeridos por encaixe, atributos e condição física.`;
     $$('#formations button').forEach(b => b.classList.toggle('selected', b.textContent === formation));
     renderTacticRoster();
+    deps.onTacticsChanged?.();
     enableBoardRepositioning($('#pitchPlayers'), '.pitch-player.repositionable');
     if (!$('#pausePanel').classList.contains('hidden')) drawBoard();
   };
@@ -390,6 +386,7 @@ export function createTacticsFeature(deps) {
     }
     renderRoster();
     draw();
+    deps.onTacticsChanged?.();
     $('#formationDescription').textContent = `Sugestão aplicada: ${formationNotes[plan.formation]} Escalação e sliders ajustados com base no seu elenco.`;
     if (getHasCareer()) persistSeason();
   };
@@ -568,6 +565,7 @@ export function createTacticsFeature(deps) {
         on(sliderId, 'input', event => {
           tacticalValues[key] = Number(event.target.value);
           syncTactics();
+          deps.onTacticsChanged?.();
           if (getHasCareer()) persistSeason();
         });
       })
