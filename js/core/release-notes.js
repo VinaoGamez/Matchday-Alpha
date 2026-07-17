@@ -16,6 +16,7 @@ export const RELEASE_NOTES = [
         label: 'Novidades',
         items: [
           'Botão "Partidas em Andamento" mostra placares parciais da rodada na pausa ao vivo.',
+          'Partidas em andamento listam jogos de todas as divisões e da Copa, com filtros por competição.',
           'Prancheta tática redesenhada: marcadores menores, sobrenomes e badges de status.',
         ],
       },
