@@ -60,7 +60,10 @@ export function createTacticsFeature(deps) {
     renderStats,
     log,
     getLiveState,
+    commitLiveSubstitution,
   } = deps;
+
+  const freshStarterCard = () => ({ yellow: 0, red: false, dismissal: null, injured: false, playThroughRisk: false });
 
   let tacticalValues = { ...DEFAULT_USER_TACTICS };
   let persistSeason = () => {};
@@ -237,7 +240,7 @@ export function createTacticsFeature(deps) {
         const title = vacant
           ? 'Arraste um titular para esta vaga'
           : `${squad[i].name}${state.yellow ? ' · Advertido' : ''}${injured ? ' · Lesionado' : atRisk ? ' · Incômodo físico' : ''} · ${Math.round(energy)}% energia`;
-        return `<div class="board-player ${vacant ? 'vacant vacancy-target' : ''} ${canReposition ? 'repositionable' : ''}" data-slot="${i}" draggable="${canReposition}" title="${title}" style="left:${p[0]}%;top:${displayTop}%"><i style="--energy:${energy}%"><span>${vacant ? '×' : squad[i].number}</span></i>${boardPlayerBadges(state)}<small>${label}</small></div>`;
+        return `<div class="board-player ${vacant ? 'vacant vacancy-target' : ''} ${canReposition ? 'repositionable' : ''}" data-slot="${i}" draggable="${canReposition}" title="${title}" style="left:${p[0]}%;top:${displayTop}%"><i style="--energy:${energy}%"><span>${vacant ? '×' : squad[i].number}</span></i>${boardPlayerBadges({ yellow: state.yellow, injured: state.injured, atRisk: state.playThroughRisk })}<small>${label}</small></div>`;
       })
       .join('');
     $$('#pauseFormations button').forEach(b => b.classList.toggle('selected', b.textContent === formation));
@@ -448,43 +451,45 @@ export function createTacticsFeature(deps) {
     const live = getLiveState();
     const squad = getSquad();
     const positionAssignments = getPositionAssignments();
-    const { cards, matchStarted, preMatchPreparation, substitutions, substitutedOut, liveDeferredInjuries, liveMinutesPlayed } = live;
+    const { cards, matchStarted, preMatchPreparation, substitutions, liveDeferredInjuries, liveMinutesPlayed } = live;
     const userClub = getUserClub();
     const outIndex = Number($('#substitutionOut').value);
     const incomingName = $('#substitutionIn').value;
-    if (!matchStarted || (!preMatchPreparation && substitutions >= 5) || !incomingName || cards.home[outIndex]?.red) return;
+    if (!matchStarted || Number.isNaN(outIndex) || (!preMatchPreparation && substitutions >= 5) || !incomingName || cards.home[outIndex]?.red) return;
     const incomingIndex = squad.findIndex(player => player.name === incomingName);
     if (incomingIndex < 11 || playerUnavailable(squad[incomingIndex])) return;
     const outgoing = squad[outIndex];
     const incoming = squad[incomingIndex];
     const expectedRole = positionAssignments[outIndex];
     const improvised = positionMismatch(incoming, expectedRole) > 0;
-    if (cards.home[outIndex]?.playThroughRisk) {
+    const wasInjured = !!cards.home[outIndex]?.injured;
+    const wasAtRisk = !!cards.home[outIndex]?.playThroughRisk;
+    if (wasAtRisk) {
       const entry = liveDeferredInjuries.home.find(item => item.name === outgoing.name);
       if (entry) {
         entry.preemptiveSubstitution = true;
         entry.keptPlaying = false;
       }
-      cards.home[outIndex].playThroughRisk = false;
     }
     liveMinutesPlayed.home.set(incoming.name, liveMinutesPlayed.home.get(incoming.name) ?? 0);
     [squad[outIndex], squad[incomingIndex]] = [incoming, outgoing];
+    cards.home[outIndex] = freshStarterCard();
     if (preMatchPreparation) {
-      cards.home[outIndex] = { yellow: 0, red: false };
       renderRoster();
       draw();
       drawBoard();
       renderSubstitutionControls();
       return;
     }
-    cards.home[outIndex] = { yellow: 0, red: false };
-    substitutions++;
-    substitutedOut.add(outgoing.name);
+    commitLiveSubstitution?.(outgoing.name, { wasInjured, wasAtRisk });
     log(
       `Substituição no ${userClub}: sai ${outgoing.name}, entra ${incoming.name}${improvised ? ` (${incoming.pos} adaptado para ${expectedRole}).` : ''}.`,
       'substitution'
     );
+    $('#substitutionOut').value = '';
+    $('#substitutionIn').value = '';
     renderRoster();
+    renderTacticRoster();
     draw();
     drawBoard();
     renderSubstitutionControls();

@@ -1700,6 +1700,15 @@ export async function bootEngine({ bus } = {}) {
     renderStats,
     log,
     getLiveState:()=>({cards,matchStarted,matchFinished,preMatchPreparation,substitutions,substitutedOut,liveDeferredInjuries,liveMinutesPlayed,positionAssignments,activePreparationTitle}),
+    commitLiveSubstitution:(outgoingName,{wasInjured=false,wasAtRisk=false}={})=>{
+      substitutions++;
+      substitutedOut.add(outgoingName);
+      if(wasInjured)liveInjuries.home=liveInjuries.home.filter(entry=>entry.name!==outgoingName);
+      const injuredStillOnField=cards.home.some(card=>card?.injured);
+      const atRiskStillOnField=cards.home.some(card=>card?.playThroughRisk);
+      if(activePreparationTitle==='LESÃO'&&wasInjured&&!injuredStillOnField)$('#matchStatus').textContent='Substituição realizada. Retome a partida quando estiver pronto.';
+      else if(activePreparationTitle==='ALERTA MÉDICO'&&wasAtRisk&&!atRiskStillOnField)$('#matchStatus').textContent='Substituição realizada. Retome a partida quando estiver pronto.';
+    },
     tacticForAway:()=>{
       const club=matchClub();
       return{formation:club.formation,mentality:club.mentality==='Defensiva'?25:club.mentality==='Ofensiva'?75:50,possession:club.style==='Posse de bola'?78:club.style==='Contra-ataque'?22:50,press:club.style==='Pressão alta'?82:club.mentality==='Defensiva'?35:55,offsideLine:50};
