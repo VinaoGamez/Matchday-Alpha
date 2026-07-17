@@ -23,8 +23,12 @@ js/
     router.js
   feature/
     messages/index.js
+    shared/player-cells.js
+    dashboard/index.js
+    calendar-view/index.js
+    tactics/index.js
   legacy/
-    engine.js             ← orquestrador (~2.100 linhas)
+    engine.js             ← orquestrador (~3.000 linhas)
 ```
 
 ## Regras
@@ -40,7 +44,7 @@ js/
 |------|--------|--------|
 | A | Vite, save, dom, router, messages | **Concluída** |
 | B | injury, match-tuning, match-core, match-sim, match-live | **Concluída** |
-| C | dashboard, tactics, calendar-view | Pendente |
+| C | dashboard, tactics, calendar-view, player-cells | **Concluída** |
 | D | build testers, guia, feedback | Pendente |
 
 ## Comandos
@@ -61,3 +65,5 @@ npm run build
 ```
 
 Distribuir a pasta `dist/` ou zipar. Links apontam para `home.html`.
+
+Tester hardened (bundle): http://127.0.0.1:5081/home.html
