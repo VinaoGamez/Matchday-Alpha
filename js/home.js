@@ -1,6 +1,9 @@
 import './security/tester-hardening.js';
+import { BUILD_VERSION } from './core/constants.js';
+import { showUpdateAlertIfNeeded } from './ui/update-alert.js';
 
 (() => {
+  showUpdateAlertIfNeeded(BUILD_VERSION);
   const $ = selector => document.querySelector(selector);
 
   const formatUpdateTime = value => {

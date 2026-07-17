@@ -604,19 +604,25 @@ export async function bootEngine({ bus } = {}) {
   const renderDashboardMessagesFeed=messages.renderDashboardMessagesFeed.bind(messages);
   const updateMessageBadge=messages.updateMessageBadge.bind(messages);
   const applyDisciplineToPlayer=(player,card,round=currentRound,clubName=null)=>{
-    if(!player||!card)return;
+    if(!player||!card)return [];
     const discipline=player.discipline||(player.discipline={yellowAccumulation:0,suspensionMatches:0,redCards:0});
     const owner=clubName||Object.entries(clubs).find(([,club])=>club.roster.includes(player))?.[0];
     const opponent=owner===userClub&&liveMatchGame?(liveMatchGame.home===userClub?liveMatchGame.away:liveMatchGame.home):null;
     const matchCtx=opponent?` na partida contra ${opponent}`:'';
+    const lines=[];
     if(card.dismissal){discipline.suspensionMatches+=1;discipline.redCards+=1;discipline.issuedRound=round;
-      if(owner===userClub)pushMessage({category:'discipline',type:'red',title:'Expulsão disciplinar',body:`${player.name} recebeu cartão vermelho${matchCtx} por ${card.dismissal==='second-yellow'?'segundo amarelo na mesma partida':'falta grave'} e ficará fora da próxima partida.`,round});
-      return;}
+      if(owner===userClub)lines.push(`${player.name} recebeu cartão vermelho${matchCtx} por ${card.dismissal==='second-yellow'?'segundo amarelo na mesma partida':'falta grave'} e ficará fora da próxima partida.`);
+      return lines;}
     if(card.yellow){discipline.yellowAccumulation+=card.yellow;
-      if(owner===userClub&&card.yellow)pushMessage({category:'discipline',type:'yellow',title:'Cartão amarelo',body:`${player.name} foi advertido${matchCtx} (${discipline.yellowAccumulation}/${YELLOW_SUSPENSION_LIMIT} acumulados na temporada).`,round});
+      if(owner===userClub&&card.yellow)lines.push(`${player.name} foi advertido${matchCtx} (${discipline.yellowAccumulation}/${YELLOW_SUSPENSION_LIMIT} acumulados na temporada).`);
       if(discipline.yellowAccumulation>=YELLOW_SUSPENSION_LIMIT){discipline.yellowAccumulation-=YELLOW_SUSPENSION_LIMIT;discipline.suspensionMatches+=1;discipline.issuedRound=round;
-      if(owner===userClub)pushMessage({category:'discipline',type:'yellow',title:'Suspensão por acúmulo',body:`${player.name} completou ${YELLOW_SUSPENSION_LIMIT} cartões amarelos${matchCtx} e está suspenso na próxima partida.`,round});
-    }}
+      if(owner===userClub)lines.push(`${player.name} completou ${YELLOW_SUSPENSION_LIMIT} cartões amarelos${matchCtx} e está suspenso na próxima partida.`);}
+    }
+    return lines;
+  };
+  const pushDisciplineDigest=(lines,round,contextLabel)=>{
+    if(!lines.length)return;
+    pushMessage({category:'discipline',type:'digest',title:`Disciplina · ${contextLabel}`,body:lines.map(line=>`• ${line}`).join('\n'),round,meta:{competition:'Disciplina'}});
   };
   const applyMatchWorkload=(clubName,entries,tactic)=>{
     if(!clubName||!entries?.length)return;
@@ -625,13 +631,19 @@ export async function bootEngine({ bus } = {}) {
   };
   const applyMatchAvailability=game=>{
     if(!game)return;
+    const userDisciplineLines=[];
+    const userOpponent=game.home===userClub?game.away:game.away===userClub?game.home:null;
     [['home',game.home],['away',game.away]].forEach(([side,clubName])=>{
       const club=clubs[clubName];if(!club)return;
       applyMatchWorkload(clubName,game.workload?.[side],game.tactics?.[side]||roundTactic(club));
-      (game.discipline?.[side]||[]).forEach(entry=>applyDisciplineToPlayer(club.roster.find(player=>player.name===entry.name),entry,currentRound,clubName));
+      (game.discipline?.[side]||[]).forEach(entry=>{
+        const lines=applyDisciplineToPlayer(club.roster.find(player=>player.name===entry.name),entry,currentRound,clubName);
+        if(clubName===userClub)userDisciplineLines.push(...lines);
+      });
       (game.injuries?.[side]||[]).forEach(entry=>{const player=club.roster.find(candidate=>candidate.name===entry.name);if(player&&!player.injury)assignPlayerInjury(player,entry.injury,currentRound,{club});});
       (game.deferredInjuries?.[side]||[]).forEach(entry=>{const player=club.roster.find(candidate=>candidate.name===entry.name);if(player&&!player.injury)applyDeferredInjuryDiagnosis(player,entry,club);});
     });
+    if(userDisciplineLines.length)pushDisciplineDigest(userDisciplineLines,currentRound,userOpponent?`vs ${userOpponent}`:`Rodada ${currentRound}`);
   };
   const serveAvailability=(days,participants=new Set(Object.keys(clubs)))=>Object.values(clubs).forEach(club=>club.roster.forEach(player=>{
     decayPlayerWorkload(player,days);
@@ -820,21 +832,16 @@ export async function bootEngine({ bus } = {}) {
   const formatDashboardDate=date=>date.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'}).replace('.','').toUpperCase();
   const setNextMatchMeta=(lines=[])=>{const el=$('#nextMatchMeta');if(!el)return;const classes=['match-meta-today','match-meta-next','match-meta-extra'];el.innerHTML=lines.filter(Boolean).map((line,index)=>`<span class="match-meta-line ${classes[index]||'match-meta-extra'}">${line}</span>`).join('');};
   const lastCompletedUserEntry=()=>userSchedule().filter(entry=>isFixtureCompleted(entry.game)).pop();
+  const firstPendingLeagueRound=()=>Math.max(1,userLeaguePlayed()+1);
   const nextLeagueUserEntry=()=>{
-    if(userDivision==='D'&&!userGroupStageComplete()){
-      for(let round=currentRound;round<=SERIE_D_GROUP_ROUNDS;round++){
-        const game=leagueUserGameForRound(round);
-        if(game&&!isFixtureCompleted(game))return {game,details:fixtureDetails(game)};
-      }
-      return null;
-    }
-    for(let round=currentRound;round<=championshipFixtures.length;round++){
+    const maxRound=userDivision==='D'&&!userGroupStageComplete()?SERIE_D_GROUP_ROUNDS:championshipFixtures.length;
+    for(let round=firstPendingLeagueRound();round<=maxRound;round++){
       const game=leagueUserGameForRound(round);
       if(game&&!isFixtureCompleted(game))return {game,details:fixtureDetails(game)};
     }
     return null;
   };
-  const nextPendingUserEntry=()=>nextLeagueUserEntry()||pendingUserSchedule()[0];
+  const nextPendingUserEntry=()=>pendingUserSchedule()[0]||nextLeagueUserEntry();
   const normalizeCalendarBeforeNextMatch=()=>{
     const next=nextPendingUserEntry();
     if(!next||isFixtureCompleted(next.game))return;
@@ -879,11 +886,7 @@ export async function bootEngine({ bus } = {}) {
   };
   let userUpcomingGames=[],nextUserGame=null;
   const refreshUserFixtures=()=>{
-    const leagueUpcoming=userDivision==='D'&&!userGroupStageComplete()
-      ?Array.from({length:3},(_,offset)=>leagueUserGameForRound(currentRound+offset)).filter(game=>game&&!isFixtureCompleted(game))
-      :championshipFixtures.slice(currentRound-1,currentRound+2).flat().filter(isUserFixture).filter(game=>!isFixtureCompleted(game));
-    const scheduleUpcoming=pendingUserSchedule().slice(0,3).map(entry=>entry.game);
-    userUpcomingGames=(leagueUpcoming.length?leagueUpcoming:scheduleUpcoming).slice(0,3);
+    userUpcomingGames=pendingUserSchedule().slice(0,3).map(entry=>entry.game);
     nextUserGame=nextPendingUserEntry()?.game||null;
   };
   const renderUserMatchPresentation=()=>{
@@ -927,7 +930,7 @@ export async function bootEngine({ bus } = {}) {
         `${atHome?'EM CASA':'FORA'} · ${details.display} · ${details.time}`,
         `${restDays>1?`${restDays} dias de intervalo`:''}${isCup&&leagueNext?`${restDays>1?' · ':''}Brasileirão: R${leagueNext.round}`:''}`.trim()||'Dispute a partida hoje'
       ]:[
-        todayLabel,
+        `Calendário · ${formatDashboardDate(careerCalendarDate)}`,
         `Próximo jogo · ${details.display} · ${details.time}`,
         daysUntil>0?`Use Dia de Jogo para avançar (${daysUntil} ${daysUntil===1?'dia':'dias'})`:'Use Dia de Jogo para avançar'
       ]);
@@ -1096,6 +1099,7 @@ export async function bootEngine({ bus } = {}) {
   renderCalendar();
   const refreshSeasonPresentation=()=>{
     reconcileCurrentRound();
+    rebuildCalendarGames();
     futureMatches=currentRoundFixtures();
     leagueData.sort((a,b)=>b.points-a.points||b.goalDiff-a.goalDiff||b.wins-a.wins);
     leagueData.forEach((row,index)=>clubs[row.club].position=index+1);
@@ -1212,14 +1216,34 @@ export async function bootEngine({ bus } = {}) {
   onClick('#closeFormationSuggestion',closeFormationSuggestion);
   onClick('#keepFormationLineup',closeFormationSuggestion);
   onClick('#applyFormationSuggestion',()=>{if(!pendingFormationSuggestion)return;autoSelectUserLineup(pendingFormationSuggestion.formation,{restrictToField:true,liveCards:pendingFormationSuggestion.liveCards});closeFormationSuggestion();renderRoster();draw();drawBoard();renderSubstitutionControls();renderStats();});
+  const boardPlayerLabel=(name,max=10)=>{
+    const parts=name.split(' ').filter(Boolean);
+    const short=parts.length>1?parts[parts.length-1]:parts[0]||name;
+    return short.length>max?`${short.slice(0,max-1)}…`:short;
+  };
+  const boardPlayerBadges=({yellow,injured,atRisk})=>{
+    const badges=[];
+    if(yellow)badges.push('<em class="board-badge board-badge-yellow" aria-hidden="true"></em>');
+    if(injured)badges.push('<em class="board-badge board-badge-injury" aria-hidden="true"></em>');
+    else if(atRisk)badges.push('<em class="board-badge board-badge-risk" aria-hidden="true"></em>');
+    return badges.join('');
+  };
+  const ensureBoardLegend=board=>{
+    if(!board||board.querySelector('.board-legend'))return;
+    board.insertAdjacentHTML('beforeend','<div class="board-legend" aria-hidden="true"><span><i class="board-legend-dot board-legend-yellow"></i>Amarelo</span><span><i class="board-legend-dot board-legend-injury"></i>Lesão</span><span><i class="board-legend-dot board-legend-risk"></i>Incômodo</span><span><i class="board-legend-dot board-legend-vacant"></i>Vaga</span></div>');
+  };
   const drawBoard = () => {
     if (!cards) return;
+    const board=$('#pausePitchPlayers')?.closest('.tactical-board');
+    ensureBoardLegend(board);
     $('#pausePitchPlayers').innerHTML = formations[formation].map((p, i) => {
       const state = cards.home[i], vacant = state.red, injured=state.injured, atRisk=state.playThroughRisk;
       const displayTop=p[1]===91?88:p[1];
       const energy=clamp(squad[i].fatigue,0,100);
       const canReposition=!vacant;
-      return `<div class="board-player ${state.yellow ? 'yellow' : ''} ${injured?'injured':atRisk?'at-risk':''} ${vacant ? 'vacant vacancy-target' : ''} ${canReposition?'repositionable':''}" data-slot="${i}" draggable="${canReposition}" style="left:${p[0]}%;top:${displayTop}%"><i style="--energy:${energy}%"><span>${vacant ? '×' : squad[i].number}</span></i><small>${vacant ? 'VAGO · ARRASTE AQUI' : squad[i].name}</small></div>`;
+      const label=vacant?(activePreparationTitle==='CARTÃO VERMELHO'?'EXPULSO':'VAGO'):boardPlayerLabel(squad[i].name);
+      const title=vacant?'Arraste um titular para esta vaga':`${squad[i].name}${state.yellow?' · Advertido':''}${injured?' · Lesionado':atRisk?' · Incômodo físico':''} · ${Math.round(energy)}% energia`;
+      return `<div class="board-player ${vacant?'vacant vacancy-target':''} ${canReposition?'repositionable':''}" data-slot="${i}" draggable="${canReposition}" title="${title}" style="left:${p[0]}%;top:${displayTop}%"><i style="--energy:${energy}%"><span>${vacant?'×':squad[i].number}</span></i>${boardPlayerBadges(state)}<small>${label}</small></div>`;
     }).join('');
     $$('#pauseFormations button').forEach(b => b.classList.toggle('selected', b.textContent === formation));
     enableBoardRepositioning($('#pausePitchPlayers'),'.board-player.repositionable');
@@ -1379,10 +1403,11 @@ export async function bootEngine({ bus } = {}) {
   document.body.insertAdjacentHTML('beforeend',`<div id="liveOpponentModal" class="modal hidden"><div class="modal-card live-opponent-modal"><button id="closeLiveOpponent" class="close">×</button><label>ANÁLISE DO ADVERSÁRIO · AO VIVO</label><h2 id="liveOpponentName"></h2><p id="liveOpponentMeta" class="live-opponent-meta"></p><div class="live-opponent-layout"><section><div id="liveOpponentRoster" class="live-opponent-roster"></div></section><div class="pause-pitch tactical-board live-opponent-pitch">${fieldMarkup}<div id="liveOpponentPitch"></div></div></div></div></div>`);
   const finalSummaryCss=document.createElement('style');finalSummaryCss.textContent='.final-goals,.final-basic{margin-top:15px;text-align:left;border:1px solid #d8e6da;border-radius:6px;padding:10px}.final-goals h3,.final-basic h3{margin:0 0 8px;text-align:center;font:700 16px Barlow Condensed;color:#087d58}.final-goals>div{display:grid;grid-template-columns:1fr 1fr;gap:10px}.final-goals article{display:grid;gap:4px;padding:8px;background:#f2f8f2;border-radius:4px;font-size:11px}.final-goals article b{color:#315b43}.final-goals article span{color:#087d58;font-weight:700}.final-basic .stat:last-child{border-bottom:0}.final-injuries{margin-top:15px;text-align:left;border:1px solid #d8e6da;border-radius:6px;padding:10px}.final-injuries h3{margin:0 0 8px;text-align:center;font:700 16px Barlow Condensed;color:#087d58}.final-injuries p{margin:6px 0;padding:7px 9px;border-radius:4px;font-size:11px;line-height:1.4;background:#f2f8f2;color:#315b43}.final-injuries p.cleared{background:#eef8ef;color:#2d6b3f;border-left:4px solid #58c978}.final-injuries p.monitoring{background:#fff8e8;color:#6b5520;border-left:4px solid #ffc94f}.dark-mode .final-goals,.dark-mode .final-basic{border-color:#395124}.dark-mode .final-goals article{background:#172117}.dark-mode .final-goals h3,.dark-mode .final-basic h3,.dark-mode .final-goals article span{color:#b6ff38}.dark-mode .final-goals article b{color:#edf7e6}.dark-mode .final-injuries{border-color:#395124}.dark-mode .final-injuries h3{color:#b6ff38}.dark-mode .final-injuries p{background:#172117;color:#d7e6cb}.dark-mode .final-injuries p.cleared{background:#173526;color:#9dffc0;border-left-color:#58e6a8}.dark-mode .final-injuries p.monitoring{background:#2a220d;color:#ffe6a2;border-left-color:#ffc94f}@media(max-width:560px){.final-goals>div{grid-template-columns:1fr}}';document.head.append(finalSummaryCss);
   const buttonPatternCss=document.createElement('style');buttonPatternCss.textContent='button:where(:not(.nav):not(.close)){border:1px solid #315f70!important;border-radius:5px!important;background:#102630!important;color:#dce9e8!important;padding:10px 15px!important;font:700 10px DM Sans!important;letter-spacing:.15px;cursor:pointer;transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease,box-shadow .16s ease}button:where(:not(.nav):not(.close)):hover{background:#153744!important;border-color:#58bcd8!important;color:#fff!important;box-shadow:0 5px 14px #0005;transform:translateY(-1px)}button:where(:not(.nav):not(.close)):active{transform:translateY(0);box-shadow:none}button:where(:not(.nav):not(.close)):disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}.formation-buttons button.selected{outline:2px solid #63d9ff;outline-offset:1px}';document.head.append(buttonPatternCss);
-  const tacticalDragCss=document.createElement('style');tacticalDragCss.textContent='.repositionable{cursor:grab;touch-action:none}.repositionable:active{cursor:grabbing}.repositionable.dragging{opacity:.45;filter:brightness(1.45)}.drop-target i{outline:3px solid #63d9ff!important;outline-offset:3px;box-shadow:0 0 18px #63d9ff!important}.tactical-board .repositionable small:after{content:" ↕";color:#b6ff38;font-size:8px}.tactical-board .vacant small:after{content:none}.tactical-board .board-player.yellow i{overflow:visible!important;background:#ffcf26!important;border:3px solid #fff1a0!important;box-shadow:0 0 0 2px #8d6700,0 0 14px #ffc928cc!important}.tactical-board .board-player.yellow i:before{display:block!important;left:3px!important;right:3px!important;bottom:3px!important;height:var(--energy,100%)!important;max-height:calc(100% - 6px)!important;border-radius:45% 55% 44% 44% / 10% 12% 40% 40%!important;background:linear-gradient(180deg,#3b3b3b 0%,#111 52%,#000 100%)!important;box-shadow:inset 0 2px 3px #8f8f8f66,0 -1px 3px #000!important}.tactical-board .board-player.yellow i span{color:#fff!important;font-size:11px!important;font-weight:800!important;text-shadow:0 1px 2px #000,0 0 2px #000!important}.tactical-board .board-player.yellow i:after{content:""!important;display:block!important;position:absolute!important;z-index:4!important;right:-8px!important;top:-7px!important;width:8px!important;height:12px!important;border:2px solid #fff6bd!important;border-radius:2px!important;background:#ffdc22!important;box-shadow:0 1px 4px #000b!important}.tactical-board .board-player.yellow small{display:inline-block!important;margin-top:5px!important;padding:2px 5px!important;border-radius:3px!important;background:#322806dd!important;color:#fff2a8!important;text-shadow:0 1px 2px #000!important}.tactical-board .vacancy-target{cursor:crosshair}.tactical-board .vacancy-target i{animation:vacancyPulse 1.35s ease-in-out infinite}.tactical-board .vacancy-target.drop-target i{border-style:solid!important;background:#123b48!important;color:#fff!important}@keyframes vacancyPulse{50%{box-shadow:0 0 0 3px #ff637044,0 0 15px #ff637099!important}}';document.head.append(tacticalDragCss);
+  const tacticalDragCss=document.createElement('style');tacticalDragCss.textContent='.repositionable{cursor:grab;touch-action:none}.repositionable:active{cursor:grabbing}.repositionable.dragging{opacity:.55}.drop-target i{outline:2px solid #63d9ff!important;outline-offset:2px;box-shadow:0 0 10px #63d9ff88!important}.tactical-board .repositionable small:after{content:" ↕";color:#b6ff38;font-size:7px;opacity:.85}.tactical-board .vacant small:after{content:none}.tactical-board .vacancy-target{cursor:crosshair}.tactical-board .vacancy-target i{animation:boardVacancyPulse 2s ease-in-out infinite}@keyframes boardVacancyPulse{50%{box-shadow:0 0 0 2px #ff637066!important}}';document.head.append(tacticalDragCss);
+  const boardVisualCss=document.createElement('style');boardVisualCss.textContent='.tactical-board .board-player{width:54px!important;z-index:3!important;line-height:1}.tactical-board .board-player i{position:relative!important;display:grid!important;place-items:center;width:28px!important;height:28px!important;margin:0 auto!important;font-size:10px!important;border:2px solid #fff!important;background:#07351d!important;box-shadow:0 1px 4px #00180fcc!important;overflow:visible!important}.tactical-board .board-player i:before{content:"";position:absolute;inset:-3px;border-radius:50%;background:conic-gradient(#18d69f calc(var(--energy,100)*1%),#0000 0);opacity:.55;z-index:-1}.tactical-board .board-player i span{position:relative;z-index:1;font-weight:800}.tactical-board .board-player small{display:block;max-width:54px;margin:3px auto 0!important;padding:0!important;background:none!important;color:#f4fff8!important;font:700 7px DM Sans!important;line-height:1.1!important;letter-spacing:.15px!important;text-shadow:0 1px 2px #002015;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tactical-board .board-player.vacant i{background:#2a1218!important;border:2px dashed #ff8a9a!important;color:#ffc8d0!important;box-shadow:none!important}.tactical-board .board-player.vacant i:before{display:none}.tactical-board .board-player.vacant small{color:#ffb8c2!important}.tactical-board .board-badge{position:absolute;top:0;right:calc(50% - 20px);width:0;height:0;pointer-events:none}.tactical-board .board-badge-yellow:after{content:"";position:absolute;width:6px;height:9px;border:1px solid #755600;border-radius:1px;background:#ffdc22;box-shadow:0 1px 2px #0008}.tactical-board .board-badge-injury:after{content:"+";position:absolute;display:grid;place-items:center;width:11px;height:11px;border-radius:50%;background:#ff6370;color:#fff;font:900 8px DM Sans;line-height:1;box-shadow:0 1px 3px #0009}.tactical-board .board-badge-risk:after{content:"!";position:absolute;display:grid;place-items:center;width:11px;height:11px;border-radius:50%;background:#ffc94f;color:#171003;font:900 8px DM Sans;line-height:1;box-shadow:0 1px 3px #0009}.board-legend{position:absolute;left:8px;right:8px;bottom:6px;z-index:4;display:flex;flex-wrap:wrap;justify-content:center;gap:8px 12px;padding:4px 6px;border-radius:4px;background:#00180fcc;color:#d7efe6;font:600 7px DM Sans;letter-spacing:.2px;pointer-events:none}.board-legend span{display:inline-flex;align-items:center;gap:4px;opacity:.92}.board-legend-dot{display:inline-block;width:8px;height:8px;border-radius:50%;border:1px solid #fff6}.board-legend-yellow{background:#ffdc22;border-color:#755600}.board-legend-injury{background:#ff6370;border-color:#ffb8c2}.board-legend-risk{background:#ffc94f;border-color:#ffe6a2}.board-legend-vacant{background:#2a1218;border:1px dashed #ff8a9a;border-radius:2px;width:8px;height:8px}';document.head.append(boardVisualCss);
   const indicatorPaletteCss=document.createElement('style');indicatorPaletteCss.textContent='.environment-gauge.positive{background:conic-gradient(#00c99b calc(var(--environment)*1%),#bcefe6 0)!important}.environment-gauge.positive strong{color:#00a982!important}.environment-gauge.medium{background:conic-gradient(#ff9f1c calc(var(--environment)*1%),#ffe1ad 0)!important}.environment-gauge.medium strong{color:#e87b00!important}.environment-gauge.negative{background:conic-gradient(#ff3d52 calc(var(--environment)*1%),#ffc4cb 0)!important}.environment-gauge.negative strong{color:#e1283d!important}.dashboard-factors>div.positive{border-color:#35ae82}.dashboard-factors>div.positive b{color:#00a982}.dashboard-factors>div.medium{border-color:#f39a1d}.dashboard-factors>div.medium b{color:#df7800}.dashboard-factors>div.negative{border-color:#ed4858}.dashboard-factors>div.negative b{color:#df3044}.dark-mode .environment-gauge.positive{background:conic-gradient(#00dca8 calc(var(--environment)*1%),#1b4a41 0)!important}.dark-mode .environment-gauge.medium{background:conic-gradient(#ffad28 calc(var(--environment)*1%),#4f3511 0)!important}.dark-mode .environment-gauge.negative{background:conic-gradient(#ff4c60 calc(var(--environment)*1%),#4f2028 0)!important}.dark-mode .environment-gauge.positive strong,.dark-mode .dashboard-factors>div.positive b{color:#3dffc7!important}.dark-mode .environment-gauge.medium strong,.dark-mode .dashboard-factors>div.medium b{color:#ffc35b!important}.dark-mode .environment-gauge.negative strong,.dark-mode .dashboard-factors>div.negative b{color:#ff7c89!important}.dark-mode .dashboard-factors>div.medium{border-color:#a86814}.dark-mode .dashboard-factors>div.negative{border-color:#a73542}';document.head.append(indicatorPaletteCss);
   const goalEventCss=document.createElement('style');goalEventCss.textContent='.timeline p.goal,.timeline p.yellow,.timeline p.red{display:block!important;width:100%!important;box-sizing:border-box;margin:8px 0!important;padding:8px 10px!important;border-radius:4px;font-size:14px!important;font-weight:700!important;line-height:1.35}.timeline p.goal{border:1px solid #74b80f;border-left:5px solid #a8ff19;background:#eaffc9;color:#284600}.timeline p.yellow{border:1px solid #d29a00;border-left:5px solid #ffcc18;background:#fff4bf;color:#634700}.timeline p.red{border:1px solid #d84242;border-left:5px solid #ff3d3d;background:#ffd8d8;color:#7c1414}.dark-mode .timeline p.goal{background:#1d3509;color:#c9ff63;border-color:#78b91a;border-left-color:#b6ff38;box-shadow:0 0 12px #a8ff1924}.dark-mode .timeline p.yellow{background:#392d05;color:#ffe889;border-color:#d8a718;border-left-color:#ffdb32;box-shadow:0 0 12px #ffcf1824}.dark-mode .timeline p.red{background:#3a1012;color:#ffb5b5;border-color:#df4646;border-left-color:#ff5555;box-shadow:0 0 12px #ff3d3d24}';document.head.append(goalEventCss);
-  const availabilityCss=document.createElement('style');availabilityCss.textContent='.timeline p.injury,.timeline p.injury-substitution{display:block;width:100%;box-sizing:border-box;margin:7px 0;padding:7px 10px;border-left:5px solid #ff6370;border-radius:4px;background:#3b151b;color:#ffb5bd;font-size:13px;font-weight:700}.timeline p.injury-substitution{border-left-color:#63d9ff;background:#102b35;color:#bfefff}.timeline p.discomfort{display:block;width:100%;box-sizing:border-box;margin:7px 0;padding:7px 10px;border-left:5px solid #ffc94f;border-radius:4px;background:#2a220d;color:#ffe6a2;font-size:13px;font-weight:600}.tactical-board .board-player.injured i{background:#541923!important;border-color:#ff8993!important;box-shadow:0 0 0 2px #8b2634,0 0 14px #ff637088!important}.tactical-board .board-player.at-risk i{background:#4a3a0d!important;border-color:#ffc94f!important;box-shadow:0 0 0 2px #8d6700,0 0 14px #ffc94f66!important}.tactical-board .board-player.injured small,.tactical-board .board-player.at-risk small{display:inline-block;margin-top:5px;padding:2px 5px;border-radius:3px}.tactical-board .board-player.injured small{background:#42131bdd;color:#ffc2c8!important}.tactical-board .board-player.at-risk small{background:#322806dd;color:#ffe6a2!important}.tactical-board .board-player.injured i:after{content:"+";position:absolute;z-index:5;right:-7px;top:-8px;display:grid;place-items:center;width:13px;height:13px;border-radius:50%;background:#ff6370;color:#fff;font:900 10px DM Sans;box-shadow:0 1px 4px #0009}.tactical-board .board-player.at-risk i:after{content:"!";position:absolute;z-index:5;right:-7px;top:-8px;display:grid;place-items:center;width:13px;height:13px;border-radius:50%;background:#ffc94f;color:#171003;font:900 10px DM Sans;box-shadow:0 1px 4px #0009}';document.head.append(availabilityCss);
+  const availabilityCss=document.createElement('style');availabilityCss.textContent='.timeline p.injury,.timeline p.injury-substitution{display:block;width:100%;box-sizing:border-box;margin:7px 0;padding:7px 10px;border-left:5px solid #ff6370;border-radius:4px;background:#3b151b;color:#ffb5bd;font-size:13px;font-weight:700}.timeline p.injury-substitution{border-left-color:#63d9ff;background:#102b35;color:#bfefff}.timeline p.discomfort{display:block;width:100%;box-sizing:border-box;margin:7px 0;padding:7px 10px;border-left:5px solid #ffc94f;border-radius:4px;background:#2a220d;color:#ffe6a2;font-size:13px;font-weight:600}';document.head.append(availabilityCss);
   const penaltyDecisionCss=document.createElement('style');penaltyDecisionCss.textContent='.timeline p.penalty{display:block!important;width:100%!important;box-sizing:border-box;margin:8px 0!important;padding:10px 12px!important;border:1px solid #d79b29!important;border-left:5px solid #ffc94f!important;border-radius:5px;background:#3a2a0b!important;color:#ffe6a2!important;font-size:14px!important;font-weight:800!important;line-height:1.35;box-shadow:0 0 14px #ffc94f20}.timeline p.shootout-miss{display:block!important;width:100%!important;box-sizing:border-box;margin:8px 0!important;padding:8px 10px!important;border:1px solid #d84242!important;border-left:5px solid #ff5555!important;border-radius:5px;background:#3a1012!important;color:#ffb5b5!important;font-size:13px!important;font-weight:700!important}.timeline p.goal.shootout-standard,.timeline p.goal.shootout-specialist{display:block!important;width:100%!important;box-sizing:border-box;margin:8px 0!important;padding:8px 10px!important;border:1px solid #74b80f!important;border-left:5px solid #ffc94f!important;border-radius:5px;background:#1d3509!important;color:#c9ff63!important;font-size:14px!important;font-weight:800!important}.shootout-panel{order:-1;margin:10px 0 14px!important;padding:14px!important;border:1px solid #d79b29!important;background:linear-gradient(135deg,#251d0d,#10232b)!important;border-radius:7px!important}.shootout-panel label{display:block;color:#ffc94f!important;font-size:10px!important;font-weight:800!important;letter-spacing:1px}.shootout-panel strong{display:block;margin:4px 0 10px;color:#fff;font:700 18px Barlow Condensed}.shootout-track{display:grid;grid-template-columns:1fr 1fr;gap:10px}.shootout-track article{padding:10px;border:1px solid #315b68;border-radius:6px;background:#0d2029}.shootout-track b{display:block;margin-bottom:8px;color:#63d9ff;font-size:10px}.shootout-kicks{display:flex;flex-wrap:wrap;gap:6px}.shootout-kicks i{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;font-size:12px;font-weight:900;font-style:normal}.shootout-kicks i.hit{background:#1d3509;color:#b6ff38;border:1px solid #78b91a}.shootout-kicks i.miss{background:#3a1012;color:#ffb5b5;border:1px solid #df4646}.shootout-kicks i.pending{background:#152229;color:#8ba7aa;border:1px dashed #315b68}.shootout-hint{margin:10px 0 0;color:#9eb6b8;font-size:11px}.penalty-choice{order:-1;margin:10px 0 14px!important;padding:14px!important;border:1px solid #d79b29!important;background:linear-gradient(135deg,#251d0d,#10232b)!important;border-radius:7px!important;box-shadow:0 8px 22px #0006}.penalty-choice-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:11px;padding-bottom:10px;border-bottom:1px solid #6e5726}.penalty-choice-heading label{display:block;color:#ffc94f!important;font-size:10px!important;font-weight:800!important;letter-spacing:1px}.penalty-choice-heading strong{display:block;margin:4px 0 0!important;color:#fff;font-size:18px}.penalty-goalkeeper{display:grid;gap:2px;text-align:right;color:#9eb6b8;font-size:10px}.penalty-goalkeeper b{color:#edf8f5;font-size:11px}.penalty-goalkeeper em{color:#63d9ff;font-style:normal;font-weight:800}.penalty-choice #penaltyTakers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.penalty-choice #penaltyTakers button{position:relative;display:grid;grid-template-columns:1fr auto;gap:7px 12px;align-items:center;margin:0!important;padding:11px!important;text-align:left;border:1px solid #315b68!important;background:#0d2029!important;color:#edf8f5!important;border-radius:6px!important}.penalty-choice #penaltyTakers button:hover{border-color:#63d9ff!important;background:#13303b!important}.penalty-choice #penaltyTakers button.best-option{border-color:#ffc94f!important;background:linear-gradient(145deg,#31250d,#10252d)!important;box-shadow:inset 3px 0 0 #ffc94f,0 0 13px #ffc94f20}.penalty-taker-title{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:6px}.penalty-taker-title b{font-size:12px}.penalty-best-badge{padding:3px 5px;border-radius:3px;background:#ffc94f;color:#171003;font-size:7px;font-weight:900;letter-spacing:.45px}.penalty-specialist{color:#b6ff38;font-size:8px;font-weight:800}.penalty-metric{display:grid;gap:2px}.penalty-metric small{color:#8ba7aa;font-size:7px;letter-spacing:.35px}.penalty-metric strong{margin:0!important;color:#f2fbf8;font-size:13px}.penalty-metric.chance strong{color:#ffc94f}.penalty-choice-note{grid-column:1/-1;color:#9eb6b8;font-size:8px}@media(max-width:720px){.penalty-choice #penaltyTakers{grid-template-columns:1fr}.penalty-choice-heading{align-items:flex-start;flex-direction:column}.penalty-goalkeeper{text-align:left}.shootout-track{grid-template-columns:1fr}}';document.head.append(penaltyDecisionCss);
   const neonDarkCss=document.createElement('style');neonDarkCss.textContent='body.dark-mode{background:#050807;color:#f4f8f2}body.dark-mode .sidebar{background:#070b08;border-right:1px solid #203313}body.dark-mode header{background:#0a0f0b;border-color:#2a4218;color:#d7e6cb}body.dark-mode .card,body.dark-mode .modal-card{background:#101811;border-color:#344d1d;box-shadow:0 0 0 1px #9cff1612}body.dark-mode .nav{color:#d2dfcb}body.dark-mode .nav:hover,body.dark-mode .nav.active{background:#a8ff19;color:#071004}body.dark-mode .brand>span:first-child,body.dark-mode .brand span:last-child,body.dark-mode .hero p,body.dark-mode .title p,body.dark-mode .card label{color:#a8ff19}body.dark-mode .season,body.dark-mode .club small,body.dark-mode .hero>div>span,body.dark-mode .teams small,body.dark-mode .teams strong small,body.dark-mode .match footer,body.dark-mode .mood small,body.dark-mode .form+small,body.dark-mode .controls p{color:#b6c8ad}body.dark-mode .match footer,body.dark-mode .club{border-color:#2d4619}body.dark-mode .match button{background:#a8ff19;color:#071004}body.dark-mode .theme-toggle{background:transparent;border-color:#8cdb13;color:#b6ff38;border-radius:999px}body.dark-mode .theme-toggle:hover{background:#a8ff19;color:#071004}body.dark-mode .formation-buttons button,body.dark-mode .controls select,body.dark-mode .match-actions button{background:#0b110c;border-color:#6da51a;color:#ecf8df}body.dark-mode .formation-buttons button.selected{background:#a8ff19;border-color:#a8ff19;color:#071004}body.dark-mode .roster-head,body.dark-mode .league-head,body.dark-mode .timeline{background:#121c13;color:#edf7e6}body.dark-mode .player-row,body.dark-mode .roster-head,body.dark-mode .league-row,body.dark-mode .standing-row,body.dark-mode .stat{border-color:#2b431a}body.dark-mode .badge{background:#a8ff19;color:#071004}body.dark-mode .standing-row.highlight{background:#263d12;color:#d7ff8c}body.dark-mode .form b{background:#a8ff19;color:#071004}body.dark-mode .form .loss{background:#5a221d;color:#ffd8d2}body.dark-mode .timeline .goal{color:#b6ff38}';document.head.append(neonDarkCss);
   const menuVisualCss=document.createElement('style');menuVisualCss.textContent='.modal-card.options-modal{padding:26px 28px!important;border:1px solid #365d42!important;box-shadow:0 20px 55px #000a!important}.options-modal>label{display:block;color:#78d4ff!important;font:700 10px DM Sans;letter-spacing:1px}.options-modal h2{margin:7px 0 20px!important;font-size:34px!important}.option-section{padding:16px!important;margin-top:12px!important;border:1px solid #315637!important;background:#0d1710!important;border-radius:8px!important}.option-section>label{color:#b6ff38!important;font-size:10px!important}.option-section p{color:#c5d3c7!important;line-height:1.45}.option-choices{gap:9px!important}.option-choices button{min-height:38px!important;background:#15231a!important;color:#edf7e6!important;border:1px solid #42664b!important;border-radius:6px!important;box-shadow:none!important}.option-choices button:hover{background:#1c3023!important;border-color:#75b884!important;transform:none!important}.option-choices button.selected{background:linear-gradient(115deg,#a8ff19,#72e1ff)!important;color:#071004!important;border-color:#a8ff19!important;box-shadow:0 0 0 1px #d6ff8d55!important}.option-choices button.selected small{color:#102316!important}.option-choices button.selected b{color:#071004!important}.pace-choice{grid-template-columns:108px 1fr!important;align-items:center!important}.pace-choice b{font-size:11px}.pace-choice small{font-size:10px!important;line-height:1.25}.future-options li{padding:10px 12px!important;background:#152019!important;border-left:3px solid #3d6650!important;color:#bdcdbf!important}.future-options b{color:#8dff44!important}.sidebar nav{gap:5px!important}.nav{border-left:3px solid transparent!important;border-radius:5px!important}.nav.active{border-left-color:#72e1ff!important}.formation-buttons button,.match-actions button{background:#132018!important;color:#e8f4e9!important;border:1px solid #416a4e!important;border-radius:5px!important;box-shadow:none!important}.formation-buttons button:hover,.match-actions button:hover{background:#1b3022!important;border-color:#75c68b!important;transform:none!important}.formation-buttons button.selected{background:linear-gradient(115deg,#a8ff19,#72e1ff)!important;color:#071004!important;border-color:#b6ff38!important}.match-actions button{padding:10px 13px!important}.close{color:#d5e6d6!important}.close:hover{color:#72e1ff!important}@media(max-width:560px){.options-modal{padding:20px!important}.pace-choice{grid-template-columns:1fr!important}.pace-choice small{grid-column:1!important}}';document.head.append(menuVisualCss);
@@ -1596,7 +1621,98 @@ export async function bootEngine({ bus } = {}) {
     const drawDominance=home===away && own && rival ? clamp((own.goodAttacks-rival.goodAttacks)*.24+(own.shots-rival.shots)*.10+(own.xg-rival.xg)*.5,-3.2,3.2) : 0;
     return clamp(power.overall-(100-fatigue)*.055-reds*6.5+momentum+passForm+attackForm+drawDominance,50,95);
   };
-  let timer, liveClockSeconds=0, liveClockSecondTimer=null, minute, home, away, pauses, stats, cards, halftimeShown, pendingPenalty, shootoutState=null, matchFactors, goals, disciplineEvents, matchStarted=false, matchFinished=false, preMatchPreparation=false, substitutions=0, substitutedOut=new Set(), activePreparationTitle='', matchDiscipline={home:new Map(),away:new Map()},liveInjuries={home:[],away:[]},liveDeferredInjuries={home:[],away:[]},liveOpeningLineup={home:[],away:[]},liveMinutesPlayed={home:new Map(),away:new Map()},availabilityCommitted=false,roundResultMessagePushed=false,liveMatchGame=null;
+  let timer, liveClockSeconds=0, liveClockSecondTimer=null, minute, home, away, pauses, stats, cards, halftimeShown, pendingPenalty, shootoutState=null, matchFactors, goals, disciplineEvents, matchStarted=false, matchFinished=false, preMatchPreparation=false, substitutions=0, substitutedOut=new Set(), activePreparationTitle='', matchDiscipline={home:new Map(),away:new Map()},liveInjuries={home:[],away:[]},liveDeferredInjuries={home:[],away:[]},liveOpeningLineup={home:[],away:[]},liveMinutesPlayed={home:new Map(),away:new Map()},availabilityCommitted=false,roundResultMessagePushed=false,liveMatchGame=null,liveDayMatchSnapshots=null;
+  const liveMatchDayKey=()=>{
+    if(!liveMatchGame)return null;
+    if(liveMatchGame.competition==='COPA DO BRASIL')return calendarKey(new Date(liveMatchGame.date));
+    return calendarKey(fixtureDetails(liveMatchGame).date);
+  };
+  const liveMatchDayGames=()=>{
+    if(!liveMatchGame)return [];
+    const dayKey=liveMatchDayKey();
+    if(!dayKey)return [];
+    const cupSameDay=copaDoBrasilFixtures.filter(game=>calendarKey(new Date(game.date))===dayKey&&!game.completed);
+    let league=currentRoundFixtures().filter(game=>calendarKey(fixtureDetails(game).date)===dayKey);
+    if(userDivision==='D'){
+      const group=serieDGroups[userSerieDGroupIndex]||[];
+      league=league.filter(game=>!isKnockoutShootoutCompetition(game)&&group.includes(game.home)&&group.includes(game.away));
+    }
+    const unique=new Map();
+    [...league,...cupSameDay].forEach(game=>unique.set(`${game.home}|${game.away}|${game.competition||'L'}|${game.round||''}|${game.leg||''}`,game));
+    return [...unique.values()].sort((a,b)=>Number(isUserFixture(b))-Number(isUserFixture(a))||a.home.localeCompare(b.home,'pt-BR'));
+  };
+  const seededGoalMinute=(homeClub,awayClub,side,index)=>{
+    let state=((savedNewGame?.seed||2166136261)^currentRound^homeClub.length^awayClub.length^side.charCodeAt(0)^(index+1)*997)>>>0;
+    state=Math.imul(state^state>>>15,state|1);state^=state+Math.imul(state^state>>>7,state|61);
+    return clamp(1+((state^state>>>14)>>>0)%89,1,89);
+  };
+  const buildPartialGoalTimeline=(homeClub,awayClub,homeGoals,awayGoals)=>{
+    const events=[];
+    for(let i=0;i<homeGoals;i++)events.push({side:'home',minute:seededGoalMinute(homeClub,awayClub,'h',i)});
+    for(let i=0;i<awayGoals;i++)events.push({side:'away',minute:seededGoalMinute(homeClub,awayClub,'a',i)});
+    return events.sort((a,b)=>a.minute-b.minute);
+  };
+  const ensureLiveDayMatches=()=>{
+    if(liveDayMatchSnapshots)return;
+    liveDayMatchSnapshots=new Map();
+    liveMatchDayGames().forEach(game=>{
+      const id=`${game.home}|${game.away}`;
+      if(isUserFixture(game)){liveDayMatchSnapshots.set(id,{game,isUser:true});return;}
+      const result=simulateRoundMatch(game.home,game.away);
+      liveDayMatchSnapshots.set(id,{game,isUser:false,timeline:buildPartialGoalTimeline(game.home,game.away,result.homeGoals,result.awayGoals),final:{homeGoals:result.homeGoals,awayGoals:result.awayGoals}});
+    });
+  };
+  const livePartialAtMinute=(entry,atMinute)=>{
+    if(entry.isUser){
+      const userAtHome=entry.game.home===userClub;
+      return {
+        homeGoals:(userAtHome?goals.home:goals.away).filter(g=>(g.minute||0)<=atMinute).length,
+        awayGoals:(userAtHome?goals.away:goals.home).filter(g=>(g.minute||0)<=atMinute).length
+      };
+    }
+    const timeline=entry.timeline||[];
+    return {
+      homeGoals:timeline.filter(e=>e.side==='home'&&e.minute<=atMinute).length,
+      awayGoals:timeline.filter(e=>e.side==='away'&&e.minute<=atMinute).length
+    };
+  };
+  const liveDayMatchLabel=game=>{
+    if(game.competition==='COPA DO BRASIL')return `Copa · ${game.phase}${game.leg?` · ${game.leg}`:''}`;
+    if(isKnockoutShootoutCompetition(game))return `Série D · ${game.leg||'Eliminatórias'}`;
+    return `Rod. ${game.round||currentRound}ª`;
+  };
+  const liveDayMatchStatus=(game,isUser,atMinute)=>{
+    if(preMatchPreparation)return 'A iniciar';
+    if(isUser&&matchFinished)return 'Encerrado';
+    if(isUser&&halftimeShown&&atMinute<=45)return 'Intervalo';
+    if(atMinute>=90)return '90\'';
+    return `${String(atMinute).padStart(2,'0')}'`;
+  };
+  const renderLiveDayMatches=()=>{
+    ensureLiveDayMatches();
+    const atMinute=preMatchPreparation?0:Math.min(90,Math.max(0,minute));
+    const dateSource=liveMatchGame?(liveMatchGame.competition==='COPA DO BRASIL'?new Date(liveMatchGame.date):fixtureDetails(liveMatchGame).date):careerCalendarDate;
+    const dateLabel=dateSource.toLocaleDateString('pt-BR',{day:'2-digit',month:'long'});
+    const metaEl=$('#liveDayMatchesMeta');
+    if(metaEl)metaEl.textContent=preMatchPreparation
+      ? `${dateLabel} · Os jogos desta data iniciam com o apito do ${userClub}.`
+      : `${dateLabel} · ${liveDayMatchStatus(liveMatchGame,true,atMinute)==='Intervalo'?'Intervalo':`${atMinute}'`} · Resultados parciais da rodada em andamento.`;
+    const dayGames=liveMatchDayGames();
+    const listEl=$('#liveDayMatchesList');
+    if(!listEl)return;
+    if(!dayGames.length){
+      listEl.innerHTML='<div class="live-day-matches-empty">Nenhuma partida programada para esta data.</div>';
+      return;
+    }
+    listEl.innerHTML=`<div class="live-day-matches-head"><span>Comp.</span><span>Mandante</span><span>Placar</span><span>Visitante</span><span>Min.</span></div>${dayGames.map(game=>{
+      const id=`${game.home}|${game.away}`;
+      const entry=liveDayMatchSnapshots?.get(id)||{game,isUser:isUserFixture(game)};
+      const isUser=isUserFixture(game);
+      const {homeGoals,awayGoals}=preMatchPreparation&&!entry.isUser?{homeGoals:0,awayGoals:0}:livePartialAtMinute(entry,atMinute);
+      return `<div class="live-day-match-row ${isUser?'user-game':''}"><span class="live-day-match-label">${liveDayMatchLabel(game)}</span><span class="live-day-match-home"><b class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</b></span><strong class="live-day-match-score">${homeGoals} — ${awayGoals}</strong><span class="live-day-match-away"><b class="club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</b>${isUser?'<small class="user-game-tag">SEU JOGO</small>':''}</span><span class="live-day-match-status">${liveDayMatchStatus(game,isUser,atMinute)}</span></div>`;
+    }).join('')}`;
+  };
+  const openLiveDayMatches=()=>{renderLiveDayMatches();$('#liveDayMatchesModal')?.classList.remove('hidden');};
   const modal = $('#matchModal'), timeline = $('#timeline');
   const stopLiveSecondTimer=()=>{clearInterval(liveClockSecondTimer);liveClockSecondTimer=null;};
   const stopMatchClock=()=>{clearInterval(timer);stopLiveSecondTimer();};
@@ -1649,12 +1765,18 @@ export async function bootEngine({ bus } = {}) {
     $('#stats').innerHTML=`<section class="final-goals"><h3>GOLS</h3><div><article><b>${userClub.toUpperCase()}</b>${scorers('home')}</article><article><b>${matchClub().name.toUpperCase()}</b>${scorers('away')}</article></div></section><section class="final-basic"><h3>ESTATÍSTICAS DA PARTIDA</h3>${rows.map(row=>`<div class="stat"><span>${row[1]}</span><span>${row[0]}</span><span>${row[2]}</span></div>`).join('')}</section>${injurySection}`;
     $('#stats').classList.remove('hidden');
     if(postMatchMedicalQueue.length){
-      postMatchMedicalQueue.forEach(item=>{
+      if(postMatchMedicalQueue.length===1){
+        const item=postMatchMedicalQueue[0];
         pushMessage({category:'medical',type:'treatment-pending',title:'Ação médica pós-jogo',body:`${item.player.name} — ${item.injury.name}. Escolha cirurgia ou tratamento conservador para concluir a avaliação do departamento médico.`,round:currentRound,meta:{competition:'Departamento médico',requiresAction:true,player:item.player.name}});
-      });
+      }else{
+        pushMessage({category:'medical',type:'treatment-pending',title:`Ações médicas pós-jogo (${postMatchMedicalQueue.length})`,body:postMatchMedicalQueue.map(item=>`• ${item.player.name} — ${item.injury.name}`).join('\n')+'\n\nEscolha cirurgia ou tratamento conservador para cada caso pendente.',round:currentRound,meta:{competition:'Departamento médico',requiresAction:true}});
+      }
       processPostMatchMedicalQueue();
     }
-    medicalReports.forEach(item=>{if(item.outcome==='confirmed')return;pushMessage({category:'medical',type:item.outcome,title:item.outcome==='cleared'?'Jogador liberado':item.outcome==='monitoring'?'Monitoramento médico':'Diagnóstico pós-jogo',body:item.text,round:currentRound,meta:{competition:'Departamento médico'}});});
+    const medicalDigest=medicalReports.filter(item=>item.outcome!=='confirmed');
+    if(medicalDigest.length){
+      pushMessage({category:'medical',type:'digest',title:'Relatório médico pós-jogo',body:medicalDigest.map(item=>`• ${item.text}`).join('\n'),round:currentRound,meta:{competition:'Departamento médico'}});
+    }
   };
   const showFinalActions = () => {
     if(liveMatchGame){
@@ -1664,7 +1786,11 @@ export async function bootEngine({ bus } = {}) {
     }
     $('#matchActions').classList.remove('hidden');
     $('#matchActions').innerHTML='<button id="finalDashboard">CLASSIFICAÇÃO</button><button id="finalTable">TABELA DE JOGOS</button><button id="finalNext">SAIR</button>';
-    onClick('#finalDashboard',()=>{modal.classList.add('hidden');openChampionship();});
+    onClick('#finalDashboard',()=>{
+      if(matchFinished&&!roundCommitted)advanceSeasonRound({navigateDashboard:false});
+      modal.classList.add('hidden');
+      openChampionship();
+    });
     onClick('#finalTable',()=>{simulateRoundResults();modal.classList.add('hidden');openRoundResults();});
     onClick('#finalNext',()=>exitLiveMatch());
   };
@@ -1839,7 +1965,7 @@ export async function bootEngine({ bus } = {}) {
     persistSeason();
     refreshSeasonPresentation();
     $('#roundResultsModal').classList.add('hidden');modal.classList.add('hidden');
-    stopMatchClock();matchStarted=false;matchFinished=false;liveMatchGame=null;roundResults=null;roundResultMessagePushed=false;roundPreviewResults={};roundCommitted=false;
+    stopMatchClock();matchStarted=false;matchFinished=false;liveMatchGame=null;liveDayMatchSnapshots=null;roundResults=null;roundResultMessagePushed=false;roundPreviewResults={};roundCommitted=false;
     $$('.nav').find(button=>button.dataset.view==='dashboard')?.click();
   };
   if(new URLSearchParams(location.search).has('engineTest')||new URLSearchParams(location.search).has('cupAudit')){
@@ -1851,8 +1977,8 @@ export async function bootEngine({ bus } = {}) {
     window.__matchdayEngineExports={clubs,simulateRoundMatch,savedNewGame:!!savedNewGame,userDivision,createInjuryRecord,normalizeInjury,injuryCatalog,calculateEventInjuryChance,injuryMechanismFromEvent,workloadRisk,recoveryRisk,recordPlayerMatchWorkload,ensureWorkload,injuryInRestrictedPhase,matchPlayerStat,playerRehabMaxMinutes,beginRestrictedReturn,advanceRestrictedRehab,clearInjuryFully,clubMedicalQuality,medicalRecoveryModifier,medicalPreventionModifier,resolveInjuryTreatment,summarizeMatchInjuries,engineTuning,buildSimLineup,engineFoulRisk,engineBlowoutDamp};
   }
   // A tabela da rodada respeita exatamente os confrontos definidos no calendário.
-  const simulateRoundResults=()=>{
-    if(roundResults) return roundResults;
+  const simulateRoundResults=(force=false)=>{
+    if(roundResults&&!force) return roundResults;
     roundResults=currentRoundFixtures().map(game=>{
       if(!isUserFixture(game)) return simulateRoundMatch(game.home,game.away);
       const userAtHome=game.home===userClub;
@@ -1866,6 +1992,10 @@ export async function bootEngine({ bus } = {}) {
   };
   const roundResultsCss=document.createElement('style');roundResultsCss.textContent='.round-results-modal{width:min(820px,calc(100vw - 28px));text-align:left}.round-results-modal h2{margin:5px 0 4px;font:700 32px Barlow Condensed}.round-results-modal p{margin:0;color:#9eb6b8;font-size:11px}.round-results-toolbar{display:grid;gap:10px;margin:15px 0 12px}.round-division-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.round-division-tabs button,.round-group-nav button,.round-selector button{min-height:34px;border:1px solid #315d69!important;background:#102a34!important;color:#b9ced2!important}.round-division-tabs button.active{border-color:#63d9ff!important;background:#1c5061!important;color:#f2fcff!important;box-shadow:inset 0 -2px #63d9ff}.round-context-nav{display:flex;justify-content:space-between;align-items:center;gap:12px;min-height:38px;padding:7px 9px;border:1px solid #28505b;border-radius:6px;background:#0b1d25}.round-group-nav,.round-selector{display:flex;align-items:center;gap:8px}.round-group-nav strong,.round-selector strong{min-width:92px;text-align:center;color:#edf8f5;font-size:11px}.round-group-nav button,.round-selector button{width:34px;padding:0}.round-format{color:#63d9ff;font:700 9px DM Sans;letter-spacing:.55px}.round-games{border:1px solid #28505b;border-radius:7px;overflow:hidden}.round-games-head,.round-game-row{display:grid;grid-template-columns:minmax(0,1fr) 76px minmax(0,1fr);gap:12px;align-items:center;padding:11px 14px}.round-games-head{background:#102b35;color:#63d9ff;font:700 9px DM Sans;letter-spacing:.65px}.round-games-head span:nth-child(2),.round-game-row strong{text-align:center}.round-games-head span:last-child,.round-game-row span:last-child{text-align:right}.round-game-row{min-height:44px;border-top:1px solid #234650;color:#edf8f5;font-size:12px}.round-game-row strong{font:700 19px Barlow Condensed;color:#b6ff38}.round-game-row.user-game{background:linear-gradient(90deg,#254d2c,#203b26);box-shadow:inset 4px 0 #b6ff38,0 0 16px #b6ff3818}.user-game-tag{display:inline-block;margin-left:7px;padding:3px 5px;border:1px solid #b6ff38;border-radius:3px;color:#dfff9b;font:700 8px DM Sans;letter-spacing:.35px;vertical-align:middle}.round-games-empty{padding:32px 15px;text-align:center;color:#8fa9ae;font-size:11px}@media(max-width:620px){.round-results-modal{width:calc(100vw - 16px)}.round-division-tabs{grid-template-columns:1fr 1fr}.round-context-nav{align-items:stretch;flex-direction:column}.round-format{text-align:center}.round-games-head,.round-game-row{grid-template-columns:minmax(0,1fr) 58px minmax(0,1fr);gap:5px;padding:10px 8px;font-size:10px}.round-game-row strong{font-size:16px}.user-game-tag{display:none}}';document.head.append(roundResultsCss);
   document.body.insertAdjacentHTML('beforeend',`<div id="roundResultsModal" class="modal hidden"><div class="modal-card round-results-modal"><button id="closeRoundResults" class="close">×</button><label>RODADA CONCLUÍDA</label><h2>Tabela de Jogos</h2><p id="roundResultsMeta"></p><div class="round-results-toolbar"><div id="roundDivisionTabs" class="round-division-tabs"></div><div class="round-context-nav"><div id="roundGroupNav" class="round-group-nav"></div><span id="roundFormat" class="round-format"></span><div id="roundSelector" class="round-selector"></div></div></div><div id="roundGames" class="round-games"></div></div></div>`);
+  const liveDayMatchesCss=document.createElement('style');
+  liveDayMatchesCss.textContent='.live-day-matches-modal{width:min(760px,calc(100vw - 28px));text-align:left}.live-day-matches-modal h2{margin:5px 0 4px;font:700 30px Barlow Condensed}.live-day-matches-modal>p{margin:0;color:#9eb6b8;font-size:11px;line-height:1.45}.live-day-matches-list{margin-top:14px;border:1px solid #28505b;border-radius:7px;overflow:hidden}.live-day-matches-head,.live-day-match-row{display:grid;grid-template-columns:72px minmax(0,1fr) 76px minmax(0,1fr) 52px;gap:10px;align-items:center;padding:10px 12px}.live-day-matches-head{background:#102b35;color:#63d9ff;font:700 9px DM Sans;letter-spacing:.55px}.live-day-matches-head span:nth-child(3),.live-day-match-score{text-align:center}.live-day-match-row{min-height:42px;border-top:1px solid #234650;color:#edf8f5;font-size:11px}.live-day-match-row.user-game{background:linear-gradient(90deg,#254d2c,#203b26);box-shadow:inset 4px 0 #b6ff38,0 0 16px #b6ff3818}.live-day-match-label{color:#7fa8b0;font:700 8px DM Sans;letter-spacing:.35px}.live-day-match-score{font:700 18px Barlow Condensed;color:#b6ff38}.live-day-match-status{text-align:center;color:#63d9ff;font:700 9px DM Sans}.live-day-match-away{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap}.live-day-matches-empty{padding:28px 14px;text-align:center;color:#8fa9ae;font-size:11px}@media(max-width:620px){.live-day-matches-modal{width:calc(100vw - 16px)}.live-day-matches-head,.live-day-match-row{grid-template-columns:58px minmax(0,1fr) 58px minmax(0,1fr) 44px;gap:6px;padding:9px 8px;font-size:10px}.live-day-match-score{font-size:15px}.live-day-match-away .user-game-tag{display:none}}';
+  document.head.append(liveDayMatchesCss);
+  document.body.insertAdjacentHTML('beforeend',`<div id="liveDayMatchesModal" class="modal hidden"><div class="modal-card live-day-matches-modal"><button id="closeLiveDayMatches" class="close">×</button><label>AO VIVO · RODADA</label><h2>Partidas em Andamento</h2><p id="liveDayMatchesMeta"></p><div id="liveDayMatchesList" class="live-day-matches-list"></div></div></div>`);
   let roundBrowserDivision=userDivision,roundBrowserRound=currentRound,roundBrowserGroup=userDivision==='D'?userSerieDGroupIndex:0;
   const divisionRoundHistory=division=>(division===userDivision?seasonRoundHistory:competitionRoundHistory[division])||[];
   const availableResultRounds=division=>[...new Set([...divisionRoundHistory(division).map(item=>item.round),currentRound])].sort((a,b)=>a-b);
@@ -1890,6 +2020,8 @@ export async function bootEngine({ bus } = {}) {
   const openRoundResults=()=>{roundBrowserDivision=userDivision;roundBrowserRound=currentRound;roundBrowserGroup=userDivision==='D'?userSerieDGroupIndex:0;renderRoundResultsBrowser();$('#roundResultsModal').classList.remove('hidden');};
   $('#roundResultsModal').addEventListener('click',event=>{const division=event.target.closest('[data-round-division]')?.dataset.roundDivision;if(division){roundBrowserDivision=division;const rounds=availableResultRounds(division);roundBrowserRound=rounds.includes(currentRound)?currentRound:(rounds.at(-1)||currentRound);if(division==='D')roundBrowserGroup=serieDGroups.findIndex(group=>group.includes(userClub));if(roundBrowserGroup<0)roundBrowserGroup=0;renderRoundResultsBrowser();return;}const groupStep=Number(event.target.closest('[data-group-step]')?.dataset.groupStep||0);if(groupStep){roundBrowserGroup=(roundBrowserGroup+groupStep+serieDGroups.length)%serieDGroups.length;renderRoundResultsBrowser();return;}const roundStep=Number(event.target.closest('[data-round-step]')?.dataset.roundStep||0);if(roundStep){const rounds=availableResultRounds(roundBrowserDivision),index=rounds.indexOf(roundBrowserRound),next=rounds[index+roundStep];if(next){roundBrowserRound=next;renderRoundResultsBrowser();}}});
   onClick('#closeRoundResults',()=>{$('#roundResultsModal').classList.add('hidden');reopenMatchWindow();});
+  onClick('#liveDayMatches',openLiveDayMatches);
+  onClick('#closeLiveDayMatches',()=>{$('#liveDayMatchesModal').classList.add('hidden');});
   const recentResultsCss=document.createElement('style');
   recentResultsCss.textContent='.results-card .form b.win{background:#b6ff38!important;color:#07131a!important}.results-card .form b.draw{background:#63d9ff!important;color:#07131a!important}.results-card .form b.loss{background:#8d3440!important;color:#ffdce0!important}.results-card .form-empty{display:flex;align-items:center;min-height:28px;color:#9eb6b8;font-size:10px}.results-card .form b{cursor:help}';
   document.head.append(recentResultsCss);
@@ -2082,13 +2214,16 @@ export async function bootEngine({ bus } = {}) {
   }
   if(savedNewGame)persistSeason();
   const commitLiveAvailability=()=>{
-    if(availabilityCommitted||!matchStarted)return;
-    [['home',userClub],['away',matchClub().name]].forEach(([side,clubName])=>{
+    if(availabilityCommitted||!matchStarted||!liveMatchGame)return;
+    const userDisciplineLines=[];
+    const userOpponent=liveMatchGame.home===userClub?liveMatchGame.away:liveMatchGame.home;
+    [['home',liveMatchGame.home],['away',liveMatchGame.away]].forEach(([side,clubName])=>{
       const club=clubs[clubName];
-      matchDiscipline[side].forEach(entry=>applyDisciplineToPlayer(club.roster.find(player=>player.name===entry.name),entry,currentRound,clubName));
+      matchDiscipline[side].forEach(entry=>userDisciplineLines.push(...applyDisciplineToPlayer(club.roster.find(player=>player.name===entry.name),entry,currentRound,clubName)));
       const entries=[...liveMinutesPlayed[side].entries()].filter(([,mins])=>mins>0).map(([name,mins])=>({name,minutes:mins,started:liveOpeningLineup[side].includes(name)}));
       applyMatchWorkload(clubName,entries,tacticFor(side));
     });
+    if(userDisciplineLines.length)pushDisciplineDigest(userDisciplineLines,currentRound,userOpponent?`vs ${userOpponent}`:`Rodada ${currentRound}`);
     availabilityCommitted=true;
   };
   const recordGameLeaders=game=>{
@@ -2178,41 +2313,49 @@ export async function bootEngine({ bus } = {}) {
     selectedCalendarDate=new Date(careerCalendarDate);
     calendarCursor=new Date(careerSeason,careerCalendarDate.getMonth(),1);
   };
-  const advanceSeasonRound=()=>{
+  const advanceSeasonRound=({navigateDashboard=true}={})=>{
     if(roundCommitted) return;
     if(liveMatchGame?.competition===KNOCKOUT_COMPETITIONS.COPA){
       commitLiveKnockoutResult();
       advanceCupRound();
       return;
     }
-    if(liveMatchGame&&isKnockoutShootoutCompetition(liveMatchGame))commitLiveKnockoutResult();
-    // Primeiro são cumpridas as ausências que pertenciam à rodada disputada;
-    // depois entram em vigor as novas suspensões e lesões deste jogo.
-    const roundParticipants=new Set(Object.values(nationalCompetitions).flatMap(competition=>(competition.fixtures[currentRound-1]||[]).flatMap(game=>[game.home,game.away])));
-    const restDays=intervalDaysForRoundAdvance();
-    serveAvailability(restDays,roundParticipants);
-    commitLiveAvailability();
-    const completedGames=simulateRoundResults();
-    completedGames.forEach(recordGameLeaders);if(userDivision!=='D'||currentRound<=10)completedGames.forEach(applyRoundToTable);
-    simulateNationalRound();
-    seasonRoundHistory.push({round:currentRound,games:completedGames.map(game=>({...game})),userStats:{home:{...stats.home},away:{...stats.away},goals:{home:[...goals.home],away:[...goals.away]}}});
-    updateSeriesDKnockout(currentRound);
-    Object.values(clubs).forEach(club=>orderRosterForFormation(club.roster,club.formation));
-    renderRoster();draw();
-    advancePostMatchDay();
-    const completedSeason=currentRound===38||(userDivision==='D'&&currentRound===22);if(userDivision==='D'&&currentRound===22)finishRemainingNationalRounds(23);
-    roundCommitted=true; currentRound++;
-    reconcileCurrentRound();
-    const cupReferenceDate=completedSeason?new Date(careerSeason,11,31,12):fixtureDate(clamp(currentRound,1,championshipFixtures.length));
-    advanceCupThroughDate(cupReferenceDate);
-    if(completedSeason)finalizeNationalRankingSeason();
-    persistSeason();
-    refreshSeasonPresentation();
-    $('#roundResultsModal').classList.add('hidden');modal.classList.add('hidden');
-    stopMatchClock();matchStarted=false;matchFinished=false;liveMatchGame=null;roundResults=null;roundResultMessagePushed=false;roundPreviewResults={};roundCommitted=false;
-    if(completedSeason)prepareSeasonTransition();
-    else if(isUserSeasonIdle())simulateNonHumanSeasonRemainder();
-    else $$('.nav').find(button=>button.dataset.view==='dashboard')?.click();
+    roundCommitted=true;
+    try{
+      if(liveMatchGame&&isKnockoutShootoutCompetition(liveMatchGame))commitLiveKnockoutResult();
+      const alreadyRecorded=seasonRoundHistory.some(item=>item.round===currentRound);
+      if(!alreadyRecorded){
+        // Primeiro são cumpridas as ausências que pertenciam à rodada disputada;
+        // depois entram em vigor as novas suspensões e lesões deste jogo.
+        const roundParticipants=new Set(Object.values(nationalCompetitions).flatMap(competition=>(competition.fixtures[currentRound-1]||[]).flatMap(game=>[game.home,game.away])));
+        const restDays=intervalDaysForRoundAdvance();
+        serveAvailability(restDays,roundParticipants);
+        commitLiveAvailability();
+        const completedGames=simulateRoundResults(true);
+        completedGames.forEach(recordGameLeaders);if(userDivision!=='D'||currentRound<=10)completedGames.forEach(applyRoundToTable);
+        simulateNationalRound();
+        seasonRoundHistory.push({round:currentRound,games:completedGames.map(game=>({...game})),userStats:{home:{...stats.home},away:{...stats.away},goals:{home:[...goals.home],away:[...goals.away]}}});
+        updateSeriesDKnockout(currentRound);
+        Object.values(clubs).forEach(club=>orderRosterForFormation(club.roster,club.formation));
+        renderRoster();draw();
+        advancePostMatchDay();
+      }
+      const completedSeason=currentRound===38||(userDivision==='D'&&currentRound===22);if(userDivision==='D'&&currentRound===22)finishRemainingNationalRounds(23);
+      if(!alreadyRecorded)currentRound++;
+      reconcileCurrentRound();
+      const cupReferenceDate=completedSeason?new Date(careerSeason,11,31,12):fixtureDate(clamp(currentRound,1,championshipFixtures.length));
+      advanceCupThroughDate(cupReferenceDate);
+      if(completedSeason)finalizeNationalRankingSeason();
+      persistSeason();
+      refreshSeasonPresentation();
+      $('#roundResultsModal').classList.add('hidden');modal.classList.add('hidden');
+      stopMatchClock();matchStarted=false;matchFinished=false;liveMatchGame=null;liveDayMatchSnapshots=null;roundResults=null;roundResultMessagePushed=false;roundPreviewResults={};
+      if(completedSeason)prepareSeasonTransition();
+      else if(isUserSeasonIdle())simulateNonHumanSeasonRemainder();
+      else if(navigateDashboard)$$('.nav').find(button=>button.dataset.view==='dashboard')?.click();
+    }finally{
+      roundCommitted=false;
+    }
   };
   // Avança uma rodada nacional sem partida ao vivo do usuário (clube idle/eliminado).
   const simulateIdleRound=()=>{
@@ -2298,7 +2441,8 @@ export async function bootEngine({ bus } = {}) {
     const playerRow=(player,index,isStarter)=>{const card=cards.away[index],liveState=card?{yellow:card.yellow?1:0,red:!!card.red,injured:!!card.injured,playThroughRisk:!!card.playThroughRisk}:null;return `<div class="live-opponent-player">${playerNameCell(player.name,player,{prefix:isStarter?(index+1)+'. ':'',liveState})}<span>${player.pos}</span><span>${player.overall}</span>${fatigueCell(player)}</div>`;};
     $('#liveOpponentRoster').innerHTML=`<h3>TITULARES</h3>${headers}${club.roster.slice(0,11).map((player,index)=>playerRow(player,index,true)).join('')}<div class="live-opponent-bench"><h3>RESERVAS</h3>${headers}${club.roster.slice(11).map((player,index)=>playerRow(player,index+11,false)).join('')}</div>`;
     const coords=formations[club.formation]||formations['4-3-3'];
-    $('#liveOpponentPitch').innerHTML=coords.map((point,index)=>{const card=cards.away[index]||{yellow:0,red:false,injured:false},player=club.roster[index],vacant=card.red||!player,top=point[1]===91?88:point[1],energy=clamp(player?.fatigue??0,0,100),injured=!!card.injured;return `<div class="board-player ${card.yellow?'yellow':''} ${vacant?'vacant':''} ${injured?'injured':''}" style="left:${point[0]}%;top:${top}%"><i style="--energy:${energy}%"><span>${vacant?'×':index+1}</span></i><small>${vacant?'VAGO · EXPULSO':player.name}</small></div>`;}).join('');
+    ensureBoardLegend($('#liveOpponentPitch')?.closest('.tactical-board'));
+    $('#liveOpponentPitch').innerHTML=coords.map((point,index)=>{const card=cards.away[index]||{yellow:0,red:false,injured:false},player=club.roster[index],vacant=card.red||!player,top=point[1]===91?88:point[1],energy=clamp(player?.fatigue??0,0,100),injured=!!card.injured,label=vacant?'EXPULSO':boardPlayerLabel(player?.name||'—');return `<div class="board-player ${vacant?'vacant':''}" title="${vacant?'Expulso':`${player.name}${card.yellow?' · Advertido':''}${injured?' · Lesionado':''}`}" style="left:${point[0]}%;top:${top}%"><i style="--energy:${energy}%"><span>${vacant?'×':index+1}</span></i>${boardPlayerBadges({yellow:card.yellow,injured})}<small>${label}</small></div>`;}).join('');
   };
   const tryLiveEventInjury=(side,playerName,eventContext)=>{
     const lineup=side==='home'?starters():matchClub().roster.slice(0,11);
@@ -2466,8 +2610,16 @@ export async function bootEngine({ bus } = {}) {
       disciplineEvents++;
       message+=directRed ? ' Cartão vermelho direto.' : ' Segundo amarelo: cartão vermelho.';
       log(message,'red');
-      if(side==='home') drawBoard();
-      openPreparation('CARTÃO VERMELHO');
+      matchDiscipline[side].set(fouler,{name:fouler,yellow:state.dismissal?0:state.yellow,dismissal:state.dismissal||null});
+      const attackerPlayer=actorData(otherSide,attacker),foulerPlayer=actorData(side,fouler);
+      const foulVictim=pickInjuryVictim({eventPhase:details.phase||'duel',contact:true,intensity:clamp(threat,.45,.9),phase:details.phase,zone:details.phase==='final'?'entrada da área':undefined},attackerPlayer,foulerPlayer);
+      if(side==='home'){
+        drawBoard();
+        openPreparation('CARTÃO VERMELHO');
+        return tryLiveEventInjury(foulVictim===attackerPlayer?otherSide:side,foulVictim.name,{eventPhase:details.phase||'duel',contact:true,intensity:clamp(threat,.45,.9),phase:details.phase,zone:details.phase==='final'?'entrada da área':undefined})||true;
+      }
+      renderStats();
+      return tryLiveEventInjury(foulVictim===attackerPlayer?otherSide:side,foulVictim.name,{eventPhase:details.phase||'duel',contact:true,intensity:clamp(threat,.45,.9),phase:details.phase,zone:details.phase==='final'?'entrada da área':undefined});
     } else {
       disciplineEvents++;
       message+=' Cartão amarelo.'; log(message,'yellow');
@@ -2747,10 +2899,13 @@ export async function bootEngine({ bus } = {}) {
     // Após SAIR, a partida é consolidada e o calendário avança para o dia seguinte.
     if(reopenMatchWindow()) return;
     orderRosterForFormation(squad,formation);orderRosterForFormation(matchClub().roster,matchClub().formation);
-    matchStarted=true; matchFinished=false; preMatchPreparation=true; minute=0;home=0;away=0;pauses=0;halftimeShown=false;pendingPenalty=null;shootoutState=null;disciplineEvents=0;substitutions=0;substitutedOut=new Set();roundResults=null;roundResultMessagePushed=false;postMatchMedicalQueue=[];matchDiscipline={home:new Map(),away:new Map()};liveInjuries={home:[],away:[]};liveDeferredInjuries={home:[],away:[]};liveOpeningLineup={home:starters().map(player=>player.name),away:matchClub().roster.slice(0,11).map(player=>player.name)};liveMinutesPlayed={home:new Map(starters().map(player=>[player.name,0])),away:new Map(matchClub().roster.slice(0,11).map(player=>[player.name,0]))};availabilityCommitted=false;matchFactors={home:contextFactor({...seasonContext.home,position:clubs[userClub].position,isHome:nextUserGame?.home===userClub}),away:contextFactor({...seasonContext.away,position:matchClub().position,isHome:nextUserGame?.home!==userClub})};cards={home:starters().map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false})),away:matchClub().roster.slice(0,11).map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false}))};goals={home:[],away:[]};stats={home:blank(),away:blank()};score();timeline.innerHTML="<p>PRÉ-JOGO · Aguardando a confirmação do treinador.</p>";$('#matchActions').innerHTML='<button id="pauseMatch">Ⅱ PAUSA TÉCNICA <small id="pauseCounter">0/3</small></button><button id="liveStats">ESTATÍSTICAS AO VIVO</button><button id="liveOpponent">VER ADVERSÁRIO</button>';bindLiveActions();$('#pauseCounter').textContent='0/3';$('#matchStatus').textContent='Organize sua equipe antes de iniciar a partida.';modal.classList.remove('hidden');$('#penaltyChoice').classList.add('hidden');$('#shootoutPanel').classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');updateLiveMatchClock();openPreparation('PRÉ-JOGO');
+    matchStarted=true; matchFinished=false; preMatchPreparation=true; minute=0;home=0;away=0;pauses=0;halftimeShown=false;pendingPenalty=null;shootoutState=null;disciplineEvents=0;substitutions=0;substitutedOut=new Set();roundResults=null;roundResultMessagePushed=false;postMatchMedicalQueue=[];matchDiscipline={home:new Map(),away:new Map()};liveInjuries={home:[],away:[]};liveDeferredInjuries={home:[],away:[]};liveOpeningLineup={home:starters().map(player=>player.name),away:matchClub().roster.slice(0,11).map(player=>player.name)};liveMinutesPlayed={home:new Map(starters().map(player=>[player.name,0])),away:new Map(matchClub().roster.slice(0,11).map(player=>[player.name,0]))};availabilityCommitted=false;liveDayMatchSnapshots=null;matchFactors={home:contextFactor({...seasonContext.home,position:clubs[userClub].position,isHome:nextUserGame?.home===userClub}),away:contextFactor({...seasonContext.away,position:matchClub().position,isHome:nextUserGame?.home!==userClub})};cards={home:starters().map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false})),away:matchClub().roster.slice(0,11).map(() => ({yellow:0,red:false,dismissal:null,injured:false,playThroughRisk:false}))};goals={home:[],away:[]};stats={home:blank(),away:blank()};score();timeline.innerHTML="<p>PRÉ-JOGO · Aguardando a confirmação do treinador.</p>";$('#matchActions').innerHTML='<button id="pauseMatch">Ⅱ PAUSA TÉCNICA <small id="pauseCounter">0/3</small></button><button id="liveStats">ESTATÍSTICAS AO VIVO</button><button id="liveOpponent">VER ADVERSÁRIO</button>';bindLiveActions();$('#pauseCounter').textContent='0/3';$('#matchStatus').textContent='Organize sua equipe antes de iniciar a partida.';modal.classList.remove('hidden');$('#penaltyChoice').classList.add('hidden');$('#shootoutPanel').classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');updateLiveMatchClock();openPreparation('PRÉ-JOGO');
   });
   onClick('#simulateRemainder',()=>simulateNonHumanSeasonRemainder());
-  onClick('#closeMatch',()=>{modal.classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');closeFormationSuggestion();});
+  onClick('#closeMatch',()=>{
+    if(matchFinished&&!roundCommitted){exitLiveMatch();return;}
+    modal.classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');closeFormationSuggestion();
+  });
   onClick('#closeLiveOpponent',()=>$('#liveOpponentModal').classList.add('hidden'));
   onClick('#resumeMatch',()=>{
     const startingMatch=preMatchPreparation;
@@ -2759,7 +2914,7 @@ export async function bootEngine({ bus } = {}) {
     $('#stats').classList.add('hidden');
     $('#matchActions').classList.remove('hidden');
     $('#matchStatus').textContent='A partida está em andamento…';
-    if(startingMatch){liveClockSeconds=0;applyPreMatchTraining();renderRoster();const venue=matchVenueFor(liveMatchGame?.home||userClub);timeline.innerHTML=`<p>0' · A bola está rolando no ${venue.name}!</p>`; }
+    if(startingMatch){liveClockSeconds=0;liveDayMatchSnapshots=null;ensureLiveDayMatches();applyPreMatchTraining();renderRoster();const venue=matchVenueFor(liveMatchGame?.home||userClub);timeline.innerHTML=`<p>0' · A bola está rolando no ${venue.name}!</p>`; }
     updateLiveMatchClock();
     startMatchClock();
   });

@@ -16,6 +16,25 @@ const CATEGORY_LABELS = {
 
 const isInboxMessage = message => !EXCLUDED_INBOX_CATEGORIES.has(message?.category);
 
+const formatMessageTime = at =>
+  new Date(at)
+    .toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    .replace('.', '');
+
+const escapeHtml = value =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+
+const bodyToHtml = body =>
+  escapeHtml(body)
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .join('<br>');
+
 /**
  * Hub de mensagens — UI + estado isolados do motor legado.
  * @param {object} deps
@@ -40,6 +59,7 @@ export function createMessagesFeature(deps) {
     : [];
   let messageCounter = careerMessages.length;
   let messageFilter = 'all';
+  let readerIndex = -1;
   let persistSeason = typeof deps.onPersist === 'function' ? deps.onPersist : () => {};
 
   const setPersist = fn => {
@@ -73,6 +93,50 @@ export function createMessagesFeature(deps) {
     }
   };
 
+  const updateReaderNav = () => {
+    const items = filteredMessages();
+    const prev = $('#messageReaderPrev');
+    const next = $('#messageReaderNext');
+    if (prev) prev.disabled = readerIndex <= 0;
+    if (next) next.disabled = readerIndex >= items.length - 1;
+  };
+
+  const closeMessageReader = () => {
+    $('#messageReaderModal')?.classList.add('hidden');
+    readerIndex = -1;
+  };
+
+  const openMessageReader = id => {
+    const items = filteredMessages();
+    const index = items.findIndex(message => message.id === id);
+    if (index < 0) return;
+    readerIndex = index;
+    const message = items[index];
+    markMessageRead(message.id);
+
+    const meta = $('#messageReaderMeta');
+    const title = $('#messageReaderTitle');
+    const time = $('#messageReaderTime');
+    const body = $('#messageReaderBody');
+
+    if (meta) {
+      meta.textContent = `${CATEGORY_LABELS[message.category] || message.category.toUpperCase()} · RODADA ${message.round}${message.meta?.competition ? ` · ${message.meta.competition}` : ''}`;
+    }
+    if (title) title.textContent = message.title;
+    if (time) time.textContent = formatMessageTime(message.at);
+    if (body) body.innerHTML = bodyToHtml(message.body);
+
+    updateReaderNav();
+    $('#messageReaderModal')?.classList.remove('hidden');
+  };
+
+  const stepMessageReader = step => {
+    const items = filteredMessages();
+    const nextIndex = readerIndex + step;
+    if (nextIndex < 0 || nextIndex >= items.length) return;
+    openMessageReader(items[nextIndex].id);
+  };
+
   const renderMessages = () => {
     const list = $('#messagesList');
     if (!list) return;
@@ -80,7 +144,8 @@ export function createMessagesFeature(deps) {
     list.innerHTML = items.length
       ? items
           .map(
-            message => `<article class="message-item ${message.read ? 'read' : 'unread'} message-${message.category}" data-message-id="${message.id}"><header><div><small>${CATEGORY_LABELS[message.category] || message.category.toUpperCase()} · RODADA ${message.round}</small><strong>${message.title}</strong></div><time>${new Date(message.at).toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).replace('.', '')}</time></header><p>${message.body}</p>${message.meta?.competition ? `<footer><small>${message.meta.competition}</small></footer>` : ''}</article>`,
+            message =>
+              `<article class="message-item ${message.read ? 'read' : 'unread'} message-${message.category}" data-message-id="${message.id}"><div class="message-item-main"><small>${CATEGORY_LABELS[message.category] || message.category.toUpperCase()} · RODADA ${message.round}</small><strong>${escapeHtml(message.title)}</strong></div><time>${formatMessageTime(message.at)}</time></article>`,
           )
           .join('')
       : `<div class="messages-empty">Nenhuma ocorrência registrada${messageFilter === 'all' ? ' ainda' : ` na categoria ${CATEGORY_LABELS[messageFilter] || messageFilter}`}.</div>`;
@@ -95,7 +160,7 @@ export function createMessagesFeature(deps) {
       ? recent
           .map(
             message =>
-              `<div class="dashboard-message-row ${message.read ? 'read' : 'unread'}" data-message-id="${message.id}"><small>${CATEGORY_LABELS[message.category] || message.category}</small><strong>${message.title}</strong><span>${message.body}</span></div>`,
+              `<div class="dashboard-message-row ${message.read ? 'read' : 'unread'}" data-message-id="${message.id}"><small>${CATEGORY_LABELS[message.category] || message.category}</small><strong>${escapeHtml(message.title)}</strong></div>`,
           )
           .join('')
       : '<div class="dashboard-message-empty">As ocorrências da temporada aparecerão aqui.</div>';
@@ -173,14 +238,21 @@ export function createMessagesFeature(deps) {
     onClick('#messagesList', event => {
       const item = event.target.closest('[data-message-id]');
       if (!item) return;
-      markMessageRead(item.dataset.messageId);
+      openMessageReader(item.dataset.messageId);
     });
     onClick('#dashboardMessagesFeed', event => {
       const item = event.target.closest('[data-message-id]');
-      if (item) markMessageRead(item.dataset.messageId);
-      openView?.('messages');
+      if (item) openMessageReader(item.dataset.messageId);
+      else openView?.('messages');
     });
     onClick('#openMessagesFromDashboard', () => openView?.('messages'));
+    onClick('#closeMessageReader', closeMessageReader);
+    onClick('#messageReaderClose', closeMessageReader);
+    onClick('#messageReaderPrev', () => stepMessageReader(-1));
+    onClick('#messageReaderNext', () => stepMessageReader(1));
+    onClick('#messageReaderModal', event => {
+      if (event.target.id === 'messageReaderModal') closeMessageReader();
+    });
   };
 
   return {
