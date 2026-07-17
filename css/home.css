@@ -99,6 +99,12 @@ body {
   letter-spacing: 3px;
 }
 
+.home-meta {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
 .home-tag {
   padding: 7px 10px;
   border: 1px solid var(--md-line);
@@ -107,6 +113,14 @@ body {
   color: var(--md-muted);
   font: 700 9px 'DM Sans', sans-serif;
   letter-spacing: .55px;
+  white-space: nowrap;
+}
+
+.home-updated {
+  color: var(--md-muted);
+  font: 500 9px 'DM Sans', sans-serif;
+  letter-spacing: .35px;
+  white-space: nowrap;
 }
 
 .home-main {

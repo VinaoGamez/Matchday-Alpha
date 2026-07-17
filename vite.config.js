@@ -7,6 +7,21 @@ const githubPagesBase = repoName ? `/${repoName}/` : './';
 export default defineConfig({
   root: '.',
   base: process.env.GITHUB_PAGES === 'true' ? githubPagesBase : './',
+  plugins: [
+    {
+      name: 'inject-build-time',
+      transformIndexHtml(html) {
+        const stamp = new Date().toISOString();
+        if (html.includes('name="build-time"')) {
+          return html.replace(
+            /(<meta name="build-time" content=")[^"]*(")/,
+            `$1${stamp}$2`,
+          );
+        }
+        return html.replace('<head>', `<head>\n  <meta name="build-time" content="${stamp}">`);
+      },
+    },
+  ],
   build: {
     outDir: 'dist',
     emptyOutDir: true,

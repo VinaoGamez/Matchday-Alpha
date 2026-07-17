@@ -1,7 +1,29 @@
 import './security/tester-hardening.js';
 
 (() => {
-  const $ = selector => document.querySelector(selector);  const hasCareer = () => {
+  const $ = selector => document.querySelector(selector);
+
+  const formatUpdateTime = value => {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/Sao_Paulo',
+    });
+  };
+
+  const updateEl = $('#lastUpdate');
+  if (updateEl) {
+    const buildMeta = document.querySelector('meta[name="build-time"]');
+    const stamp = buildMeta?.content || new Date().toISOString();
+    updateEl.textContent = `Última atualização: ${formatUpdateTime(stamp)}`;
+  }
+
+  const hasCareer = () => {
     try { return !!localStorage.getItem('matchday-new-game'); }
     catch { return false; }
   };
