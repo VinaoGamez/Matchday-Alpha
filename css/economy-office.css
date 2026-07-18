@@ -1,0 +1,72 @@
+/* from feature/economy/index.js injectStyles (economyOfficeCss) */
+.office-view .office-layout{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.25fr);gap:16px;align-items:stretch}
+.office-view .office-ledger,.office-view .office-sponsors{grid-column:1 / -1}
+.office-budget-card,.economy-investments,.office-ledger,.office-sponsors,.stadium-summary-card,.stadium-upgrades,.stadium-tickets{display:flex;flex-direction:column;min-height:0;padding:18px 20px}
+.office-budget-card>label,.economy-investments>label,.office-ledger>label,.office-sponsors>label,.stadium-summary-card>label,.stadium-upgrades>label,.stadium-tickets>label{display:block;margin:0 0 14px;color:#2abee9;font:700 11px DM Sans,sans-serif;letter-spacing:.6px}
+.office-sponsors-meta{margin:0 0 12px;color:#7fa8b0;font-size:10px;line-height:1.4}
+.office-sponsors-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.office-sponsor-card{display:grid;align-content:center;min-height:0;padding:12px 14px;border:1px solid #1e4a5c;border-radius:8px;background:linear-gradient(165deg,#122b36 0%,#0c1c26 100%)}
+.office-sponsor-card.master{border-color:#2abee9;background:linear-gradient(165deg,#143848 0%,#0d2029 100%);box-shadow:0 0 0 1px #2abee928,0 8px 20px #0005}
+.office-sponsor-brand{display:grid;grid-template-columns:88px minmax(0,1fr);gap:12px;align-items:center;min-width:0}
+.office-sponsor-card.master .office-sponsor-brand{grid-template-columns:96px minmax(0,1fr)}
+.office-sponsor-logo{display:grid;place-items:center;width:88px;height:88px;padding:0;border-radius:10px;box-sizing:border-box;background:#050c14;border:1px solid #3a6d7e;box-shadow:inset 0 1px 0 #ffffff12;overflow:hidden}
+.office-sponsor-card.master .office-sponsor-logo{width:96px;height:96px;border-color:#2abee9aa;box-shadow:inset 0 1px 0 #ffffff18,0 0 14px #2abee914}
+.office-sponsor-logo img{display:block;width:100%;height:100%;object-fit:contain;object-position:center;image-rendering:auto;-webkit-backface-visibility:hidden}
+.office-sponsor-logo.missing{color:#7fa8b0;font:700 28px Barlow Condensed,sans-serif}
+.office-sponsor-copy{display:flex;align-items:center;gap:0;min-width:0;width:100%}
+.office-sponsor-copy b{color:#edf8f5;font:700 15px Barlow Condensed,sans-serif;letter-spacing:.2px;line-height:1.1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.office-sponsor-card.master .office-sponsor-copy b{font-size:16px;color:#bbeb27}
+.office-sponsor-divider{display:block;width:1px;height:36px;margin:0 12px;flex-shrink:0;background:#5fb9d4;opacity:.85;box-shadow:0 0 0 1px #2abee922}
+.office-sponsor-copy strong{margin-left:auto;color:#7fd9f2;font:700 28px Barlow Condensed,sans-serif;letter-spacing:.15px;line-height:1;white-space:nowrap;flex-shrink:0}
+.office-sponsor-card.master .office-sponsor-copy strong{font-size:32px;color:#b6ff38}
+.office-sponsor-empty{grid-column:1 / -1;color:#7fa8b0;font-size:11px;padding:8px 0}
+.office-budget-body{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:88px;margin-bottom:14px}
+.office-budget-card .office-budget-value{margin:0 0 6px;font:700 42px Barlow Condensed,sans-serif;color:#b6ff38;line-height:1}
+.office-budget-card .office-budget-meta{margin:0;color:#9eb6b8;font-size:11px;line-height:1.4}
+.office-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:auto}
+.stadium-summary-stats{grid-template-columns:1fr 1fr 1fr}
+.office-stats>div{display:grid;align-content:center;gap:4px;min-height:52px;padding:10px 8px;border:1px solid #28505b;border-radius:5px;background:#102b35;text-align:center}
+.office-stats small{display:block;color:#9eb6b8;font:700 8px DM Sans,sans-serif;letter-spacing:.3px;line-height:1.15}
+.office-stats b{display:block;color:#b6ff38;font:700 18px Barlow Condensed,sans-serif;line-height:1;white-space:nowrap}
+.economy-investments .economy-invest-head,.economy-investments .economy-invest-row,.stadium-upgrades .economy-invest-head,.stadium-upgrades .economy-invest-row{display:grid;grid-template-columns:minmax(0,1fr) 58px 108px;gap:14px;align-items:center}
+.office-ledger-head,.office-ledger-row,.stadium-ticket-head,.stadium-ticket-row{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:12px;align-items:center}
+.stadium-ticket-head,.stadium-ticket-row{grid-template-columns:minmax(0,1.2fr) 80px 120px}
+.economy-invest-head,.office-ledger-head,.stadium-ticket-head{padding:0 2px 10px;border-bottom:1px solid #234650;margin-bottom:4px}
+.economy-invest-head span,.office-ledger-head span,.stadium-ticket-head span{color:#7fa8b0;font:700 10px DM Sans,sans-serif;letter-spacing:.4px}
+.economy-invest-head span:nth-child(2),.economy-invest-head span:nth-child(3),.office-ledger-head span:last-child,.stadium-ticket-head span:nth-child(2),.stadium-ticket-head span:nth-child(3){text-align:right}
+.economy-investments-list,.office-ledger-list,.stadium-tickets-list{display:grid;gap:0;flex:1}
+.economy-invest-row,.office-ledger-row,.stadium-ticket-row{min-height:72px;padding:14px 2px;border-bottom:1px solid #1e3a44;background:transparent}
+.economy-invest-row:last-child,.office-ledger-row:last-child,.stadium-ticket-row:last-child{border-bottom:none}
+.economy-invest-row>div,.stadium-ticket-row>div{min-width:0}
+.economy-invest-row b,.stadium-ticket-row b{display:block;color:#edf8f5;font:700 17px Barlow Condensed,sans-serif;letter-spacing:.2px;line-height:1.15}
+.economy-invest-row small,.stadium-ticket-row small{display:block;margin-top:5px;color:#9eb6b8;font-size:12px;line-height:1.4;max-width:42ch}
+.economy-invest-row .economy-invest-level{justify-self:end;color:#dff4f5;font:700 16px Barlow Condensed,sans-serif;white-space:nowrap}
+.economy-invest-row button{justify-self:end;min-width:96px;padding:11px 12px!important;font-size:11px!important;letter-spacing:.3px;white-space:nowrap}
+.economy-invest-row button:disabled,.stadium-ticket-step:disabled{opacity:.45;cursor:not-allowed}
+.economy-invest-row.maxed b,.economy-invest-row.locked b,.economy-invest-row.structure-capped b{color:#9eb6b8}
+.economy-invest-row.locked,.economy-invest-row.structure-capped{opacity:.8}
+.economy-invest-row.locked small,.economy-invest-row.structure-capped small{color:#7fa8b0}
+.economy-invest-row.locked .economy-invest-level,.economy-invest-row.structure-capped .economy-invest-level{color:#7fa8b0}
+.economy-invest-row.locked button,.economy-invest-row.structure-capped button{opacity:.55}
+.office-ledger-list{max-height:280px;overflow:auto}
+.office-ledger-row{min-height:44px;padding:10px 4px;font-size:10px}
+.office-ledger-row span{color:#9eb6b8;min-width:0}
+.office-ledger-row b{justify-self:end;text-align:right;color:#edf8f5;font:700 13px Barlow Condensed,sans-serif;white-space:nowrap}
+.office-ledger-row b.credit{color:#63d9ff}
+.office-ledger-row b.spend{color:#ffc94f}
+.office-ledger-empty{color:#7fa8b0;font-size:11px;padding:12px 4px}
+.stadium-view .office-stadium-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px;align-items:stretch}
+.stadium-view .office-stadium-layout .stadium-tickets{grid-column:1 / -1}
+.stadium-summary-body>strong{display:block;margin:0 0 14px;color:#edf8f5;font:700 22px Barlow Condensed,sans-serif}
+.stadium-gate-hint{margin:12px 0 0;color:#7fa8b0;font-size:10px;line-height:1.4}
+.stadium-ticket-row{grid-template-columns:minmax(0,1.2fr) 72px 120px}
+.stadium-ticket-price{justify-self:end;color:#b6ff38;font:700 16px Barlow Condensed,sans-serif;white-space:nowrap}
+.stadium-ticket-controls{justify-self:end;display:flex;gap:6px}
+.stadium-ticket-step{min-width:36px!important;padding:8px 0!important;font-size:14px!important;line-height:1}
+.office-entry-card{cursor:pointer;transition:border-color .16s ease,background .16s ease}
+.office-entry-card:hover{border-color:#63d9ff!important;background:#122b35!important}
+.office-entry-card strong{font:700 17px Barlow Condensed,sans-serif;color:#f4fbf5}
+.office-entry-card small{font-size:10px;color:#9fcfd8}
+.office-entry-card .office-icon{color:#63d9ff}
+@media(max-width:900px){.office-view .office-layout,.stadium-view .office-stadium-layout{grid-template-columns:1fr}.office-stats{grid-template-columns:1fr 1fr}.stadium-summary-stats{grid-template-columns:1fr 1fr}.office-sponsors-list{grid-template-columns:1fr 1fr}.office-sponsor-card.master{grid-column:1 / -1}}
+@media(max-width:560px){.office-sponsors-list{grid-template-columns:1fr}}

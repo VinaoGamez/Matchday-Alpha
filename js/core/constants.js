@@ -34,6 +34,10 @@ export const MODULE_VERSIONS = {
   fatigue: 1,
   matchLiveUi: 1,
   testerHub: 1,
+  matchAvailability: 1,
+  matchLiveAwaySubs: 1,
+  matchLiveOrchestration: 1,
+  matchLiveSession: 1,
 };
 
 /** Flags para builds de testers — evoluir sem quebrar fluxo congelado. */

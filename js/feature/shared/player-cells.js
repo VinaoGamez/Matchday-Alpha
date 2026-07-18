@@ -69,34 +69,3 @@ export function createPlayerCells({
 
   return { playerNameCell, playerStatusBadges };
 }
-
-let cssInjected = false;
-
-export function injectPlayerStatusCss() {
-  if (cssInjected || typeof document === 'undefined') return;
-  cssInjected = true;
-  const playerStatusCss = document.createElement('style');
-  playerStatusCss.textContent = `
-.player-name-cell{display:flex;align-items:center;gap:8px;min-width:0;font-weight:700}
-.player-name-prefix,.starter-number{color:#63d9ff;font-weight:700;flex-shrink:0}
-.player-name-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-.player-status-badges{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;margin-left:2px}
-.player-badge{display:inline-block;flex:none;vertical-align:middle}
-.player-badge-yellow{width:10px;height:14px;border-radius:2px;background:linear-gradient(180deg,#ffe866,#ffc933);border:1px solid #a67c00;box-shadow:0 1px 3px #0007}
-.player-badge-red{width:10px;height:14px;border-radius:2px;background:linear-gradient(180deg,#ff7a7a,#e31b1b);border:1px solid #8b1010;box-shadow:0 1px 3px #0007}
-.player-badge-suspended{width:15px;height:15px;border-radius:50%;border:1.5px solid #ff8993;background:#3a1519;box-shadow:inset 0 0 0 1px #ff637055,0 1px 3px #0006}
-.player-badge-suspended:after{content:"";display:block;width:11px;height:2px;margin:5.5px auto;background:#ff8993;transform:rotate(-35deg);border-radius:1px}
-.player-badge-injury{width:17px;height:17px;border-radius:50%;position:relative;color:#ffd06b;border:1.5px solid currentColor;background:#2a2418;box-shadow:0 1px 3px #0006}
-.player-badge-injury.moderate{color:#ff9b3d;background:#2a1f14}
-.player-badge-injury.severe{color:#ff6370;background:#3a1519}
-.player-badge-injury:before,.player-badge-injury:after{content:"";position:absolute;background:currentColor;border-radius:1px}
-.player-badge-injury:before{width:9px;height:2.5px;top:50%;left:50%;transform:translate(-50%,-50%)}
-.player-badge-injury:after{width:2.5px;height:9px;top:50%;left:50%;transform:translate(-50%,-50%)}
-#squad .player-row>span:first-child .player-name-cell{width:100%}
-#squad .player-row{min-height:34px}
-.substitution-player-row .sub-name .player-name-cell{display:inline-flex;max-width:100%;font-size:9px;font-weight:400}
-.analysis-player .player-name-cell,.live-opponent-player .player-name-cell{display:flex;width:100%}
-#tactics .tactic-player-row .player-name-cell{width:100%}
-`;
-  document.head.append(playerStatusCss);
-}

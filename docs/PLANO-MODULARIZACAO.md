@@ -19,6 +19,9 @@ js/
     match-core.js         ← formações e roundTactic (Fase B)
     match-sim.js          ← simulateRoundMatch (Fase B)
     match-live.js         ← ações ao vivo (Fase B)
+    match-availability.js         ← workload/disponibilidade + commit ao vivo (Fase F)
+    match-live-away-subs.js       ← banco/janelas/substituição do adversário ao vivo (Fase F)
+    match-live-orchestration.js   ← tick/advance/foul, lesões em jogo, pênaltis/shootout (Fase F)
   ui/
     dom.js
     router.js
@@ -33,9 +36,10 @@ js/
     options/index.js          ← ritmo, opções, nova carreira (Fase E)
     live-day-matches/index.js ← modal "Ao vivo · Rodada" (Fase E)
     match-live-ui/index.js    ← relógio, placar, log, adversário ao vivo (Fase E)
+    match-live-session/index.js ← resumo final, ações pós-jogo, abrir/reabrir partida (Fase F)
     tester-hub/index.js       ← guia do tester + feedback (Fase D)
   legacy/
-    engine.js             ← orquestrador ao vivo (Fase F pendente)
+    engine.js             ← ratings, tactics, calendar/season, handlers restantes
 ```
 
 ## Regras
@@ -43,7 +47,7 @@ js/
 1. **Motores não tocam DOM** — só regras e estado
 2. **Features não alteram simulação** — só UI + handlers
 3. **Save versionado** — ver `MODULE_VERSIONS` em `constants.js`
-4. **CSS por módulo** — engine sem injeção JS (Fase E passo 2); algumas features (tactics, calendar, etc.) ainda injetam CSS via JS
+4. **CSS por módulo** — engine sem injeção JS (Fase E passo 2); features (tactics, tactical-confrontation, calendar-view, economy, season-summary, player-cells) também sem `createElement('style')` (Fase E passo 4) — CSS extraído para `css/*.css` linkados em `index.html`. Leftovers conhecidos: `tester-hub` (fallback mínimo só se faltar o link `css/tester-hub.css`) e `ui/update-alert.js`/`ui/release-notes-viewer.js` (chrome de UI, fora do escopo de features)
 
 ## Fases
 
@@ -54,7 +58,7 @@ js/
 | C | dashboard, tactics, calendar-view, player-cells | **Concluída** |
 | D | build testers, guia, feedback | **Concluída** |
 | E | economy, season-summary, options, live-day-matches, fatigue, match-live-ui | **Concluída** |
-| F *(próxima)* | orquestração ao vivo ainda em `legacy/engine.js` | Pendente |
+| F | orquestração ao vivo: match-availability, match-live-away-subs, match-live-orchestration, match-live-session | **Concluída** |
 
 ### Fase D — nota
 
@@ -76,12 +80,36 @@ js/
   `feature/shared/player-cells.js`. `MODULE_VERSIONS.fatigue` e `MODULE_VERSIONS.matchLiveUi`
   em `constants.js`.
 - **Também no escopo E (já extraídos antes/junto):** `feature/economy`, `feature/season-summary`.
+- **Passo 4:** CSS injetado via `document.createElement('style')` nas features restantes
+  movido para arquivos estáticos: `tactics/index.js` (6 blocos → `css/tactics-ui.css`),
+  `tactics/tactical-confrontation.js` → `css/tactical-confrontation.css`,
+  `calendar-view/index.js` (fullCalendarCss + matchReportCss → apensado a `css/calendar.css`),
+  `economy/index.js` (economyOfficeCss) → `css/economy-office.css`, `season-summary/index.js`
+  → `css/season-summary.css`, `shared/player-cells.js` (injectPlayerStatusCss) →
+  `css/player-status.css`. Todos os injetores e call sites (inclusive em `legacy/engine.js`)
+  foram removidos. Leftovers: `tester-hub` (fallback mínimo condicional) e `ui/update-alert.js`
+  / `ui/release-notes-viewer.js` (UI chrome, não features).
 
-### Fora do escopo E → Fase F
+### Fase F — nota (concluída)
 
-Orquestração da partida ao vivo permanece em `legacy/engine.js` por acoplamento forte ao
-estado: `tick`/`advance`, injeção/pênaltis, `#playMatch`/`#resumeMatch`/`#closeMatch`,
-`applyMatchAvailability`, substituições do adversário. Extração futura sem mudar comportamento.
+Orquestração da partida ao vivo extraída de `legacy/engine.js` para quatro módulos novos,
+todos factory `create...(deps)` sem DOM direto no motor (callbacks para render/log/clock):
+
+- **`engine/match-availability.js`** (`createMatchAvailability`): `applyMatchWorkload`,
+  `applyMatchAvailability`, `serveAvailability`, `commitLiveAvailability`.
+- **`engine/match-live-away-subs.js`** (`createAwaySubController`): `awayBenchPlayers`,
+  `replaceAwayPlayer`, `maxAwaySubWindows`, `buildLiveAwaySubState`, `makeAwayFatigueSubstitution`.
+- **`engine/match-live-orchestration.js`** (`createLiveMatchOrchestration`): `tick`/`advance`/`foul`,
+  lesões em jogo (`tryLiveEventInjury`, `escalateLivePlayThroughInjury`,
+  `handleLivePlayThroughIncident`, `checkMinuteAggravation`, `enforceLiveRehabLimit`), `applyWear`
+  e todo o fluxo de pênaltis/shootout.
+- **`feature/match-live-session/index.js`** (`createMatchLiveSessionFeature`): `renderFinalSummary`,
+  `showFinalActions`, `exitLiveMatch`, `reopenMatchWindow`, `openPreparation`.
+
+`MODULE_VERSIONS.matchAvailability`, `.matchLiveAwaySubs`, `.matchLiveOrchestration`,
+`.matchLiveSession` em `constants.js`. Ratings (`profile`/`opponentForMatch`/`playerFor`/
+`actorData`/`tacticalDiscipline`/`liveOverall`) permanecem em `legacy/engine.js` — fortemente
+acoplados ao painel tático — e são passados às novas engines como callbacks.
 
 ## Comandos
 
