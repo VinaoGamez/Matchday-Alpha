@@ -35,7 +35,7 @@ js/
     match-live-ui/index.js    ← relógio, placar, log, adversário ao vivo (Fase E)
     tester-hub/index.js       ← guia do tester + feedback (Fase D)
   legacy/
-    engine.js             ← orquestrador (~3.000 linhas)
+    engine.js             ← orquestrador ao vivo (Fase F pendente)
 ```
 
 ## Regras
@@ -43,7 +43,7 @@ js/
 1. **Motores não tocam DOM** — só regras e estado
 2. **Features não alteram simulação** — só UI + handlers
 3. **Save versionado** — ver `MODULE_VERSIONS` em `constants.js`
-4. **CSS por módulo** — engine sem injeção JS (passo 2); features restantes ainda injetam em alguns casos
+4. **CSS por módulo** — engine sem injeção JS (Fase E passo 2); algumas features (tactics, calendar, etc.) ainda injetam CSS via JS
 
 ## Fases
 
@@ -53,7 +53,8 @@ js/
 | B | injury, match-tuning, match-core, match-sim, match-live | **Concluída** |
 | C | dashboard, tactics, calendar-view, player-cells | **Concluída** |
 | D | build testers, guia, feedback | **Concluída** |
-| E | economy, season-summary, options, live-day-matches, fatigue, match-live-ui | Em andamento |
+| E | economy, season-summary, options, live-day-matches, fatigue, match-live-ui | **Concluída** |
+| F *(próxima)* | orquestração ao vivo ainda em `legacy/engine.js` | Pendente |
 
 ### Fase D — nota
 
@@ -62,23 +63,25 @@ js/
 - **Feedback:** formulário estruturado (copiar relatório ou abrir issue GitHub) +
   `.github/ISSUE_TEMPLATE/tester-feedback.yml`.
 
-### Fase E — nota
+### Fase E — nota (concluída)
 
-- **Passo 1 (concluído):** extraídos `feature/options/index.js` (`createOptionsFeature`) e
+- **Passo 1:** extraídos `feature/options/index.js` (`createOptionsFeature`) e
   `feature/live-day-matches/index.js` (`createLiveDayMatchesFeature`) de `legacy/engine.js`.
-  `MODULE_VERSIONS.options` e `MODULE_VERSIONS.liveDayMatches` adicionados em `constants.js`.
-- **Passo 2 (concluído):** CSS do `legacy/engine.js` (e base de options/live-day) movido para
+  `MODULE_VERSIONS.options` e `MODULE_VERSIONS.liveDayMatches` em `constants.js`.
+- **Passo 2:** CSS do `legacy/engine.js` (e base de options/live-day) movido para
   arquivos em `css/` linkados em `index.html` (ordem preserva o cascade antigo). Zero
   `createElement('style')` restante no engine.
-- **Passo 3 (concluído):** extraídos `engine/fatigue.js` (`createFatigueEngine` — recuperação
-  diária, treino antes/depois de jogo, fadiga pós-jogo de Copa e desgaste por minuto ao vivo via
-  `applyMinuteWearToLineup`) e `feature/match-live-ui/index.js` (`createMatchLiveUiFeature` —
-  modal do adversário ao vivo, relógio/segundos, `score`/`log`/`renderLiveOpponent` e
-  `bindLiveActions`) de `legacy/engine.js`. `fatigueCell` migrou para
+- **Passo 3:** extraídos `engine/fatigue.js` (`createFatigueEngine`) e
+  `feature/match-live-ui/index.js` (`createMatchLiveUiFeature`). `fatigueCell` em
   `feature/shared/player-cells.js`. `MODULE_VERSIONS.fatigue` e `MODULE_VERSIONS.matchLiveUi`
-  adicionados em `constants.js`. Orquestração (`tick`/`advance`, injeção/pênaltis,
-  `#playMatch`/`#resumeMatch`/`#closeMatch`, `applyMatchAvailability`) permanece no engine por
-  estar fortemente acoplada ao estado da partida ao vivo.
+  em `constants.js`.
+- **Também no escopo E (já extraídos antes/junto):** `feature/economy`, `feature/season-summary`.
+
+### Fora do escopo E → Fase F
+
+Orquestração da partida ao vivo permanece em `legacy/engine.js` por acoplamento forte ao
+estado: `tick`/`advance`, injeção/pênaltis, `#playMatch`/`#resumeMatch`/`#closeMatch`,
+`applyMatchAvailability`, substituições do adversário. Extração futura sem mudar comportamento.
 
 ## Comandos
 
