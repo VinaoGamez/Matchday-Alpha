@@ -1,6 +1,29 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-21',
+    date: '2026-07-18',
+    publishedAt: '2026-07-18T21:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Integridade da partida',
+        items: [
+          'Recarregar a página no meio do jogo retoma o mesmo confronto — não dá mais para recomeçar e pescar resultado.',
+          'Escalação e formação da tela Táticas passam a valer no pré-jogo e são salvas entre sessões.',
+        ],
+      },
+      {
+        label: 'Interface',
+        items: [
+          'Selo do campeonato (troféu + nome) na Central, no pré-jogo/AO VIVO e no relatório da partida.',
+          'Volume de Jogo com curvas mais fluidas e marcadores de cartão/lesão.',
+          'Escolha de cobrador de pênalti mais limpa (Overall + chance estimada).',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-20',
     date: '2026-07-18',
     publishedAt: '2026-07-18T18:00:00-03:00',

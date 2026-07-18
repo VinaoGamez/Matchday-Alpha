@@ -1,5 +1,6 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { formatKnockoutFixtureScore, isKnockoutShootoutCompetition as isKnockoutGame } from '../../engine/knockout-shootout.js';
+import { applyCompetitionBadge, resolveCompetitionBadge } from '../../ui/competition-badge.js';
 
 const DASHBOARD_TABLE_ROWS = 5;
 
@@ -34,7 +35,6 @@ export function createDashboardFeature(deps) {
     restDaysUntilNextFixture,
     leagueUserGameForRound,
     isKnockoutShootoutCompetition,
-    knockoutCompetitionLabel,
     leadersFor,
     clubSeasonLeaders,
     getSeasonRoundHistory,
@@ -307,6 +307,15 @@ export function createDashboardFeature(deps) {
       .join('');
   };
 
+  const setNextMatchCompetition = (game, userDivision, { hidden = false, kindOverride = null } = {}) => {
+    const info = applyCompetitionBadge('#nextMatchCompetition', game, { userDivision, hidden });
+    if (!hidden && kindOverride) {
+      const badge = $('#nextMatchCompetition');
+      if (badge) badge.dataset.kind = kindOverride;
+    }
+    return info || resolveCompetitionBadge(game, { userDivision });
+  };
+
   const dashboardUpcomingGames = () => {
     const futureMatches = getFutureMatches();
     const roundGames = (futureMatches || []).filter(game => !isFixtureCompleted(game));
@@ -389,7 +398,8 @@ export function createDashboardFeature(deps) {
     const userUpcomingGames = pendingUserSchedule().slice(0, 3).map(entry => entry.game);
 
     if (idle) {
-      $('#nextMatchRound').textContent = `SEM JOGOS · SÉRIE ${userDivision} · RODADA NACIONAL ${currentRound}`;
+      $('#nextMatchRound').textContent = `SEM JOGOS · RODADA NACIONAL ${currentRound}`;
+      setNextMatchCompetition(null, userDivision, { kindOverride: 'idle' });
       $('#nextMatchHome').textContent = userClub;
       $('#nextMatchAway').textContent = 'Calendário nacional';
       $('#nextMatchHomePosition').textContent = `${displayedClubPosition(userClub)}º na série`;
@@ -423,11 +433,12 @@ export function createDashboardFeature(deps) {
         calendarBtn.title = onMatchDay ? 'Você já está no dia do jogo' : `Simular treinos e avançar até ${details.display}`;
       }
 
+      setNextMatchCompetition(game, userDivision);
       $('#nextMatchRound').textContent = isCup
-        ? `COPA DO BRASIL · ${game.phase} · ${game.leg}`
+        ? `${game.phase || 'COPA'} · ${game.leg || ''}`.replace(/\s·\s$/, '')
         : isKnockoutShootoutCompetition(game)
-          ? `${knockoutCompetitionLabel(game)} · ${game.leg}`
-          : `RODADA ${game.round} · SÉRIE ${userDivision}${userDivision === 'D' && !isKnockoutShootoutCompetition(game) ? ` · GRUPO A${deps.getUserSerieDGroupIndex() + 1}` : ''}`;
+          ? `${game.leg || 'Eliminatórias'}${game.phase ? ` · ${game.phase}` : ''}`
+          : `RODADA ${game.round}${userDivision === 'D' && !isKnockoutShootoutCompetition(game) ? ` · GRUPO A${deps.getUserSerieDGroupIndex() + 1}` : ''}`;
       $('#nextMatchHome').textContent = game.home;
       $('#nextMatchAway').textContent = game.away;
       $('#nextMatchHomePosition').textContent = `${displayedClubPosition(homeClub.name)}º colocado`;
@@ -459,6 +470,7 @@ export function createDashboardFeature(deps) {
       );
     } else if (fullyComplete) {
       $('#nextMatchRound').textContent = '';
+      setNextMatchCompetition(null, userDivision, { hidden: true });
       setNextMatchMeta([]);
       renderSeasonReviewBoard();
     }

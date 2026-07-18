@@ -1,5 +1,6 @@
 import { MEMORY_LIMITS } from '../../core/save.js';
 import { MODULE_VERSIONS } from '../../core/constants.js';
+import { applyCompetitionBadge } from '../../ui/competition-badge.js';
 import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
 
 /**
@@ -20,6 +21,7 @@ import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
  * @param {Function} deps.getScores — () => ({ home, away }) já orientado ao calendário
  * @param {Function} deps.getUserClub
  * @param {Function} [deps.getUserAtHome] — () => boolean (mando do calendário)
+ * @param {Function} [deps.getUserDivision]
  * @param {Function} deps.fixtureDetails
  * @param {Function} deps.formatVenueCrowdLine
  * @param {Function} deps.clubCrestInitials
@@ -51,8 +53,10 @@ export function createMatchLiveUiFeature(deps) {
     getScores,
     getGoals,
     getVolumeSamples,
+    getVolumeIncidents,
     getUserClub,
     getUserAtHome,
+    getUserDivision,
     getClubManagerName,
     fixtureDetails,
     formatVenueCrowdLine,
@@ -193,6 +197,9 @@ export function createMatchLiveUiFeature(deps) {
       userHome = homeClub === getUserClub();
     $('#liveMatchDateTime').textContent = `${details.display} · ${details.time}`;
     $('#liveMatchVenue').textContent = formatVenueCrowdLine(game);
+    applyCompetitionBadge('#liveMatchCompetition', game, {
+      userDivision: typeof getUserDivision === 'function' ? getUserDivision() : 'A',
+    });
     const homeCrest = $('#liveHomeCrest'),
       awayCrest = $('#liveAwayCrest');
     homeCrest.textContent = clubCrestInitials(homeClub);
@@ -233,16 +240,40 @@ export function createMatchLiveUiFeature(deps) {
     awayEl.innerHTML = (sideGoals.away || []).map(line).join('');
   };
 
-  const buildAreaPath = (points, midY, up) => {
+  /** Comprime amplitude p/ picos não colarem no teto; mantém hierarquia visual. */
+  const volumeDisplayAmp = (v) => 0.12 + Math.pow(clamp(Number(v) || 0, 0, 1), 0.82) * 0.72;
+  const volumePeakY = (midY, up, v, maxAmp) => {
+    const dist = volumeDisplayAmp(v) * maxAmp;
+    return up ? midY - dist : midY + dist;
+  };
+
+  /** Área espelhada com Catmull-Rom → curvas cúbicas (mais fluido que linhas retas). */
+  const buildAreaPath = (points, midY, up, maxAmp, padY) => {
     if (!points.length) return '';
+    const yOf = (v) => clamp(volumePeakY(midY, up, v, maxAmp), padY, midY * 2 - padY);
     const first = points[0];
     const last = points[points.length - 1];
-    const peak = (p) => (up ? midY - p.v * 42 : midY + p.v * 42);
-    let d = `M ${first.x.toFixed(1)} ${midY}`;
-    points.forEach(p => {
-      d += ` L ${p.x.toFixed(1)} ${peak(p).toFixed(1)}`;
-    });
-    d += ` L ${last.x.toFixed(1)} ${midY} Z`;
+    let d = `M ${first.x.toFixed(1)} ${midY.toFixed(1)} L ${first.x.toFixed(1)} ${yOf(first.v).toFixed(1)}`;
+    if (points.length === 1) {
+      d += ` L ${first.x.toFixed(1)} ${midY.toFixed(1)} Z`;
+      return d;
+    }
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[Math.max(0, i - 1)];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[Math.min(points.length - 1, i + 2)];
+      const y0 = yOf(p0.v);
+      const y1 = yOf(p1.v);
+      const y2 = yOf(p2.v);
+      const y3 = yOf(p3.v);
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = clamp(y1 + (y2 - y0) / 6, padY, midY * 2 - padY);
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = clamp(y2 - (y3 - y1) / 6, padY, midY * 2 - padY);
+      d += ` C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${p2.x.toFixed(1)} ${y2.toFixed(1)}`;
+    }
+    d += ` L ${last.x.toFixed(1)} ${midY.toFixed(1)} Z`;
     return d;
   };
 
@@ -258,8 +289,10 @@ export function createMatchLiveUiFeature(deps) {
     }
     const samples = typeof getVolumeSamples === 'function' ? getVolumeSamples() || [] : [];
     const W = 360;
-    const H = 110;
+    const H = 120;
     const midY = H / 2;
+    const padY = 10;
+    const maxAmp = midY - padY;
     const playMin = clamp(getMatchFinished() ? 90 : getMinute() || 0, 0, 90);
     const toX = minute => clamp((Number(minute) || 0) / 90, 0, 1) * W;
     const pointsHome = [];
@@ -292,7 +325,7 @@ export function createMatchLiveUiFeature(deps) {
     const grid = gridMarks
       .map(m => {
         const x = toX(m).toFixed(1);
-        return `<line x1="${x}" y1="8" x2="${x}" y2="${H - 8}" stroke="#1e4a5c" stroke-width="1" opacity="${m === 45 ? 0.9 : 0.45}"/>`;
+        return `<line x1="${x}" y1="${padY}" x2="${x}" y2="${H - padY}" stroke="#1e4a5c" stroke-width="1" opacity="${m === 45 ? 0.85 : 0.35}"/>`;
       })
       .join('');
     const sideGoals = (typeof getGoals === 'function' ? getGoals() : null) || { home: [], away: [] };
@@ -311,38 +344,97 @@ export function createMatchLiveUiFeature(deps) {
     };
     // SVG usa preserveAspectRatio=none — compensar escala p/ a bola ficar redonda na tela.
     const screenW = svg.clientWidth || W;
-    const screenH = svg.clientHeight || 100;
+    const screenH = svg.clientHeight || 112;
     const scaleX = screenW / W;
     const scaleY = screenH / H;
     const ballPx = 20;
     const ballW = ballPx / Math.max(0.001, scaleX);
     const ballH = ballPx / Math.max(0.001, scaleY);
     const goalEvents = [
-      ...(sideGoals.home || []).map(goal => ({ ...goal, side: 'home' })),
-      ...(sideGoals.away || []).map(goal => ({ ...goal, side: 'away' })),
+      ...(sideGoals.home || []).map(goal => ({ ...goal, side: 'home', kind: 'goal' })),
+      ...(sideGoals.away || []).map(goal => ({ ...goal, side: 'away', kind: 'goal' })),
     ];
-    const markers = goalEvents
-      .map(goal => {
-        const x = toX(goal.minute);
-        const amp = volumeAt(Number(goal.minute) || 0, goal.side);
-        // Bola na fatia do marcador (acima = mandante, abaixo = visitante).
-        const y =
-          goal.side === 'home' ? midY - Math.max(12, amp * 30) : midY + Math.max(12, amp * 30);
-        const tipY = goal.side === 'home' ? y + ballH * 0.28 : y - ballH * 0.28;
-        return `<g class="live-volume-goal" data-side="${goal.side}">
-          <line x1="${x.toFixed(1)}" y1="${midY}" x2="${x.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="#edf8f5" stroke-width="1" opacity="0.45"/>
-          <image href="${goalBallUrl}" xlink:href="${goalBallUrl}" x="${(x - ballW / 2).toFixed(2)}" y="${(y - ballH / 2).toFixed(2)}" width="${ballW.toFixed(2)}" height="${ballH.toFixed(2)}" preserveAspectRatio="none"/>
+    const incidentEvents = (typeof getVolumeIncidents === 'function' ? getVolumeIncidents() || [] : [])
+      .filter(item => ['yellow', 'red', 'injury'].includes(item?.type))
+      .map(item => ({
+        minute: Number(item.minute) || 0,
+        side: item.side === 'away' ? 'away' : 'home',
+        kind: item.type,
+        name: item.name || '',
+      }));
+    const allMarkers = [...goalEvents, ...incidentEvents].sort(
+      (a, b) => (Number(a.minute) || 0) - (Number(b.minute) || 0),
+    );
+    const stackKey = (side, minute) => `${side}:${Math.round(Number(minute) || 0)}`;
+    const stackCount = new Map();
+    const markerIcon = (kind, x, y, scaleX, scaleY) => {
+      if (kind === 'goal') {
+        return `<image href="${goalBallUrl}" xlink:href="${goalBallUrl}" x="${(x - ballW / 2).toFixed(2)}" y="${(y - ballH / 2).toFixed(2)}" width="${ballW.toFixed(2)}" height="${ballH.toFixed(2)}" preserveAspectRatio="none"/>`;
+      }
+      if (kind === 'yellow' || kind === 'red') {
+        const w = 8 / scaleX;
+        const h = 11 / scaleY;
+        const fill = kind === 'yellow' ? '#ffcc33' : '#e31b1b';
+        const stroke = kind === 'yellow' ? '#a67c00' : '#8b1010';
+        return `<rect x="${(x - w / 2).toFixed(2)}" y="${(y - h / 2).toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" rx="${(1.2 / scaleX).toFixed(2)}" fill="${fill}" stroke="${stroke}" stroke-width="${(0.8 / Math.max(scaleX, scaleY)).toFixed(2)}"/>`;
+      }
+      // Lesão: cruz em círculo
+      const r = 7 / Math.max(scaleX, scaleY);
+      const arm = 4.2 / Math.max(scaleX, scaleY);
+      const t = 1.6 / Math.max(scaleX, scaleY);
+      return `<g>
+        <circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r.toFixed(2)}" fill="#3a1519" stroke="#ff6370" stroke-width="${(1.2 / Math.max(scaleX, scaleY)).toFixed(2)}"/>
+        <rect x="${(x - arm / 2).toFixed(2)}" y="${(y - t / 2).toFixed(2)}" width="${arm.toFixed(2)}" height="${t.toFixed(2)}" fill="#ff6370" rx="0.4"/>
+        <rect x="${(x - t / 2).toFixed(2)}" y="${(y - arm / 2).toFixed(2)}" width="${t.toFixed(2)}" height="${arm.toFixed(2)}" fill="#ff6370" rx="0.4"/>
+      </g>`;
+    };
+    const markerBand = kind => {
+      if (kind === 'goal') return 0.88;
+      if (kind === 'injury') return 0.58;
+      return 0.38;
+    };
+    const markers = allMarkers
+      .map(event => {
+        const x = toX(event.minute);
+        const amp = volumeAt(Number(event.minute) || 0, event.side);
+        const key = stackKey(event.side, event.minute);
+        const stack = stackCount.get(key) || 0;
+        stackCount.set(key, stack + 1);
+        const band = markerBand(event.kind);
+        const baseY = volumePeakY(midY, event.side === 'home', Math.max(amp, band * 0.7), maxAmp * band);
+        const stackShift = stack * (7 / scaleY) * (event.side === 'home' ? -1 : 1);
+        const y = clamp(baseY + stackShift, padY + 4, H - padY - 4);
+        const tipY = event.side === 'home' ? y + 3 : y - 3;
+        const title = event.name
+          ? `${event.minute}' · ${event.kind === 'goal' ? 'Gol' : event.kind === 'yellow' ? 'Amarelo' : event.kind === 'red' ? 'Vermelho' : 'Lesão'} · ${event.name}`
+          : `${event.minute}'`;
+        return `<g class="live-volume-marker live-volume-${event.kind}" data-side="${event.side}" data-kind="${event.kind}">
+          <title>${title}</title>
+          <line x1="${x.toFixed(1)}" y1="${midY}" x2="${x.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="#edf8f5" stroke-width="1" opacity="0.35"/>
+          ${markerIcon(event.kind, x, y, scaleX, scaleY)}
         </g>`;
       })
       .join('');
     const playX = toX(playMin).toFixed(1);
+    const homePath = buildAreaPath(pointsHome, midY, true, maxAmp, padY);
+    const awayPath = buildAreaPath(pointsAway, midY, false, maxAmp, padY);
     svg.innerHTML = `
+      <defs>
+        <linearGradient id="volHomeFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#e8f2f4" stop-opacity="0.95"/>
+          <stop offset="100%" stop-color="#b8cdd4" stop-opacity="0.55"/>
+        </linearGradient>
+        <linearGradient id="volAwayFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#2a7ab0" stop-opacity="0.55"/>
+          <stop offset="100%" stop-color="#1a5a8a" stop-opacity="0.95"/>
+        </linearGradient>
+      </defs>
       <rect x="0" y="0" width="${W}" height="${H}" fill="#07141c"/>
       ${grid}
-      <path d="${buildAreaPath(pointsHome, midY, true)}" fill="#d7e4e8" fill-opacity="0.92"/>
-      <path d="${buildAreaPath(pointsAway, midY, false)}" fill="#1f5f9a" fill-opacity="0.95"/>
-      <line x1="0" y1="${midY}" x2="${W}" y2="${midY}" stroke="#edf8f5" stroke-width="1.5"/>
-      <line x1="${playX}" y1="6" x2="${playX}" y2="${H - 6}" stroke="#63d9ff" stroke-width="1.2" opacity="0.75"/>
+      <path class="live-volume-area home" d="${homePath}" fill="url(#volHomeFill)" stroke="#d7e4e8" stroke-width="1.1" stroke-opacity="0.55"/>
+      <path class="live-volume-area away" d="${awayPath}" fill="url(#volAwayFill)" stroke="#63a8d8" stroke-width="1.1" stroke-opacity="0.45"/>
+      <line x1="0" y1="${midY}" x2="${W}" y2="${midY}" stroke="#edf8f5" stroke-width="1.4" opacity="0.9"/>
+      <line x1="${playX}" y1="${padY - 2}" x2="${playX}" y2="${H - padY + 2}" stroke="#63d9ff" stroke-width="1.25" opacity="0.8"/>
       ${markers}
     `;
   };

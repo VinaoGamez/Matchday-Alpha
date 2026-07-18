@@ -50,9 +50,8 @@ export function createPlayerCells({
           .map(entry => `${entry.gamesRemaining} jogo${entry.gamesRemaining === 1 ? '' : 's'} · ${competitionLabel?.(entry.competitionKey) || entry.competitionKey}`)
           .join('; ');
         badges.push(`<i class="player-badge player-badge-suspended" aria-hidden="true" title="Suspenso: ${summary}"></i>`);
-      } else if (Number(discipline.redCards) > 0) {
-        badges.push('<i class="player-badge player-badge-red" aria-hidden="true" title="Histórico de expulsão"></i>');
       }
+      // Histórico de vermelho sem suspensão ativa não vira badge — evita parecer elegível/indisponível.
       const injury = player.injury;
       if (injury && (injuryInAcutePhase(injury) || injuryInRestrictedPhase(injury))) {
         const grade = injury.grade ?? (injury.severity === 'Grave' ? 3 : injury.severity === 'Mediana' ? 2 : 1);

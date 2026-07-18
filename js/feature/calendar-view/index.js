@@ -1,6 +1,7 @@
 import { MODULE_VERSIONS, SAVE_KEYS } from '../../core/constants.js';
 import { clamp } from '../../ui/dom.js';
 import { isKnockoutShootoutCompetition } from '../../engine/knockout-shootout.js';
+import { competitionBadgeMarkup, resolveCompetitionBadge } from '../../ui/competition-badge.js';
 
 /**
  * Calendário de carreira — grade mensal, agenda diária e relatório de partida.
@@ -147,12 +148,13 @@ export function createCalendarViewFeature(deps) {
     const userDivision = getUserDivision();
     const { game, result, data, goals } = entry;
     const isCup = game.competition === 'COPA DO BRASIL';
+    const competition = resolveCompetitionBadge(game, { userDivision });
     $('#matchReportTitle').textContent = 'Estatísticas finais';
     $('#matchReportMeta').textContent = isCup
-      ? `Copa do Brasil · ${game.phase} · ${game.leg}`
+      ? `${game.phase || 'Copa'} · ${game.leg || ''}`.replace(/\s·\s$/, '')
       : isKnockoutShootoutCompetition(game)
-        ? `Série D · ${game.leg || 'Eliminatórias'}`
-        : `Brasileirão Série ${userDivision} · Rodada ${game.round}`;
+        ? `${game.leg || 'Eliminatórias'}`
+        : `Rodada ${game.round}`;
     const scorerList = (side, score) => {
       const entries = goals?.[side] || [];
       if (entries.length) {
@@ -166,7 +168,13 @@ export function createCalendarViewFeature(deps) {
       return Number(score) === 0 ? '<span>Nenhum gol</span>' : '<span>Autores não registrados</span>';
     };
     const score = `${result.homeGoals} — ${result.awayGoals}${result.penalties ? ` <small>(${result.penalties} pên.)</small>` : ''}`;
-    const header = `<div class="match-report-score"><span>${game.home}</span><strong>${score}</strong><span>${game.away}</span></div><div class="match-report-goals"><article><b>${game.home.toUpperCase()}</b>${scorerList('home', result.homeGoals)}</article><article><b>${game.away.toUpperCase()}</b>${scorerList('away', result.awayGoals)}</article></div>`;
+    const competitionHtml = `<div class="live-match-competition-wrap">${competitionBadgeMarkup({
+      id: 'matchReportCompetition',
+      nameId: 'matchReportCompetitionName',
+      name: competition.name,
+      kind: competition.kind,
+    })}</div>`;
+    const header = `${competitionHtml}<div class="match-report-score"><span>${game.home}</span><strong>${score}</strong><span>${game.away}</span></div><div class="match-report-goals"><article><b>${game.home.toUpperCase()}</b>${scorerList('home', result.homeGoals)}</article><article><b>${game.away.toUpperCase()}</b>${scorerList('away', result.awayGoals)}</article></div>`;
     if (!data) {
       $('#matchReportContent').innerHTML =
         header + '<div class="match-report-empty">O placar está preservado, mas esta partida foi simulada antes do armazenamento das estatísticas detalhadas.</div>';

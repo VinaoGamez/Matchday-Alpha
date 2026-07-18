@@ -21,13 +21,13 @@
   gap:8px;
   align-items:stretch;
   padding:10px 12px 4px;
-  min-height:118px;
+  min-height:132px;
 }
 .live-volume-crests{
   display:flex;
   flex-direction:column;
   justify-content:space-between;
-  padding:8px 0 14px;
+  padding:10px 0 16px;
 }
 .live-volume-crests i{
   display:grid;
@@ -43,10 +43,53 @@
 .live-volume-crests i.away{background:#1b547d}
 #liveVolumeChart{
   width:100%;
-  height:100px;
+  height:112px;
   display:block;
   overflow:visible;
 }
+#liveVolumeChart .live-volume-area{
+  vector-effect:non-scaling-stroke;
+}
+#liveVolumeChart .live-volume-marker{pointer-events:auto}
+.live-volume-legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 14px;
+  padding:0 12px 8px 56px;
+  color:#7fa8b0;
+  font:600 9px 'DM Sans',sans-serif;
+}
+.live-volume-legend i{
+  display:inline-block;
+  vertical-align:-2px;
+  margin-right:4px;
+  font-style:normal;
+}
+.live-volume-legend .lg-goal{
+  width:10px;height:10px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#fff,#bbb 55%,#666);
+  border:1px solid #888;
+}
+.live-volume-legend .lg-yellow{
+  width:7px;height:10px;border-radius:1px;
+  background:#ffcc33;border:1px solid #a67c00;
+}
+.live-volume-legend .lg-red{
+  width:7px;height:10px;border-radius:1px;
+  background:#e31b1b;border:1px solid #8b1010;
+}
+.live-volume-legend .lg-injury{
+  width:10px;height:10px;border-radius:50%;
+  border:1.5px solid #ff6370;background:#3a1519;
+  position:relative;
+}
+.live-volume-legend .lg-injury:before,
+.live-volume-legend .lg-injury:after{
+  content:"";position:absolute;background:#ff6370;border-radius:1px;
+  left:50%;top:50%;transform:translate(-50%,-50%);
+}
+.live-volume-legend .lg-injury:before{width:6px;height:1.5px}
+.live-volume-legend .lg-injury:after{width:1.5px;height:6px}
 .live-volume-axis{
   display:grid;
   grid-template-columns:repeat(7,1fr);

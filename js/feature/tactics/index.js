@@ -214,6 +214,7 @@ export function createTacticsFeature(deps) {
           renderSubstitutionControls();
           renderStats();
         }
+        if (getHasCareer()) persistSeason();
       });
     });
   };
@@ -308,6 +309,7 @@ export function createTacticsFeature(deps) {
         renderSubstitutionControls();
       }
     }
+    if (getHasCareer()) persistSeason();
   };
 
   const formationGridClick = (event, options) => {
@@ -497,6 +499,7 @@ export function createTacticsFeature(deps) {
       draw();
       drawBoard();
       renderSubstitutionControls();
+      if (getHasCareer()) persistSeason();
       return;
     }
     commitLiveSubstitution?.(outgoing.name, { wasInjured, wasAtRisk });

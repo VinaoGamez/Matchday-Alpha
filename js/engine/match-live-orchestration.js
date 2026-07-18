@@ -37,6 +37,7 @@ export function createLiveMatchOrchestration(deps) {
     getLiveDeferredInjuries,
     getLiveMinutesPlayed,
     getPostMatchMedicalQueue,
+    pushLiveVolumeIncident,
     getUserClub,
     getClubs,
     getMatchClub,
@@ -121,6 +122,7 @@ export function createLiveMatchOrchestration(deps) {
     const needsPostMatchTreatment = postMatchMedicalQueue.some(item => item.player === player);
     cards[side][index].injured = true; liveInjuries[side].push({ name: player.name, injury: { ...injury } });
     log(liveText, 'injury', side);
+    pushLiveVolumeIncident?.(side, 'injury', { name: player.name });
     if (needsPostMatchTreatment) {
       log(`${player.name} será reavaliado após o apito final. Defina cirurgia ou tratamento conservador no pós-jogo.`, 'injury', side);
       if (side === 'home') $('#matchStatus').textContent = 'Lesão em campo — avaliação completa e tratamento ficam para o pós-jogo.';
@@ -150,6 +152,7 @@ export function createLiveMatchOrchestration(deps) {
     cards[side][index].injured = true; liveInjuries[side].push({ name: player.name, injury: { ...injury } });
     liveDeferredInjuries[side] = liveDeferredInjuries[side].filter(item => item.name !== player.name);
     log(`${player.name} teve o quadro agravado após insistir em campo.`, 'injury', side);
+    pushLiveVolumeIncident?.(side, 'injury', { name: player.name });
     if (needsPostMatchTreatment) {
       log(`${player.name} precisa de definição de tratamento após o apito final.`, 'injury', side);
       if (side === 'home') $('#matchStatus').textContent = 'Lesão agravada — tratamento será definido no pós-jogo.';
@@ -292,6 +295,7 @@ export function createLiveMatchOrchestration(deps) {
         const gamesLabel = directRed ? ` Suspenso por ${directRedSuspensionGames({ threat, type, zone })} jogo${directRedSuspensionGames({ threat, type, zone }) === 1 ? '' : 's'}.` : '';
         message += directRed ? ` Cartão vermelho direto.${gamesLabel}` : ' Segundo amarelo: cartão vermelho.';
         log(message, 'red', side);
+        pushLiveVolumeIncident?.(side, 'red', { name: fouler });
         matchDiscipline[side].set(fouler, { name: fouler, yellow: 0, dismissal: state.dismissal, redContext: directRed ? { threat, type, zone } : null });
         const attackerPlayer = actorData(otherSide, attacker), foulerPlayer = actorData(side, fouler);
         const foulVictim = pickInjuryVictim({ eventPhase: details.phase || 'duel', contact: true, intensity: clamp(threat, .45, .9), phase: details.phase, zone: details.phase === 'final' ? 'entrada da área' : undefined }, attackerPlayer, foulerPlayer);
@@ -305,6 +309,7 @@ export function createLiveMatchOrchestration(deps) {
       } else {
         setDisciplineEvents(getDisciplineEvents() + 1);
         message += ' Cartão amarelo.'; log(message, 'yellow', side);
+        pushLiveVolumeIncident?.(side, 'yellow', { name: fouler });
         if (side === 'home') drawBoard();
         if (directFreeKick) takeFreeKick(otherSide, attacking, defending);
       }
@@ -399,11 +404,11 @@ export function createLiveMatchOrchestration(deps) {
     let heading = section.querySelector('.penalty-choice-heading');
     if (!heading) { heading = document.createElement('div'); heading.className = 'penalty-choice-heading'; section.prepend(heading); }
     const kickNo = shootoutAttemptsCount(kickingClub) + 1;
-    heading.innerHTML = `<div><label>SHOOTOUT · ${kickingClub.toUpperCase()}</label><strong>Cobrança ${kickNo} — escolha o batedor</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
+    heading.innerHTML = `<div><strong>Cobrança ${kickNo} — escolha o batedor</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
     const used = new Set(shootoutState.usedNames[kickingClub] || []), cardState = shootoutCardsFor(kickingClub);
     const takers = shootoutLineup(kickingClub).map((player, index) => ({ player, index })).filter(({ player, index }) => player.pos !== 'GOL' && !cardState[index]?.red && !used.has(player.name)).map(({ player }) => player).sort((a, b) => b.penaltyTaking - a.penaltyTaking || b.overall - a.overall).slice(0, 5);
     const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (player.penaltyTaking > 85 ? .035 : 0), .56, .94) * 100);
-    $('#penaltyTakers').innerHTML = takers.length ? takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR OPÇÃO</i>' : player.penaltyTaking > 85 ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>COB. PÊNALTI</small><strong>${player.penaltyTaking}</strong></span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('') : '<p class="shootout-empty">Sem cobradores disponíveis.</p>';
+    $('#penaltyTakers').innerHTML = takers.length ? takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR OPÇÃO</i>' : player.penaltyTaking > 85 ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('') : '<p class="shootout-empty">Sem cobradores disponíveis.</p>';
     section.classList.remove('hidden');
     $('#matchStatus').textContent = `Shootout: ${kickingClub} define o cobrador da ${kickNo}ª cobrança.`;
   };
@@ -460,10 +465,10 @@ export function createLiveMatchOrchestration(deps) {
     $('#matchModal .score').after(section);
     let heading = section.querySelector('.penalty-choice-heading');
     if (!heading) { heading = document.createElement('div'); heading.className = 'penalty-choice-heading'; section.prepend(heading); }
-    heading.innerHTML = `<div><label>PÊNALTI PARA O ${userClub.toUpperCase()}</label><strong>Escolha o cobrador</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
+    heading.innerHTML = `<div><strong>Escolha o cobrador</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
     const takers = getActiveStarters().filter(player => player.pos !== 'GOL').sort((a, b) => b.penaltyTaking - a.penaltyTaking || b.overall - a.overall).slice(0, 3);
     const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (player.penaltyTaking > 85 ? .035 : 0), .56, .94) * 100);
-    $('#penaltyTakers').innerHTML = takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR BATEDOR</i>' : player.penaltyTaking > 85 ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>COB. PÊNALTI</small><strong>${player.penaltyTaking}</strong></span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric"><small>CONDIÇÃO</small><strong>${Math.round(player.fatigue)}%</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span>${index === 0 ? '<small class="penalty-choice-note">Melhor combinação entre cobrança, qualidade e condição física.</small>' : ''}</button>`).join('');
+    $('#penaltyTakers').innerHTML = takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR BATEDOR</i>' : player.penaltyTaking > 85 ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('');
     section.classList.remove('hidden'); $('#matchStatus').textContent = 'Pênalti: escolha o cobrador destacado ou compare as opções.';
   };
 
