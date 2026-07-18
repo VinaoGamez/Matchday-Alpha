@@ -34,6 +34,18 @@
 - Dev local: `npm run dev` (porta 5080) ou `INICIAR-JOGO.bat` (Python)
 
 ### Próximo
-- Fase B: extrair `match-live.js`
-- Fase C: dashboard, tactics, calendar-view + CSS modular
-- Fase D: build testers, guia, feedback
+- CSS residual ainda injetado em algumas features (tactics, calendar, economy…)
+- Refresh CHANGELOG por build de tester
+
+## alpha-02-tester-19 (Jul 2026)
+
+### Fase D (testers)
+- Guia do tester + feedback na home e em Opções (`js/feature/tester-hub`)
+- Template de issue GitHub e `docs/GUIA-TESTER.md`
+- Build/distribuição já existentes (dist, 5081, Pages)
+
+### Economia
+- Premiação Série D e Copa do Brasil por fase avançada
+
+### Arquitetura (Fase E parcial)
+- CSS do engine em arquivos estáticos; `fatigue.js` + `match-live-ui`

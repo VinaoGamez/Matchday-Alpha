@@ -1,6 +1,34 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-19',
+    date: '2026-07-17',
+    publishedAt: '2026-07-17T21:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Testers',
+        items: [
+          'Guia do tester e envio de feedback na home e em Opções (copiar relatório ou abrir issue no GitHub).',
+          'Deep links: home.html#guia e home.html#feedback.',
+          'Arrasto de posições na prancheta volta a funcionar na build hardened (5081 / Pages).',
+        ],
+      },
+      {
+        label: 'Economia',
+        items: [
+          'Premiação da Série D e da Copa do Brasil por fase avançada (não usa mais a posição do grupo como ranking nacional).',
+        ],
+      },
+      {
+        label: 'Arquitetura',
+        items: [
+          'CSS do motor legado extraído para arquivos estáticos; módulos de fadiga e UI da partida ao vivo.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-18',
     date: '2026-07-17',
     publishedAt: '2026-07-17T20:20:00-03:00',

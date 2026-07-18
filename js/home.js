@@ -1,6 +1,7 @@
 import './security/tester-hardening.js';
 import { BUILD_VERSION } from './core/constants.js';
 import { showUpdateAlertIfNeeded } from './ui/update-alert.js';
+import { createTesterHubFeature } from './feature/tester-hub/index.js';
 
 const SPONSOR_LOGO_URLS = Object.fromEntries(
   Object.entries(
@@ -158,4 +159,8 @@ const SPONSOR_ORDER = [
   };
 
   initSponsorRail();
+
+  const testerHub = createTesterHubFeature();
+  document.getElementById('openTesterGuide')?.addEventListener('click', () => testerHub.openGuide());
+  document.getElementById('openTesterFeedback')?.addEventListener('click', () => testerHub.openFeedback());
 })();

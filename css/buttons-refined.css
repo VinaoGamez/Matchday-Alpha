@@ -1,0 +1,64 @@
+/* from engine.js refinedButtonsCss */
+body.dark-mode button:not(.nav):not(.close){
+  background:#102630!important;color:#dce9e8!important;
+  border:1px solid #315f70!important;border-radius:6px!important;
+  box-shadow:none!important
+}
+body.dark-mode button:not(.nav):not(.close):hover{
+  background:#173a47!important;color:#fff!important;border-color:#58bcd8!important;
+  box-shadow:0 6px 16px #0006!important;transform:translateY(-1px)
+}
+body.dark-mode button:not(.nav):not(.close):focus-visible{
+  outline:2px solid #63d9ff!important;outline-offset:2px
+}
+body.dark-mode button:not(.nav):not(.close):disabled{
+  background:#132229!important;color:#70888b!important;border-color:#263f48!important;
+  opacity:.65;box-shadow:none!important;transform:none
+}
+body.dark-mode .formation-buttons button.selected,
+body.dark-mode .option-choices button.selected,
+body.dark-mode button.active,
+body.dark-mode button[aria-selected="true"]{
+  background:#1f596c!important;color:#fff!important;border-color:#63d9ff!important;
+  box-shadow:inset 3px 0 #63d9ff!important
+}
+body.dark-mode #confirmNewGame,
+body.dark-mode #openNewGame,
+body.dark-mode #resumeMatch,
+body.dark-mode #makeSubstitution,
+body.dark-mode .season-transition-actions button{
+  background:#24667c!important;color:#fff!important;border-color:#63d9ff!important;
+  box-shadow:inset 3px 0 #63d9ff!important
+}
+body.dark-mode #confirmNewGame:hover,
+body.dark-mode #openNewGame:hover,
+body.dark-mode #resumeMatch:hover,
+body.dark-mode #makeSubstitution:hover,
+body.dark-mode .season-transition-actions button:hover{
+  background:#2d7890!important;border-color:#8ae6ff!important
+}
+.new-game-modal .division-choice-grid{gap:10px}
+body.dark-mode .new-game-modal button.division-card{
+  min-height:70px;padding:12px 13px!important;text-align:left;
+  background:linear-gradient(145deg,#102a34,#0b1d25)!important;
+  border:1px solid #315967!important;color:#dce9e8!important;
+  box-shadow:none!important;transform:none
+}
+body.dark-mode .new-game-modal button.division-card b{
+  color:#eaf4f3!important;font-size:18px;letter-spacing:.2px
+}
+body.dark-mode .new-game-modal button.division-card small{
+  color:#88a9ad!important;font-size:9px;line-height:1.35
+}
+body.dark-mode .new-game-modal button.division-card:hover{
+  background:linear-gradient(145deg,#163945,#102832)!important;
+  border-color:#4d9bb1!important;box-shadow:0 7px 16px #0005!important
+}
+body.dark-mode .new-game-modal button.division-card.selected{
+  background:linear-gradient(145deg,#1c5061,#153946)!important;
+  border-color:#63d9ff!important;
+  box-shadow:inset 4px 0 #63d9ff,0 0 0 1px #63d9ff24!important
+}
+body.dark-mode .new-game-modal button.division-card.selected b{color:#fff!important}
+body.dark-mode .new-game-modal button.division-card.selected small{color:#c1e6ed!important}
+@media(max-width:760px){.new-game-modal .division-choice-grid{grid-template-columns:repeat(2,1fr)}}

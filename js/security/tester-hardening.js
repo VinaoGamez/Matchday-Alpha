@@ -17,7 +17,12 @@
   ]);
 
   document.addEventListener('contextmenu', block, true);
-  document.addEventListener('dragstart', block, true);
+  // Permite HTML5 drag da prancheta/elenco tático; bloqueia arrasto genérico (imagens, links, etc.).
+  document.addEventListener('dragstart', event => {
+    const allowed = event.target?.closest?.('[draggable="true"], .repositionable');
+    if (allowed) return;
+    return block(event);
+  }, true);
   document.addEventListener('copy', block, true);
   document.addEventListener('cut', block, true);
 

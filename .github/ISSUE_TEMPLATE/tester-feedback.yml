@@ -1,0 +1,64 @@
+name: Feedback de tester
+description: Bug, balanceamento ou ideia da build alpha
+title: "[tester] "
+labels: ["tester-feedback"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Categoria
+      options:
+        - Bug
+        - Balanceamento
+        - Interface
+        - Ideia
+        - Outro
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severidade
+      options:
+        - Bloqueante
+        - Importante
+        - Leve
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - Partida ao vivo
+        - Temporada / competições
+        - Economia / Escritório
+        - Interface / navegação
+        - Save / memória
+        - Outro
+    validations:
+      required: true
+  - type: input
+    id: build
+    attributes:
+      label: Build
+      description: Ex. alpha-02-tester-19 (rodapé da home ou Opções)
+      placeholder: alpha-02-tester-xx
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Descrição
+      description: O que aconteceu e o que você esperava
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      description: Opcional, mas ajuda muito
+      placeholder: |
+        1.
+        2.
+        3.

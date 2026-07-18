@@ -1,0 +1,220 @@
+/* Guia do tester + feedback — home e jogo.
+   Shell .modal só na home (jogo já tem site.css). */
+body:has(.home-shell) .modal.hidden {
+  display: none !important;
+}
+
+body:has(.home-shell) .modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: #02080ccc;
+}
+
+body:has(.home-shell) .modal-card {
+  position: relative;
+  width: min(640px, calc(100vw - 28px));
+  max-height: min(88vh, 820px);
+  overflow: auto;
+  padding: 22px 24px;
+  border: 1px solid #1e4a5c;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #0d2029, #0b1a22);
+  color: #edf8f5;
+  box-shadow: 0 20px 55px #000a;
+}
+
+body:has(.home-shell) .modal-card > label {
+  display: block;
+  color: #63d9ff;
+  font: 700 10px 'DM Sans', sans-serif;
+  letter-spacing: 0.7px;
+}
+
+body:has(.home-shell) .modal-card .close {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  border: 0;
+  background: transparent;
+  color: #9eb6b8;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+body:has(.home-shell) .modal-card .close:hover {
+  color: #63d9ff;
+}
+
+.tester-hub-modal h2 {
+  margin: 4px 0 10px;
+  font: 700 30px 'Barlow Condensed', sans-serif;
+}
+
+.tester-hub-lead {
+  margin: 0 0 16px;
+  color: #9eb6b8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tester-guide-body {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.tester-guide-section {
+  padding: 12px 14px;
+  border: 1px solid #28505b;
+  border-radius: 8px;
+  background: #0b1921;
+}
+
+.tester-guide-section h3 {
+  margin: 0 0 8px;
+  color: #b6ff38;
+  font: 700 16px 'Barlow Condensed', sans-serif;
+}
+
+.tester-guide-section ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #c5d5d8;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tester-guide-section li + li {
+  margin-top: 5px;
+}
+
+.tester-feedback-form {
+  display: grid;
+  gap: 12px;
+}
+
+.tester-feedback-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tester-feedback-form label {
+  display: grid;
+  gap: 6px;
+  color: #63d9ff;
+  font: 700 10px 'DM Sans', sans-serif;
+  letter-spacing: 0.55px;
+}
+
+.tester-feedback-full {
+  grid-column: 1 / -1;
+}
+
+.tester-feedback-form input,
+.tester-feedback-form select,
+.tester-feedback-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border: 1px solid #315b68;
+  border-radius: 6px;
+  background: #0b2029;
+  color: #edf8f5;
+  font: 500 12px 'DM Sans', sans-serif;
+  outline: 0;
+}
+
+.tester-feedback-form input:focus,
+.tester-feedback-form select:focus,
+.tester-feedback-form textarea:focus {
+  border-color: #63d9ff;
+  box-shadow: 0 0 0 2px #63d9ff22;
+}
+
+.tester-feedback-status {
+  min-height: 18px;
+  margin: 0;
+  color: #b6ff38;
+  font-size: 11px;
+}
+
+.tester-hub-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.tester-hub-actions button {
+  min-height: 40px;
+  padding: 10px 14px;
+  border: 1px solid #315f70;
+  border-radius: 6px;
+  background: #102630;
+  color: #dce9e8;
+  font: 700 10px 'DM Sans', sans-serif;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+}
+
+.tester-hub-actions button:hover {
+  border-color: #58bcd8;
+  background: #153744;
+  color: #fff;
+}
+
+.tester-hub-actions button.secondary {
+  background: #0b1d25;
+}
+
+.tester-hub-actions #feedbackGithub,
+.tester-hub-actions #testerGuideToFeedback {
+  background: #24667c;
+  border-color: #63d9ff;
+  color: #fff;
+  box-shadow: inset 3px 0 #63d9ff;
+}
+
+.home-tester-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.home-tester-links button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #63d9ff;
+  font: 700 11px 'DM Sans', sans-serif;
+  letter-spacing: 0.4px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.home-tester-links button:hover {
+  color: #bbeb27;
+}
+
+@media (max-width: 620px) {
+  .tester-feedback-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tester-hub-actions {
+    flex-direction: column;
+  }
+
+  .tester-hub-actions button {
+    width: 100%;
+  }
+}

@@ -3,6 +3,10 @@ import { clamp } from '../../ui/dom.js';
 /** Campo vazio em tabelas de atributos. */
 export const outfield = value => value || '—';
 
+/** Barra de cansaço padrão para tabelas e listagens. */
+export const fatigueCell = player =>
+  `<span class="table-fatigue"><i><b style="width:${clamp(player.fatigue, 0, 100)}%"></b></i>${Math.round(player.fatigue)}%</span>`;
+
 /**
  * Badges de status (cartões, lesão, suspensão) para células de jogador.
  * @param {object} injuryHelpers — funções do motor de lesões

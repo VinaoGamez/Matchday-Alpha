@@ -137,10 +137,30 @@ export function createTacticsFeature(deps) {
   };
 
   const ensureBoardLegend = board => {
-    if (!board || board.querySelector('.board-legend')) return;
-    board.insertAdjacentHTML(
+    if (!board) return;
+    let stack = board.closest('.board-stack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.className = 'board-stack';
+      board.parentNode?.insertBefore(stack, board);
+      stack.appendChild(board);
+    }
+    const existing = stack.querySelector('.board-legend') || board.querySelector('.board-legend');
+    if (existing) {
+      if (existing.parentElement !== stack) stack.appendChild(existing);
+      existing.querySelectorAll('span').forEach(span => {
+        if (span.textContent.trim() === 'Vaga') {
+          const dot = span.querySelector('i');
+          span.textContent = '';
+          if (dot) span.appendChild(dot);
+          span.append('Expulso');
+        }
+      });
+      return;
+    }
+    stack.insertAdjacentHTML(
       'beforeend',
-      '<div class="board-legend" aria-hidden="true"><span><i class="board-legend-dot board-legend-yellow"></i>Amarelo</span><span><i class="board-legend-dot board-legend-injury"></i>Lesão</span><span><i class="board-legend-dot board-legend-risk"></i>Incômodo</span><span><i class="board-legend-dot board-legend-vacant"></i>Vaga</span></div>'
+      '<div class="board-legend" aria-hidden="true"><span><i class="board-legend-dot board-legend-yellow"></i>Amarelo</span><span><i class="board-legend-dot board-legend-injury"></i>Lesão</span><span><i class="board-legend-dot board-legend-risk"></i>Incômodo</span><span><i class="board-legend-dot board-legend-vacant"></i>Expulso</span></div>'
     );
   };
 
@@ -228,7 +248,7 @@ export function createTacticsFeature(deps) {
         const vacant = state.red;
         const injured = state.injured;
         const atRisk = state.playThroughRisk;
-        const displayTop = p[1] === 91 ? 88 : p[1];
+        const displayTop = p[1] === 91 ? 90 : p[1];
         const energy = clamp(squad[i].fatigue, 0, 100);
         const canReposition = !vacant;
         const label = vacant ? (activePreparationTitle === 'CARTÃO VERMELHO' ? 'EXPULSO' : 'VAGO') : boardPlayerLabel(squad[i].name);
@@ -250,7 +270,7 @@ export function createTacticsFeature(deps) {
     $('#pitchPlayers').innerHTML = formations[formation]
       .map(
         (p, i) =>
-          `<div class="pitch-player repositionable" data-slot="${i}" draggable="true" style="left:${p[0]}%;top:${p[1] === 91 ? 88 : p[1]}%"><i style="--energy:${clamp(squad[i].fatigue, 0, 100)}%"><span>${squad[i].number}</span></i>${squad[i].name}</div>`
+          `<div class="pitch-player repositionable" data-slot="${i}" draggable="true" style="left:${p[0]}%;top:${p[1] === 91 ? 90 : p[1]}%"><i style="--energy:${clamp(squad[i].fatigue, 0, 100)}%"><span>${squad[i].number}</span></i><small>${squad[i].name}</small></div>`
       )
       .join('');
     $('#formationDescription').textContent = `${formationNotes[formation]} Titulares sugeridos por encaixe, atributos e condição física.`;
@@ -539,11 +559,11 @@ export function createTacticsFeature(deps) {
       ],
       [
         'tactical-drag',
-        '.repositionable{cursor:grab;touch-action:none}.repositionable:active{cursor:grabbing}.repositionable.dragging{opacity:.55}.drop-target i{outline:2px solid #63d9ff!important;outline-offset:2px;box-shadow:0 0 10px #63d9ff88!important}.tactical-board .repositionable small:after{content:" ↕";color:#b6ff38;font-size:7px;opacity:.85}.tactical-board .vacant small:after{content:none}.tactical-board .vacancy-target{cursor:crosshair}.tactical-board .vacancy-target i{animation:boardVacancyPulse 2s ease-in-out infinite}@keyframes boardVacancyPulse{50%{box-shadow:0 0 0 2px #ff637066!important}}',
+        '.repositionable{cursor:grab;touch-action:none}.repositionable:active{cursor:grabbing}.repositionable.dragging{opacity:.55}.drop-target i{outline:2px solid #63d9ff!important;outline-offset:2px;box-shadow:0 0 10px #63d9ff88!important}.tactical-board .repositionable small:after{content:none}.tactical-board .vacant small:after{content:none}.tactical-board .vacancy-target{cursor:crosshair}.tactical-board .vacancy-target i{animation:boardVacancyPulse 2s ease-in-out infinite}@keyframes boardVacancyPulse{50%{box-shadow:0 0 0 2px #ff637066!important}}',
       ],
       [
         'board-visual',
-        '.tactical-board .board-player{width:54px!important;z-index:3!important;line-height:1}.tactical-board .board-player i{position:relative!important;display:grid!important;place-items:center;width:28px!important;height:28px!important;margin:0 auto!important;font-size:10px!important;border:2px solid #fff!important;background:#07351d!important;box-shadow:0 1px 4px #00180fcc!important;overflow:visible!important}.tactical-board .board-player i:before{content:"";position:absolute;inset:-3px;border-radius:50%;background:conic-gradient(#18d69f calc(var(--energy,100)*1%),#0000 0);opacity:.55;z-index:-1}.tactical-board .board-player i span{position:relative;z-index:1;font-weight:800}.tactical-board .board-player small{display:block;max-width:54px;margin:3px auto 0!important;padding:0!important;background:none!important;color:#f4fff8!important;font:700 7px DM Sans!important;line-height:1.1!important;letter-spacing:.15px!important;text-shadow:0 1px 2px #002015;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tactical-board .board-player.vacant i{background:#2a1218!important;border:2px dashed #ff8a9a!important;color:#ffc8d0!important;box-shadow:none!important}.tactical-board .board-player.vacant i:before{display:none}.tactical-board .board-player.vacant small{color:#ffb8c2!important}.tactical-board .board-badge{position:absolute;top:0;right:calc(50% - 20px);width:0;height:0;pointer-events:none}.tactical-board .board-badge-yellow:after{content:"";position:absolute;width:6px;height:9px;border:1px solid #755600;border-radius:1px;background:#ffdc22;box-shadow:0 1px 2px #0008}.tactical-board .board-badge-injury:after{content:"+";position:absolute;display:grid;place-items:center;width:11px;height:11px;border-radius:50%;background:#ff6370;color:#fff;font:900 8px DM Sans;line-height:1;box-shadow:0 1px 3px #0009}.tactical-board .board-badge-risk:after{content:"!";position:absolute;display:grid;place-items:center;width:11px;height:11px;border-radius:50%;background:#ffc94f;color:#171003;font:900 8px DM Sans;line-height:1;box-shadow:0 1px 3px #0009}.board-legend{position:absolute;left:8px;right:8px;bottom:6px;z-index:4;display:flex;flex-wrap:wrap;justify-content:center;gap:8px 12px;padding:4px 6px;border-radius:4px;background:#00180fcc;color:#d7efe6;font:600 7px DM Sans;letter-spacing:.2px;pointer-events:none}.board-legend span{display:inline-flex;align-items:center;gap:4px;opacity:.92}.board-legend-dot{display:inline-block;width:8px;height:8px;border-radius:50%;border:1px solid #fff6}.board-legend-yellow{background:#ffdc22;border-color:#755600}.board-legend-injury{background:#ff6370;border-color:#ffb8c2}.board-legend-risk{background:#ffc94f;border-color:#ffe6a2}.board-legend-vacant{background:#2a1218;border:1px dashed #ff8a9a;border-radius:2px;width:8px;height:8px}',
+        '.tactical-board .board-player,.tactical-board .pitch-player{width:92px!important;z-index:3!important;line-height:1.05}.tactical-board .board-player i{position:relative!important;display:grid!important;place-items:center;width:30px!important;height:30px!important;margin:0 auto!important;font-size:11px!important;border:2px solid #fff!important;background:#07351d!important;box-shadow:0 1px 4px #00180fcc!important;overflow:visible!important}.tactical-board .board-player i:before{content:"";position:absolute;inset:-3px;border-radius:50%;background:conic-gradient(#18d69f calc(var(--energy,100)*1%),#0000 0);opacity:.55;z-index:-1}.tactical-board .board-player i span{position:relative;z-index:1;font-weight:800}.tactical-board .board-player small,.tactical-board .pitch-player small{display:block!important;max-width:92px!important;width:max-content!important;margin:5px auto 0!important;padding:0!important;border-radius:0!important;background:none!important;color:#fff!important;font:400 15px "DM Sans",sans-serif!important;font-weight:400!important;line-height:1.2!important;letter-spacing:0!important;text-shadow:none!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tactical-board .board-player.vacant i{background:#2a1218!important;border:2px dashed #ff8a9a!important;color:#ffc8d0!important;box-shadow:none!important}.tactical-board .board-player.vacant i:before{display:none}.tactical-board .board-player.vacant small{color:#ffb8c2!important}.tactical-board .board-badge{position:absolute;top:0;right:calc(50% - 22px);width:0;height:0;pointer-events:none}.tactical-board .board-badge-yellow:after{content:"";position:absolute;width:6px;height:9px;border:1px solid #755600;border-radius:1px;background:#ffdc22;box-shadow:0 1px 2px #0008}.tactical-board .board-badge-injury:after{content:"+";position:absolute;display:grid;place-items:center;width:11px;height:11px;border-radius:50%;background:#ff6370;color:#fff;font:900 8px DM Sans;line-height:1;box-shadow:0 1px 3px #0009}.tactical-board .board-badge-risk:after{content:"!";position:absolute;display:grid;place-items:center;width:11px;height:11px;border-radius:50%;background:#ffc94f;color:#171003;font:900 8px DM Sans;line-height:1;box-shadow:0 1px 3px #0009}.board-stack{display:flex;flex-direction:column;gap:8px;min-width:0;width:100%}.board-stack>.tactical-board{width:100%!important;flex:0 0 auto}.board-legend{position:static;inset:auto;z-index:1;display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;padding:10px 12px;border-radius:5px;background:#0b1a22;border:1px solid #28505b;color:#edf8f5;font:500 13px "DM Sans",sans-serif;letter-spacing:.15px;pointer-events:none;box-sizing:border-box}.board-legend span{display:inline-flex;align-items:center;gap:7px;opacity:.98;font-weight:500;line-height:1.2}.board-legend-dot{display:inline-block;width:11px;height:11px;flex:0 0 auto;border-radius:50%;border:1px solid #fff6}.board-legend-yellow{background:#ffdc22;border-color:#755600}.board-legend-injury{background:#ff6370;border-color:#ffb8c2}.board-legend-risk{background:#ffc94f;border-color:#ffe6a2}.board-legend-vacant{background:#2a1218;border:1px dashed #ff8a9a;border-radius:2px;width:11px;height:11px}',
       ],
       [
         'tactic-sliders',

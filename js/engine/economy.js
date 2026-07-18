@@ -23,8 +23,82 @@ export const TICKET_PRICE_RANGE = {
 };
 
 const PARTICIPATION_PRIZE = { A: 2_500_000, B: 1_800_000, C: 1_200_000, D: 800_000 };
+/** Pool de classificação para A/B/C (liga corrida). Série D usa SERIE_D_PHASE_*. */
 const POSITION_POOL = { A: 12_000_000, B: 8_000_000, C: 5_000_000, D: 3_000_000 };
 const TITLE_BONUS = { A: 15_000_000, B: 10_000_000, C: 6_000_000, D: 4_000_000 };
+
+/** Premiação Série D por fase mais avançada (% do POSITION_POOL.D). */
+export const SERIE_D_PHASE_POOL = POSITION_POOL.D;
+export const SERIE_D_PHASE_SHARE = {
+  group: { pct: 0.15, label: 'Série D · Fase de grupos' },
+  second: { pct: 0.28, label: 'Série D · 2ª fase eliminatória' },
+  third: { pct: 0.4, label: 'Série D · 3ª fase eliminatória' },
+  round16: { pct: 0.52, label: 'Série D · Oitavas de final' },
+  quarter: { pct: 0.65, label: 'Série D · Quartas de final' },
+  semi: { pct: 0.8, label: 'Série D · Semifinal' },
+  playoff: { pct: 0.8, label: 'Série D · Playoff de acesso' },
+  final: { pct: 0.92, label: 'Série D · Finalista' },
+  champion: { pct: 1, label: 'Série D · Campeão (campanha)' },
+};
+
+/** Premiação Copa do Brasil por fase mais avançada (% do pool). */
+export const CUP_PHASE_POOL = 8_000_000;
+export const CUP_PHASE_SHARE = {
+  1: { pct: 0.06, label: 'Copa do Brasil · 1ª fase' },
+  2: { pct: 0.12, label: 'Copa do Brasil · 2ª fase' },
+  3: { pct: 0.18, label: 'Copa do Brasil · 3ª fase' },
+  4: { pct: 0.26, label: 'Copa do Brasil · 4ª fase' },
+  5: { pct: 0.36, label: 'Copa do Brasil · 5ª fase' },
+  6: { pct: 0.48, label: 'Copa do Brasil · Oitavas de final' },
+  7: { pct: 0.6, label: 'Copa do Brasil · Quartas de final' },
+  8: { pct: 0.75, label: 'Copa do Brasil · Semifinal' },
+  9: { pct: 0.9, label: 'Copa do Brasil · Finalista' },
+  champion: { pct: 1, label: 'Copa do Brasil · Campeão' },
+};
+
+export function clubAppearsInTies(ties, club) {
+  return (ties || []).some(tie => tie?.home === club || tie?.away === club);
+}
+
+/**
+ * Fase mais avançada da Série D para premiação.
+ * @returns {'group'|'second'|'third'|'round16'|'quarter'|'semi'|'playoff'|'final'|'champion'}
+ */
+export function resolveSerieDPrizePhase(club, dKnockout = {}) {
+  if (!club) return 'group';
+  if (dKnockout.champion === club) return 'champion';
+  const stages = dKnockout.stages || {};
+  if (clubAppearsInTies(stages.final, club)) return 'final';
+  if (clubAppearsInTies(stages.semi, club)) return 'semi';
+  if (clubAppearsInTies(stages.playoff, club)) return 'playoff';
+  if (clubAppearsInTies(stages.quarter, club)) return 'quarter';
+  if (clubAppearsInTies(stages.round16, club)) return 'round16';
+  if (clubAppearsInTies(stages.third, club)) return 'third';
+  if (clubAppearsInTies(stages.second, club)) return 'second';
+  return 'group';
+}
+
+/**
+ * Fase mais avançada da Copa do Brasil (índice 1–9, 'champion', ou 0 se não jogou).
+ */
+export function resolveCupPrizePhase(club, cupCompetition = {}) {
+  if (!club) return 0;
+  if (cupCompetition.champion === club) return 'champion';
+  let furthest = 0;
+  for (const stage of cupCompetition.stages || []) {
+    const played = (stage.fixtures || []).some(game => game?.home === club || game?.away === club);
+    if (played) furthest = Math.max(furthest, Number(stage.index) || 0);
+  }
+  return furthest;
+}
+
+function phasePrizeLine(shareMap, key, pool) {
+  const entry = shareMap[key];
+  if (!entry || !(entry.pct > 0)) return null;
+  const amount = Math.round(pool * entry.pct);
+  if (amount <= 0) return null;
+  return { label: entry.label, amount };
+}
 
 /** Histórico curto no clube — evita crescimento infinito do save. */
 const LEDGER_LIMIT = 40;
@@ -199,6 +273,8 @@ export function formatTicketPrice(value) {
 
 /**
  * Premiação de fim de temporada para o clube do usuário.
+ * Série D e Copa do Brasil usam % da campanha por fase avançada
+ * (não a posição na tabela do grupo).
  */
 export function computeSeasonPrize({
   division = 'A',
@@ -208,6 +284,8 @@ export function computeSeasonPrize({
   cupChampion = null,
   promoted = false,
   userClub = '',
+  serieDPhase = null,
+  cupPhase = null,
 }) {
   const lines = [];
   let total = 0;
@@ -216,12 +294,21 @@ export function computeSeasonPrize({
   total += participation;
   lines.push({ label: 'Premiação por participação', amount: participation });
 
-  const pool = POSITION_POOL[division] ?? 4_000_000;
-  const rankFactor = Math.max(0, (totalTeams - position + 1) / totalTeams);
-  const positionPrize = Math.round(pool * rankFactor);
-  if (positionPrize > 0) {
-    total += positionPrize;
-    lines.push({ label: `${position}º lugar · Brasileirão Série ${division}`, amount: positionPrize });
+  if (division === 'D') {
+    const phaseKey = serieDPhase || (champion === userClub ? 'champion' : 'group');
+    const phaseLine = phasePrizeLine(SERIE_D_PHASE_SHARE, phaseKey, SERIE_D_PHASE_POOL);
+    if (phaseLine) {
+      total += phaseLine.amount;
+      lines.push(phaseLine);
+    }
+  } else {
+    const pool = POSITION_POOL[division] ?? 4_000_000;
+    const rankFactor = Math.max(0, (totalTeams - position + 1) / totalTeams);
+    const positionPrize = Math.round(pool * rankFactor);
+    if (positionPrize > 0) {
+      total += positionPrize;
+      lines.push({ label: `${position}º lugar · Brasileirão Série ${division}`, amount: positionPrize });
+    }
   }
 
   if (champion === userClub) {
@@ -230,9 +317,18 @@ export function computeSeasonPrize({
     lines.push({ label: 'Bônus de campeão', amount: bonus });
   }
 
-  if (cupChampion === userClub) {
-    total += 8_000_000;
-    lines.push({ label: 'Copa do Brasil · campeão', amount: 8_000_000 });
+  const resolvedCupPhase =
+    cupPhase != null && cupPhase !== 0
+      ? cupPhase
+      : cupChampion === userClub
+        ? 'champion'
+        : 0;
+  if (resolvedCupPhase && resolvedCupPhase !== 0) {
+    const cupLine = phasePrizeLine(CUP_PHASE_SHARE, resolvedCupPhase, CUP_PHASE_POOL);
+    if (cupLine) {
+      total += cupLine.amount;
+      lines.push(cupLine);
+    }
   }
 
   if (promoted) {
@@ -853,6 +949,10 @@ export function createEconomyEngine() {
     formatCapacity,
     formatTicketPrice,
     computeSeasonPrize,
+    resolveSerieDPrizePhase,
+    resolveCupPrizePhase,
+    SERIE_D_PHASE_SHARE,
+    CUP_PHASE_SHARE,
     getBalance,
     ensureBudget,
     ensureStadium,
