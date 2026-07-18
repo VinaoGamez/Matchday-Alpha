@@ -37,6 +37,35 @@ body.dark-mode #makeSubstitution:hover,
 body.dark-mode .season-transition-actions button:hover{
   background:#2d7890!important;border-color:#8ae6ff!important
 }
+/* CTA principal do Dashboard — destaque vs DIA DE JOGO / VER ADVERSÁRIO */
+body.dark-mode #playMatch,
+body.dark-mode #simulateRemainder{
+  background:linear-gradient(115deg,#b6ff38,#72e1ff)!important;
+  color:#06131b!important;
+  border:0!important;
+  font-weight:800!important;
+  letter-spacing:.35px;
+  padding:10px 16px!important;
+  box-shadow:0 0 0 1px #b6ff3828,0 6px 18px #00000055!important;
+  transform:none
+}
+body.dark-mode #playMatch:hover,
+body.dark-mode #simulateRemainder:hover{
+  background:linear-gradient(115deg,#c8ff5e,#8aebff)!important;
+  color:#041018!important;
+  border:0!important;
+  box-shadow:0 0 0 1px #b6ff3844,0 8px 22px #00000066!important;
+  transform:translateY(-1px)
+}
+body.dark-mode #playMatch:disabled,
+body.dark-mode #simulateRemainder:disabled{
+  background:linear-gradient(115deg,#5a7a2a,#3a6a78)!important;
+  color:#0d1c22!important;
+  border:0!important;
+  opacity:.55;
+  box-shadow:none!important;
+  transform:none
+}
 .new-game-modal .division-choice-grid{gap:10px}
 body.dark-mode .new-game-modal button.division-card{
   min-height:70px;padding:12px 13px!important;text-align:left;

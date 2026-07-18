@@ -114,15 +114,15 @@ export function createLiveMatchOrchestration(deps) {
     const incident = resolvePhysicalIncident(player, { ...eventContext, minute, fatigue: player.fatigue, minutesPlayed: liveMinutesPlayed[side].get(player.name) ?? 0, club, pitchCondition: club.pitchCondition, tactic: tacticFor(side), occurredDuring: 'match' });
     if (!incident) return false;
     const liveText = incident.comment.replace(/^\d+'\s*/, '');
-    if (incident.tier === 'discomfort') { player.fatigue = clamp(player.fatigue - 2, 0, 100); log(liveText, 'discomfort'); renderRoster(); return false; }
+    if (incident.tier === 'discomfort') { player.fatigue = clamp(player.fatigue - 2, 0, 100); log(liveText, 'discomfort', side); renderRoster(); return false; }
     if (incident.tier === 'playThrough') return handleLivePlayThroughIncident(side, index, player, club, incident, liveText, eventContext);
     const injury = assignPlayerInjury(player, incident.injury, currentRound, { club, liveContext: side === 'home' ? { side, index } : null });
     if (!injury) { stopMatchClock(); $('#matchStatus').textContent = 'Departamento médico aguarda decisão sobre o tratamento.'; return true; }
     const needsPostMatchTreatment = postMatchMedicalQueue.some(item => item.player === player);
     cards[side][index].injured = true; liveInjuries[side].push({ name: player.name, injury: { ...injury } });
-    log(liveText, 'injury');
+    log(liveText, 'injury', side);
     if (needsPostMatchTreatment) {
-      log(`${player.name} será reavaliado após o apito final. Defina cirurgia ou tratamento conservador no pós-jogo.`, 'injury');
+      log(`${player.name} será reavaliado após o apito final. Defina cirurgia ou tratamento conservador no pós-jogo.`, 'injury', side);
       if (side === 'home') $('#matchStatus').textContent = 'Lesão em campo — avaliação completa e tratamento ficam para o pós-jogo.';
     }
     if (side === 'home') {
@@ -130,7 +130,7 @@ export function createLiveMatchOrchestration(deps) {
       openPreparation('LESÃO');
     } else {
       const bench = club.roster.slice(11).filter(candidate => !playerUnavailable(candidate) && !liveInjuries.away.some(item => item.name === candidate.name));
-      if (bench.length && liveInjuries.away.length <= 5) { const expected = player.pos, compatible = bench.filter(candidate => candidate.pos === expected || (compatibleRoles[expected] || []).includes(candidate.pos)), incoming = [...(compatible.length ? compatible : bench)].sort((a, b) => b.overall - a.overall)[0], incomingIndex = club.roster.indexOf(incoming); [club.roster[index], club.roster[incomingIndex]] = [incoming, player]; cards.away[index] = { yellow: 0, red: false, dismissal: null, injured: false, playThroughRisk: false }; liveMinutesPlayed.away.set(incoming.name, liveMinutesPlayed.away.get(incoming.name) ?? 0); log(`${club.name} substitui o lesionado ${player.name} por ${incoming.name}.`, 'injury-substitution'); }
+      if (bench.length && liveInjuries.away.length <= 5) { const expected = player.pos, compatible = bench.filter(candidate => candidate.pos === expected || (compatibleRoles[expected] || []).includes(candidate.pos)), incoming = [...(compatible.length ? compatible : bench)].sort((a, b) => b.overall - a.overall)[0], incomingIndex = club.roster.indexOf(incoming); [club.roster[index], club.roster[incomingIndex]] = [incoming, player]; cards.away[index] = { yellow: 0, red: false, dismissal: null, injured: false, playThroughRisk: false }; liveMinutesPlayed.away.set(incoming.name, liveMinutesPlayed.away.get(incoming.name) ?? 0); log(`${club.name} substitui o lesionado ${player.name} por ${incoming.name}.`, 'injury-substitution', side); }
     }
     renderRoster(); drawBoard(); renderSubstitutionControls(); renderStats(); return true;
   };
@@ -149,9 +149,9 @@ export function createLiveMatchOrchestration(deps) {
     const needsPostMatchTreatment = postMatchMedicalQueue.some(item => item.player === player);
     cards[side][index].injured = true; liveInjuries[side].push({ name: player.name, injury: { ...injury } });
     liveDeferredInjuries[side] = liveDeferredInjuries[side].filter(item => item.name !== player.name);
-    log(`${player.name} teve o quadro agravado após insistir em campo.`, 'injury');
+    log(`${player.name} teve o quadro agravado após insistir em campo.`, 'injury', side);
     if (needsPostMatchTreatment) {
-      log(`${player.name} precisa de definição de tratamento após o apito final.`, 'injury');
+      log(`${player.name} precisa de definição de tratamento após o apito final.`, 'injury', side);
       if (side === 'home') $('#matchStatus').textContent = 'Lesão agravada — tratamento será definido no pós-jogo.';
     }
     if (side === 'home') {
@@ -159,7 +159,7 @@ export function createLiveMatchOrchestration(deps) {
       openPreparation('LESÃO');
     } else {
       const bench = club.roster.slice(11).filter(candidate => !playerUnavailable(candidate) && !liveInjuries.away.some(item => item.name === candidate.name));
-      if (bench.length && liveInjuries.away.length <= 5) { const expected = player.pos, compatible = bench.filter(candidate => candidate.pos === expected || (compatibleRoles[expected] || []).includes(candidate.pos)), incoming = [...(compatible.length ? compatible : bench)].sort((a, b) => b.overall - a.overall)[0], incomingIndex = club.roster.indexOf(incoming); [club.roster[index], club.roster[incomingIndex]] = [incoming, player]; cards.away[index] = { yellow: 0, red: false, dismissal: null, injured: false, playThroughRisk: false }; liveMinutesPlayed.away.set(incoming.name, liveMinutesPlayed.away.get(incoming.name) ?? 0); log(`${club.name} substitui ${player.name} após agravamento por ${incoming.name}.`, 'injury-substitution'); }
+      if (bench.length && liveInjuries.away.length <= 5) { const expected = player.pos, compatible = bench.filter(candidate => candidate.pos === expected || (compatibleRoles[expected] || []).includes(candidate.pos)), incoming = [...(compatible.length ? compatible : bench)].sort((a, b) => b.overall - a.overall)[0], incomingIndex = club.roster.indexOf(incoming); [club.roster[index], club.roster[incomingIndex]] = [incoming, player]; cards.away[index] = { yellow: 0, red: false, dismissal: null, injured: false, playThroughRisk: false }; liveMinutesPlayed.away.set(incoming.name, liveMinutesPlayed.away.get(incoming.name) ?? 0); log(`${club.name} substitui ${player.name} após agravamento por ${incoming.name}.`, 'injury-substitution', side); }
     }
     renderRoster(); drawBoard(); renderSubstitutionControls(); renderStats(); return true;
   };
@@ -169,7 +169,7 @@ export function createLiveMatchOrchestration(deps) {
     const entry = buildDeferredInjuryEntry(player, incident.injury, { ...eventContext, minute, fatigue: player.fatigue }, minute);
     liveDeferredInjuries[side].push(entry);
     cards[side][index].playThroughRisk = true;
-    log(liveText, 'discomfort');
+    log(liveText, 'discomfort', side);
     if (side === 'home') {
       $('#matchStatus').textContent = 'Alerta médico: jogador com incômodo. Substitua-o para evitar agravamento ou retome mantendo-o em campo.';
       openPreparation('ALERTA MÉDICO');
@@ -184,7 +184,7 @@ export function createLiveMatchOrchestration(deps) {
         entry.preemptiveSubstitution = true; entry.keptPlaying = false; cards.away[index].playThroughRisk = false;
         cards.away[index] = { yellow: 0, red: false, dismissal: null, injured: false, playThroughRisk: false };
         liveMinutesPlayed.away.set(incoming.name, liveMinutesPlayed.away.get(incoming.name) ?? 0);
-        log(`${club.name} substitui ${player.name} por precaução após incômodo (${incoming.name}).`, 'injury-substitution');
+        log(`${club.name} substitui ${player.name} por precaução após incômodo (${incoming.name}).`, 'injury-substitution', side);
         renderRoster(); drawBoard(); renderStats();
       }
     }
@@ -208,7 +208,7 @@ export function createLiveMatchOrchestration(deps) {
     if (mins < max || cards[side][index]?.minuteLimitWarned) return;
     cards[side][index].minuteLimitWarned = true;
     const club = side === 'home' ? clubs[userClub] : matchClub;
-    log(`${player.name} atinge o limite médico de ${max} minutos.`, 'injury-substitution');
+    log(`${player.name} atinge o limite médico de ${max} minutos.`, 'injury-substitution', side);
     if (side === 'home') {
       $('#matchStatus').textContent = `Limite médico: ${player.name} atingiu ${max} minutos. Substitua-o para evitar recaída.`;
       openPreparation('LIMITE MÉDICO');
@@ -221,7 +221,7 @@ export function createLiveMatchOrchestration(deps) {
     cards.away[index] = { yellow: 0, red: false, dismissal: null, injured: false, playThroughRisk: false, minuteLimitWarned: false };
     liveMinutesPlayed.away.set(incoming.name, liveMinutesPlayed.away.get(incoming.name) ?? 0);
     incrementAwaySubstitutions();
-    log(`${club.name} substitui ${player.name} ao atingir limite médico por ${incoming.name}.`, 'injury-substitution');
+    log(`${club.name} substitui ${player.name} ao atingir limite médico por ${incoming.name}.`, 'injury-substitution', side);
     renderRoster(); drawBoard(); renderSubstitutionControls(); renderStats();
   };
 
@@ -279,7 +279,7 @@ export function createLiveMatchOrchestration(deps) {
     const directFreeKick = zone === 'na entrada da área' && type !== 'falta ofensiva' && Math.random() < .12;
     let message = `${type[0].toUpperCase() + type.slice(1)} de ${fouler} em ${attacker}, ${zone}.`;
     if (Math.random() >= bookingChance || totalCards() >= 5) {
-      log(message, 'foul');
+      log(message, 'foul', side);
       if (directFreeKick) takeFreeKick(otherSide, attacking, defending);
     } else {
       // Vermelho direto: punição de 1 a 3 jogos conforme gravidade da falta.
@@ -291,7 +291,7 @@ export function createLiveMatchOrchestration(deps) {
         setDisciplineEvents(getDisciplineEvents() + 1);
         const gamesLabel = directRed ? ` Suspenso por ${directRedSuspensionGames({ threat, type, zone })} jogo${directRedSuspensionGames({ threat, type, zone }) === 1 ? '' : 's'}.` : '';
         message += directRed ? ` Cartão vermelho direto.${gamesLabel}` : ' Segundo amarelo: cartão vermelho.';
-        log(message, 'red');
+        log(message, 'red', side);
         matchDiscipline[side].set(fouler, { name: fouler, yellow: 0, dismissal: state.dismissal, redContext: directRed ? { threat, type, zone } : null });
         const attackerPlayer = actorData(otherSide, attacker), foulerPlayer = actorData(side, fouler);
         const foulVictim = pickInjuryVictim({ eventPhase: details.phase || 'duel', contact: true, intensity: clamp(threat, .45, .9), phase: details.phase, zone: details.phase === 'final' ? 'entrada da área' : undefined }, attackerPlayer, foulerPlayer);
@@ -304,7 +304,7 @@ export function createLiveMatchOrchestration(deps) {
         return tryLiveEventInjury(foulVictim === attackerPlayer ? otherSide : side, foulVictim.name, { eventPhase: details.phase || 'duel', contact: true, intensity: clamp(threat, .45, .9), phase: details.phase, zone: details.phase === 'final' ? 'entrada da área' : undefined });
       } else {
         setDisciplineEvents(getDisciplineEvents() + 1);
-        message += ' Cartão amarelo.'; log(message, 'yellow');
+        message += ' Cartão amarelo.'; log(message, 'yellow', side);
         if (side === 'home') drawBoard();
         if (directFreeKick) takeFreeKick(otherSide, attacking, defending);
       }
@@ -343,11 +343,10 @@ export function createLiveMatchOrchestration(deps) {
     $('#shootoutHint').textContent = shootoutState.suddenDeath ? 'Morte súbita: cada cobrança pode decidir o confronto.' : 'Disputa alternada — escolha um cobrador diferente a cada vez.';
   };
 
-  const logShootout = (text, type = '') => {
+  const logShootout = (text, type = '', side = null) => {
     const shootoutState = getShootoutState();
     const kickNo = Math.max(1, Math.ceil((shootoutState?.kickIndex || 0) / 2));
-    timeline.insertAdjacentHTML('beforeend', `<p class="${type}">PÊN ${kickNo} · ${text}</p>`);
-    timeline.scrollTop = timeline.scrollHeight;
+    log(`PÊN ${kickNo} · ${text}`, type || 'penalty', side);
   };
 
   const evaluateShootoutWinner = () => {
@@ -538,7 +537,7 @@ export function createLiveMatchOrchestration(deps) {
     const awayPassQuality = addPasses('away', awayProfile, homeProfile, elapsed, 1 - homeShare);
     const passQuality = side === 'home' ? homePassQuality : awayPassQuality;
     if (Math.random() < .012 && stats[side].penalties < 1) {
-      stats[side].penalties++; influencePossession(side, 2.5); log(`Pênalti para ${side === 'home' ? userClub : matchClub.name}!`, 'penalty');
+      stats[side].penalties++; influencePossession(side, 2.5); log(`Pênalti para ${side === 'home' ? userClub : matchClub.name}!`, 'penalty', side);
       if (side === 'home') { startPenaltyChoice(current, other); return; }
       const taker = penaltyTaker(side); shot(side, { ...current, attack: current.attack + 35 }, other, { penalty: true, taker: taker.name, penaltySkill: taker.penaltyTaking }); renderStats(); return;
     }
@@ -554,7 +553,7 @@ export function createLiveMatchOrchestration(deps) {
     else if (event < .61) { const defender = playerFor(otherSide, 'tackle'), attacker = playerFor(side, 'shot'), defenderData = actorData(otherSide, defender, 'tackle'), attackerData = actorData(side, attacker, 'shot'), success = clamp(.48 + ((defenderData.tackling + defenderData.marking) / 2 - (attackerData.dribble + attackerData.speed * .25)) / 120 + (other.defense - current.attack) / 300, .24, .82); if (Math.random() < success) { stats[otherSide].tackles++; influencePossession(otherSide, 2.1); log(`${defender} desarma ${attacker} e recupera a bola.`); } else { influencePossession(side, 1.6); log(`${attacker} supera ${defender} no drible e mantém o ataque.`); } }
     else if (event < .78) { const defender = playerFor(otherSide, 'foul'), attacker = playerFor(side, 'shot'); log(`${defender} derruba ${attacker}.`); foul(otherSide, side, true); }
     else if (event < .86) { const attacker = playerFor(side, 'shot'); stats[side].offsides++; influencePossession(otherSide, 1.2); log(`${attacker} é flagrado em impedimento.`); }
-    else if (event < .875 && stats[side].penalties < 1) { stats[side].penalties++; influencePossession(side, 2.4); log(`Pênalti para ${team}!`, 'penalty'); if (side === 'home') { startPenaltyChoice(current, other); return; } const taker = penaltyTaker(side); shot(side, { ...current, attack: current.attack + 9 }, other, { penalty: true, taker: taker.name, penaltySkill: taker.penaltyTaking }); }
+    else if (event < .875 && stats[side].penalties < 1) { stats[side].penalties++; influencePossession(side, 2.4); log(`Pênalti para ${team}!`, 'penalty', side); if (side === 'home') { startPenaltyChoice(current, other); return; } const taker = penaltyTaker(side); shot(side, { ...current, attack: current.attack + 9 }, other, { penalty: true, taker: taker.name, penaltySkill: taker.penaltyTaking }); }
     else { const organizer = playerFor(side, 'pass'); influencePossession(side, .65); log(`${organizer} conduz a posse no campo de ataque do ${team}.`); }
     renderStats();
   };

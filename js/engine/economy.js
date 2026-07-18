@@ -16,16 +16,21 @@ export const STADIUM_CAPACITY_BY_DIVISION = {
   D: { base: 12_000, max: 28_000, step: 4_000 },
 };
 
-/** Faixas de preço de ingresso (R$). */
+/** Faixas de preço de ingresso (R$). Calibrado para não inundar o caixa. */
 export const TICKET_PRICE_RANGE = {
-  national: { min: 20, max: 120, step: 5, default: 45 },
-  cups: { min: 30, max: 180, step: 5, default: 65 },
+  national: { min: 20, max: 120, step: 5, default: 32 },
+  cups: { min: 30, max: 180, step: 5, default: 48 },
 };
 
-const PARTICIPATION_PRIZE = { A: 2_500_000, B: 1_800_000, C: 1_200_000, D: 800_000 };
+/**
+ * Premiação de fim de temporada — calibrada vs INITIAL_BUDGET:
+ * campanha boa (G8) ≈ 35–55% do caixa inicial; título/Copa como bônus sem dobrar o orçamento.
+ */
+export const PARTICIPATION_PRIZE = { A: 1_500_000, B: 1_100_000, C: 700_000, D: 500_000 };
 /** Pool de classificação para A/B/C (liga corrida). Série D usa SERIE_D_PHASE_*. */
-const POSITION_POOL = { A: 12_000_000, B: 8_000_000, C: 5_000_000, D: 3_000_000 };
-const TITLE_BONUS = { A: 15_000_000, B: 10_000_000, C: 6_000_000, D: 4_000_000 };
+export const POSITION_POOL = { A: 7_800_000, B: 5_200_000, C: 3_250_000, D: 1_800_000 };
+export const TITLE_BONUS = { A: 8_000_000, B: 5_500_000, C: 3_300_000, D: 2_200_000 };
+export const PROMOTION_BONUS = 1_800_000;
 
 /** Premiação Série D por fase mais avançada (% do POSITION_POOL.D). */
 export const SERIE_D_PHASE_POOL = POSITION_POOL.D;
@@ -42,7 +47,7 @@ export const SERIE_D_PHASE_SHARE = {
 };
 
 /** Premiação Copa do Brasil por fase mais avançada (% do pool). */
-export const CUP_PHASE_POOL = 8_000_000;
+export const CUP_PHASE_POOL = 4_500_000;
 export const CUP_PHASE_SHARE = {
   1: { pct: 0.06, label: 'Copa do Brasil · 1ª fase' },
   2: { pct: 0.12, label: 'Copa do Brasil · 2ª fase' },
@@ -102,6 +107,442 @@ function phasePrizeLine(shareMap, key, pool) {
 
 /** Histórico curto no clube — evita crescimento infinito do save. */
 const LEDGER_LIMIT = 40;
+
+/**
+ * Base salarial por jogador/rodada em OVR 75 (R$).
+ * Folha típica Série A ~180–350k com elenco médio/alto.
+ */
+export const WAGE_BASE_BY_DIVISION = {
+  A: 13_000,
+  B: 8_500,
+  C: 5_600,
+  D: 3_600,
+};
+
+/** Teto suave da folha por rodada (evita outliers em elencos gerados). */
+export const WAGE_BILL_SOFT_CAP = {
+  A: 420_000,
+  B: 290_000,
+  C: 200_000,
+  D: 135_000,
+};
+
+/**
+ * Base da comissão técnica por rodada (score de referência 70).
+ * Ordem ~10–15% da folha típica; valor final depende do score do técnico
+ * (mesmos insumos estáveis do ranking) e fica fixo no vínculo (staffContract).
+ */
+export const STAFF_BASE_BY_DIVISION = {
+  A: 35_000,
+  B: 22_000,
+  C: 14_000,
+  D: 9_000,
+};
+
+export const STAFF_BILL_SOFT_CAP = {
+  A: 70_000,
+  B: 45_000,
+  C: 28_000,
+  D: 18_000,
+};
+
+/** Espelha prestígio do ranking de técnicos (manager-ranking.js). */
+export const STAFF_DIVISION_PRESTIGE = {
+  A: 12,
+  B: 8,
+  C: 5,
+  D: 2,
+  FREE: 3,
+};
+
+export const STAFF_SCORE_REF = 70;
+export const STAFF_FLOOR_RATIO = 0.55;
+
+/**
+ * Manutenção do estádio por rodada.
+ * base + (capacidade/1000)×porMil + estrutura×k + gramado×k, com teto.
+ */
+export const STADIUM_OPS_BASE_BY_DIVISION = {
+  A: 18_000,
+  B: 12_000,
+  C: 8_000,
+  D: 5_000,
+};
+
+export const STADIUM_OPS_PER_THOUSAND_SEATS = {
+  A: 450,
+  B: 350,
+  C: 280,
+  D: 220,
+};
+
+export const STADIUM_OPS_STRUCTURE_COST = 2_500;
+export const STADIUM_OPS_PITCH_COST = 2_000;
+
+export const STADIUM_OPS_SOFT_CAP = {
+  A: 75_000,
+  B: 50_000,
+  C: 35_000,
+  D: 22_000,
+};
+
+const DEFAULT_MANAGER_REPUTATION = 60;
+
+const wageAgeFactor = age => {
+  const years = Number(age) || 26;
+  if (years <= 22) return 0.9;
+  if (years <= 30) return 1;
+  if (years <= 33) return 1.06;
+  return 1.12;
+};
+
+/** Salário de um jogador na rodada. */
+export function estimatePlayerWage(player, division = 'A') {
+  const base = WAGE_BASE_BY_DIVISION[division] ?? WAGE_BASE_BY_DIVISION.D;
+  const overall = Math.max(40, Math.min(99, Number(player?.overall) || 60));
+  const scale = (overall / 75) ** 1.35;
+  return Math.round(base * scale * wageAgeFactor(player?.age));
+}
+
+/**
+ * Folha salarial da rodada (soma do elenco, com teto suave).
+ * @returns {number}
+ */
+export function estimateWageBill(club, division = club?.division || 'A') {
+  const roster = Array.isArray(club?.roster) ? club.roster : [];
+  if (!roster.length) return 0;
+  const raw = roster.reduce((sum, player) => sum + estimatePlayerWage(player, division), 0);
+  const cap = WAGE_BILL_SOFT_CAP[division] ?? WAGE_BILL_SOFT_CAP.D;
+  return Math.min(raw, cap);
+}
+
+const hashManagerKey = key => {
+  const text = String(key || 'manager');
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) / 4294967295;
+};
+
+/**
+ * Score estável do técnico para salário (sem seasonPoints — não sobe a cada rodada).
+ * Espelha o DNA do ranking: rep, prestígio de divisão, títulos + jitter por id.
+ */
+export function computeStaffWageScore(manager = {}) {
+  const reputation = Math.max(
+    40,
+    Math.min(99, Number(manager.reputation) || DEFAULT_MANAGER_REPUTATION),
+  );
+  const prestige =
+    STAFF_DIVISION_PRESTIGE[manager.preferredDivision] ?? STAFF_DIVISION_PRESTIGE.FREE;
+  const titlePoints = Math.max(0, Number(manager.titlePoints) || 0);
+  const jitter = hashManagerKey(manager.id || manager.name) * 12 - 6;
+  return reputation * 0.82 + prestige + titlePoints * 0.5 + jitter;
+}
+
+export function computeStaffBillFromScore(score, division = 'A') {
+  const base = STAFF_BASE_BY_DIVISION[division] ?? STAFF_BASE_BY_DIVISION.D;
+  const cap = STAFF_BILL_SOFT_CAP[division] ?? STAFF_BILL_SOFT_CAP.D;
+  const floor = Math.round(base * STAFF_FLOOR_RATIO);
+  const safeScore = Math.max(1, Number(score) || STAFF_SCORE_REF);
+  const raw = Math.round(base * (safeScore / STAFF_SCORE_REF) ** 1.45);
+  return Math.min(cap, Math.max(floor, raw));
+}
+
+const resolveManagerKey = (club, options = {}) =>
+  options.managerId ||
+  options.managerName ||
+  club?.staffContract?.managerId ||
+  club?.managerName ||
+  null;
+
+/**
+ * Comissão técnica por rodada.
+ * Preferência: contrato travado no clube (mesmo managerId).
+ * Senão: calcula pelo score do técnico.
+ */
+export function estimateStaffBill(club, division = club?.division || 'A', options = {}) {
+  const cap = STAFF_BILL_SOFT_CAP[division] ?? STAFF_BILL_SOFT_CAP.D;
+  const managerKey = resolveManagerKey(club, options);
+  const contract = club?.staffContract;
+  if (
+    contract &&
+    Number(contract.amountPerRound) > 0 &&
+    (!managerKey || !contract.managerId || contract.managerId === managerKey)
+  ) {
+    return Math.min(cap, Math.round(Number(contract.amountPerRound)));
+  }
+  const score = computeStaffWageScore({
+    id: managerKey,
+    name: options.managerName || club?.managerName,
+    reputation: options.managerReputation ?? club?.managerReputation,
+    preferredDivision: options.preferredDivision || division,
+    titlePoints: options.titlePoints,
+  });
+  return computeStaffBillFromScore(score, division);
+}
+
+/**
+ * Trava a comissão enquanto o mesmo técnico permanecer no clube.
+ * Recalcula só se o managerId mudar ou `force`.
+ */
+export function ensureStaffContract(club, {
+  division = 'A',
+  season = null,
+  managerId = null,
+  managerName = null,
+  managerReputation = null,
+  preferredDivision = null,
+  titlePoints = 0,
+  force = false,
+} = {}) {
+  if (!club) return null;
+  const managerKey = managerId || managerName || club.managerName || 'default';
+  const existing = club.staffContract;
+  if (
+    !force &&
+    existing &&
+    existing.managerId === managerKey &&
+    Number(existing.amountPerRound) > 0
+  ) {
+    return existing;
+  }
+  const score = computeStaffWageScore({
+    id: managerKey,
+    name: managerName || club.managerName,
+    reputation: managerReputation ?? club.managerReputation,
+    preferredDivision: preferredDivision || division,
+    titlePoints,
+  });
+  const amountPerRound = computeStaffBillFromScore(score, division);
+  club.staffContract = {
+    managerId: managerKey,
+    amountPerRound,
+    season: season ?? existing?.season ?? null,
+    score: Math.round(score * 10) / 10,
+    at: new Date().toISOString(),
+  };
+  return club.staffContract;
+}
+
+/**
+ * Manutenção operacional do estádio por rodada.
+ * base + (capacidade/1000)×porMil + estrutura×k + gramado×k.
+ */
+export function estimateStadiumOpsBill(club, division = club?.division || 'A') {
+  if (!club) return 0;
+  ensureStadium(club, division);
+  const base = STADIUM_OPS_BASE_BY_DIVISION[division] ?? STADIUM_OPS_BASE_BY_DIVISION.D;
+  const perThousand = STADIUM_OPS_PER_THOUSAND_SEATS[division] ?? STADIUM_OPS_PER_THOUSAND_SEATS.D;
+  const cap = STADIUM_OPS_SOFT_CAP[division] ?? STADIUM_OPS_SOFT_CAP.D;
+  const seats = Math.max(0, Number(club.stadiumCapacity) || 0);
+  const structure = getStructureLevel(club);
+  const pitch = getPitchLevel(club);
+  const raw = Math.round(
+    base +
+      (seats / 1000) * perThousand +
+      structure * STADIUM_OPS_STRUCTURE_COST +
+      pitch * STADIUM_OPS_PITCH_COST,
+  );
+  return Math.min(raw, cap);
+}
+
+/** Custo total da rodada (jogadores + comissão + estádio). */
+export function estimateRoundCostBill(club, division = club?.division || 'A', options = {}) {
+  return (
+    estimateWageBill(club, division) +
+    estimateStaffBill(club, division, options) +
+    estimateStadiumOpsBill(club, division)
+  );
+}
+
+/** Rodadas de custo que o caixa atual cobre (custos fixos da rodada). */
+export function estimateWageRunway(club, division = club?.division || 'A', options = {}) {
+  const bill = estimateRoundCostBill(club, division, options);
+  if (!(bill > 0)) return 99;
+  return getBalance(club) / bill;
+}
+
+const pushCostLedger = (club, { reason, label, paid, due, shortfall }) => {
+  if (!(due > 0)) return;
+  pushLedger(club, {
+    type: 'spend',
+    reason,
+    label,
+    amount: paid,
+    balance: club.budget,
+    at: new Date().toISOString(),
+    meta: shortfall > 0 ? { shortfall, due } : { due },
+  });
+};
+
+const allocateProportional = (balance, parts) => {
+  const due = parts.reduce((sum, part) => sum + part.due, 0);
+  if (!(due > 0) || !(balance > 0)) {
+    return parts.map(part => ({ ...part, paid: 0, shortfall: part.due }));
+  }
+  if (balance >= due) {
+    return parts.map(part => ({ ...part, paid: part.due, shortfall: 0 }));
+  }
+  const paidList = parts.map((part, index) => {
+    if (index === parts.length - 1) return null;
+    return Math.round((balance * part.due) / due);
+  });
+  const allocated = paidList.reduce((sum, value) => sum + (value || 0), 0);
+  paidList[parts.length - 1] = Math.max(0, balance - allocated);
+  return parts.map((part, index) => {
+    const paid = Math.min(part.due, Math.max(0, paidList[index] || 0));
+    return { ...part, paid, shortfall: Math.max(0, part.due - paid) };
+  });
+};
+
+/**
+ * Cobra folha + comissão + manutenção do estádio na rodada.
+ * Rateio proporcional se o caixa não cobrir o total.
+ * Idempotente por `round`.
+ */
+export function chargeRoundCosts(club, {
+  division = 'A',
+  round = null,
+  managerReputation = null,
+  managerId = null,
+  managerName = null,
+  preferredDivision = null,
+  titlePoints = 0,
+  season = null,
+} = {}) {
+  if (!club) {
+    return {
+      ok: false,
+      wages: { due: 0, paid: 0, shortfall: 0 },
+      staff: { due: 0, paid: 0, shortfall: 0 },
+      stadium: { due: 0, paid: 0, shortfall: 0 },
+      due: 0,
+      paid: 0,
+      shortfall: 0,
+      skipped: true,
+    };
+  }
+  ensureBudget(club, division);
+  ensureStadium(club, division);
+  const roundKey = Number.isFinite(Number(round)) ? Number(round) : null;
+  if (roundKey != null && club.lastWageRoundCharged === roundKey) {
+    return {
+      ok: true,
+      wages: club.lastWageBill || { due: 0, paid: 0, shortfall: 0 },
+      staff: club.lastStaffBill || { due: 0, paid: 0, shortfall: 0 },
+      stadium: club.lastStadiumOpsBill || { due: 0, paid: 0, shortfall: 0 },
+      due: Number(club.lastRoundCostBill?.due) || 0,
+      paid: Number(club.lastRoundCostBill?.paid) || 0,
+      shortfall: Number(club.lastRoundCostBill?.shortfall) || 0,
+      balance: getBalance(club),
+      skipped: true,
+    };
+  }
+
+  const contract = ensureStaffContract(club, {
+    division,
+    season,
+    managerId,
+    managerName,
+    managerReputation,
+    preferredDivision: preferredDivision || division,
+    titlePoints,
+  });
+  const staffOpts = {
+    managerReputation,
+    managerId: contract?.managerId || managerId || managerName,
+    managerName,
+    preferredDivision: preferredDivision || division,
+    titlePoints,
+  };
+  const wagesDue = estimateWageBill(club, division);
+  const staffDue = estimateStaffBill(club, division, staffOpts);
+  const stadiumDue = estimateStadiumOpsBill(club, division);
+  const due = wagesDue + staffDue + stadiumDue;
+  const balance = getBalance(club);
+  const [wagesPart, staffPart, stadiumPart] = allocateProportional(balance, [
+    { key: 'wages', due: wagesDue },
+    { key: 'staff', due: staffDue },
+    { key: 'stadium', due: stadiumDue },
+  ]);
+  const paid = wagesPart.paid + staffPart.paid + stadiumPart.paid;
+  const shortfall = Math.max(0, due - paid);
+
+  club.budget = balance - paid;
+  club.wageShortfall = shortfall > 0;
+  club.lastWageBill = {
+    due: wagesDue,
+    paid: wagesPart.paid,
+    shortfall: wagesPart.shortfall,
+    round: roundKey,
+    at: new Date().toISOString(),
+  };
+  club.lastStaffBill = {
+    due: staffDue,
+    paid: staffPart.paid,
+    shortfall: staffPart.shortfall,
+    reputation: Math.max(40, Math.min(99, Number(managerReputation) || DEFAULT_MANAGER_REPUTATION)),
+    managerId: contract?.managerId || null,
+    score: contract?.score ?? null,
+    round: roundKey,
+    at: new Date().toISOString(),
+  };
+  club.lastStadiumOpsBill = {
+    due: stadiumDue,
+    paid: stadiumPart.paid,
+    shortfall: stadiumPart.shortfall,
+    round: roundKey,
+    at: new Date().toISOString(),
+  };
+  club.lastRoundCostBill = { due, paid, shortfall, round: roundKey, at: new Date().toISOString() };
+  if (roundKey != null) club.lastWageRoundCharged = roundKey;
+
+  const roundLabel = roundKey != null ? ` · Rodada ${roundKey}` : '';
+  pushCostLedger(club, {
+    reason: 'wages',
+    label: `Folha salarial${roundLabel}`,
+    paid: wagesPart.paid,
+    due: wagesDue,
+    shortfall: wagesPart.shortfall,
+  });
+  pushCostLedger(club, {
+    reason: 'staff_wages',
+    label: `Comissão técnica${roundLabel}`,
+    paid: staffPart.paid,
+    due: staffDue,
+    shortfall: staffPart.shortfall,
+  });
+  pushCostLedger(club, {
+    reason: 'stadium_ops',
+    label: `Manutenção do estádio${roundLabel}`,
+    paid: stadiumPart.paid,
+    due: stadiumDue,
+    shortfall: stadiumPart.shortfall,
+  });
+
+  return {
+    ok: true,
+    wages: club.lastWageBill,
+    staff: club.lastStaffBill,
+    stadium: club.lastStadiumOpsBill,
+    due,
+    paid,
+    shortfall,
+    balance: club.budget,
+    skipped: false,
+  };
+}
+
+/**
+ * @deprecated Prefer chargeRoundCosts — mantido para compatibilidade.
+ * Cobra só a folha de jogadores (sem comissão).
+ */
+export function chargeWageBill(club, options = {}) {
+  return chargeRoundCosts(club, options);
+}
 
 /**
  * Investimentos estruturais (Escritório) — médico / prevenção.
@@ -332,8 +773,8 @@ export function computeSeasonPrize({
   }
 
   if (promoted) {
-    total += 3_000_000;
-    lines.push({ label: 'Bônus de acesso', amount: 3_000_000 });
+    total += PROMOTION_BONUS;
+    lines.push({ label: 'Bônus de acesso', amount: PROMOTION_BONUS });
   }
 
   return { total, lines };
@@ -418,9 +859,125 @@ export function canAfford(club, amount) {
   return getBalance(club) >= cost;
 }
 
+const EMPTY_SEASON_INFLOWS = () => ({
+  gate: 0,
+  sponsorship: 0,
+  tv: 0,
+  prize: 0,
+  other_in: 0,
+});
+
+const EMPTY_SEASON_OUTFLOWS = () => ({
+  wages: 0,
+  staff: 0,
+  stadium: 0,
+  upgrades: 0,
+  other_out: 0,
+});
+
+const seasonCashflowCategory = (type, reason) => {
+  if (type === 'credit') {
+    if (reason === 'gate_receipt') return ['inflows', 'gate'];
+    if (reason === 'sponsorship') return ['inflows', 'sponsorship'];
+    if (reason === 'tv_rights') return ['inflows', 'tv'];
+    if (reason === 'season_prize') return ['inflows', 'prize'];
+    return ['inflows', 'other_in'];
+  }
+  if (reason === 'wages') return ['outflows', 'wages'];
+  if (reason === 'staff_wages') return ['outflows', 'staff'];
+  if (reason === 'stadium_ops' || reason === 'name_rights') return ['outflows', 'stadium'];
+  if (String(reason || '').startsWith('upgrade:')) return ['outflows', 'upgrades'];
+  return ['outflows', 'other_out'];
+};
+
+const createEmptySeasonCashflow = season => ({
+  season: season == null ? null : Number(season),
+  inflows: EMPTY_SEASON_INFLOWS(),
+  outflows: EMPTY_SEASON_OUTFLOWS(),
+  movementCount: 0,
+});
+
+const applySeasonCashflowEntry = (cashflow, entry) => {
+  const amount = Math.max(0, Number(entry?.amount) || 0);
+  if (!(amount > 0) || !cashflow) return;
+  const [bucket, key] = seasonCashflowCategory(entry.type, entry.reason);
+  cashflow[bucket][key] = (Number(cashflow[bucket][key]) || 0) + amount;
+  cashflow.movementCount = (Number(cashflow.movementCount) || 0) + 1;
+};
+
+/** Garante acumulador do DFC da temporada (sobrevive ao limite do ledger). */
+export function ensureSeasonCashflow(club, season = null) {
+  if (!club) return null;
+  const seasonKey = Number(
+    season ?? club.sponsors?.season ?? club.tvRights?.season ?? club.seasonCashflow?.season,
+  );
+  const hasSeason = Number.isFinite(seasonKey);
+  if (
+    !club.seasonCashflow ||
+    (hasSeason && Number(club.seasonCashflow.season) !== seasonKey)
+  ) {
+    club.seasonCashflow = createEmptySeasonCashflow(hasSeason ? seasonKey : null);
+    // Migração: seed a partir do ledger atual (janela curta) se ainda vazio.
+    const ledger = Array.isArray(club.budgetLedger) ? club.budgetLedger : [];
+    for (let index = ledger.length - 1; index >= 0; index -= 1) {
+      applySeasonCashflowEntry(club.seasonCashflow, ledger[index]);
+    }
+  } else {
+    if (!club.seasonCashflow.inflows) club.seasonCashflow.inflows = EMPTY_SEASON_INFLOWS();
+    if (!club.seasonCashflow.outflows) club.seasonCashflow.outflows = EMPTY_SEASON_OUTFLOWS();
+    club.seasonCashflow.movementCount = Number(club.seasonCashflow.movementCount) || 0;
+    // Save antigo sem acumulador: reconstrói uma vez a partir do ledger.
+    if (
+      club.seasonCashflow.movementCount === 0 &&
+      Array.isArray(club.budgetLedger) &&
+      club.budgetLedger.length
+    ) {
+      for (let index = club.budgetLedger.length - 1; index >= 0; index -= 1) {
+        applySeasonCashflowEntry(club.seasonCashflow, club.budgetLedger[index]);
+      }
+    }
+  }
+  return club.seasonCashflow;
+}
+
+/** Demonstrativo agregado da temporada (não depende do LEDGER_LIMIT). */
+export function getSeasonCashflowStatement(club, season = null) {
+  const cashflow = ensureSeasonCashflow(club, season);
+  if (!cashflow) {
+    return {
+      inflows: EMPTY_SEASON_INFLOWS(),
+      outflows: EMPTY_SEASON_OUTFLOWS(),
+      totalIn: 0,
+      totalOut: 0,
+      net: 0,
+      count: 0,
+      season: null,
+      fullSeason: true,
+    };
+  }
+  const inflows = { ...EMPTY_SEASON_INFLOWS(), ...cashflow.inflows };
+  const outflows = { ...EMPTY_SEASON_OUTFLOWS(), ...cashflow.outflows };
+  const totalIn = Object.values(inflows).reduce((sum, value) => sum + (Number(value) || 0), 0);
+  const totalOut = Object.values(outflows).reduce((sum, value) => sum + (Number(value) || 0), 0);
+  return {
+    inflows,
+    outflows,
+    totalIn,
+    totalOut,
+    net: totalIn - totalOut,
+    count: Number(cashflow.movementCount) || 0,
+    season: cashflow.season,
+    fullSeason: true,
+  };
+}
+
 function pushLedger(club, entry) {
   if (!club) return;
   if (!Array.isArray(club.budgetLedger)) club.budgetLedger = [];
+  // Acumula no DFC da temporada antes do unshift — o seed de migração
+  // lê só o ledger antigo e não conta este lançamento duas vezes.
+  ensureSeasonCashflow(club);
+  applySeasonCashflowEntry(club.seasonCashflow, entry);
   club.budgetLedger.unshift(entry);
   if (club.budgetLedger.length > LEDGER_LIMIT) {
     club.budgetLedger.length = LEDGER_LIMIT;
@@ -822,12 +1379,12 @@ export function sponsorLogoSlug(name) {
   return SPONSOR_LOGO_SLUG[name] || null;
 }
 
-/** Valor do contrato por temporada (R$), conforme divisão. */
+/** Valor do contrato por temporada (R$), conforme divisão. Calibrado v1 fluxo. */
 export const SPONSOR_VALUE_BY_DIVISION = {
-  A: { master: [9_000_000, 12_000_000], secondary: [1_800_000, 2_500_000] },
-  B: { master: [5_000_000, 7_000_000], secondary: [900_000, 1_300_000] },
-  C: { master: [2_500_000, 3_500_000], secondary: [450_000, 700_000] },
-  D: { master: [1_000_000, 1_600_000], secondary: [200_000, 350_000] },
+  A: { master: [6_000_000, 8_500_000], secondary: [1_200_000, 1_700_000] },
+  B: { master: [3_200_000, 4_800_000], secondary: [550_000, 850_000] },
+  C: { master: [1_600_000, 2_400_000], secondary: [280_000, 450_000] },
+  D: { master: [650_000, 1_100_000], secondary: [120_000, 220_000] },
 };
 
 function shuffleCopy(list, random = Math.random) {
@@ -857,46 +1414,215 @@ function sponsorsAreValid(sponsors, season) {
   return sponsors.secondaries.every(item => item?.name && Number.isFinite(Number(item.value)));
 }
 
+/** Normaliza contrato de patrocínio para parcelas por rodada nacional. */
+export function normalizeSponsorContract(sponsors, { installments } = {}) {
+  if (!sponsors || typeof sponsors !== 'object') return null;
+  const total = Math.max(0, Number(sponsors.total) || 0);
+  const slots = Math.max(1, Number(installments) || Number(sponsors.installments) || 38);
+  sponsors.installments = slots;
+  const hasPaidAmount = Number.isFinite(Number(sponsors.paidAmount));
+  // Save antigo: pacote creditado à vista — não recreditar.
+  if (sponsors.credited && !hasPaidAmount) {
+    sponsors.paidAmount = total;
+    sponsors.paidInstallments = slots;
+    sponsors.lastInstallmentRound = null;
+    return sponsors;
+  }
+  sponsors.paidAmount = Math.max(0, Number(sponsors.paidAmount) || 0);
+  sponsors.paidInstallments = Math.max(0, Number(sponsors.paidInstallments) || 0);
+  if (total > 0 && sponsors.paidAmount >= total) sponsors.credited = true;
+  return sponsors;
+}
+
+/** Valor da próxima parcela (0 se já quitado). */
+export function estimateSponsorInstallment(club, options = {}) {
+  const sponsors = club?.sponsors;
+  if (!sponsors) return 0;
+  normalizeSponsorContract(sponsors, { installments: options.installments });
+  const total = Math.max(0, Number(sponsors.total) || 0);
+  const slots = Math.max(1, Number(sponsors.installments) || 38);
+  const paidInstallments = Number(sponsors.paidInstallments) || 0;
+  const paidAmount = Number(sponsors.paidAmount) || 0;
+  if (!(total > 0) || paidInstallments >= slots || paidAmount >= total) return 0;
+  const nextIndex = paidInstallments + 1;
+  const dueSoFar = nextIndex >= slots ? total : Math.floor((total * nextIndex) / slots);
+  return Math.max(0, dueSoFar - paidAmount);
+}
+
 /**
- * Sorteia 4 nomes únicos do pool: 1 Master + 3 Secundários.
- * Credita o pacote da temporada se ainda não foi creditado.
+ * Credita uma parcela de patrocínio (rodada nacional).
+ * Idempotente por `round`. Soma das parcelas = total do contrato.
+ */
+export function creditSponsorInstallment(club, { round = null, installments = null } = {}) {
+  if (!club?.sponsors) {
+    return { ok: false, amount: 0, skipped: true };
+  }
+  normalizeSponsorContract(club.sponsors, {
+    installments: installments ?? club.sponsors.installments,
+  });
+  const roundKey = Number.isFinite(Number(round)) ? Number(round) : null;
+  if (roundKey != null && club.sponsors.lastInstallmentRound === roundKey) {
+    return {
+      ok: true,
+      amount: 0,
+      skipped: true,
+      paidInstallments: club.sponsors.paidInstallments,
+      paidAmount: club.sponsors.paidAmount,
+    };
+  }
+  const amount = estimateSponsorInstallment(club);
+  if (!(amount > 0)) {
+    if ((Number(club.sponsors.total) || 0) > 0) club.sponsors.credited = true;
+    return {
+      ok: true,
+      amount: 0,
+      skipped: true,
+      complete: true,
+      paidInstallments: club.sponsors.paidInstallments,
+      paidAmount: club.sponsors.paidAmount,
+    };
+  }
+  const installmentIndex = (Number(club.sponsors.paidInstallments) || 0) + 1;
+  const slots = club.sponsors.installments;
+  credit(club, amount, {
+    reason: 'sponsorship',
+    label:
+      roundKey != null
+        ? `Patrocínio · Rodada ${roundKey}`
+        : `Patrocínio · parcela ${installmentIndex}/${slots}`,
+    meta: {
+      installment: installmentIndex,
+      installments: slots,
+      total: club.sponsors.total,
+      amount,
+    },
+  });
+  club.sponsors.paidAmount = (Number(club.sponsors.paidAmount) || 0) + amount;
+  club.sponsors.paidInstallments = installmentIndex;
+  if (roundKey != null) club.sponsors.lastInstallmentRound = roundKey;
+  if (club.sponsors.paidAmount >= (Number(club.sponsors.total) || 0)) {
+    club.sponsors.credited = true;
+  }
+  club.lastSponsorInstallment = {
+    amount,
+    round: roundKey,
+    installment: installmentIndex,
+    installments: slots,
+    at: new Date().toISOString(),
+  };
+  return {
+    ok: true,
+    amount,
+    skipped: false,
+    complete: !!club.sponsors.credited,
+    paidInstallments: club.sponsors.paidInstallments,
+    paidAmount: club.sponsors.paidAmount,
+  };
+}
+
+/**
+ * Gera ofertas para o jogador escolher: 2 Master + 5 Secundários (nomes únicos).
+ */
+export function generateSponsorOffers({
+  division = 'A',
+  random = Math.random,
+} = {}) {
+  const ranges = SPONSOR_VALUE_BY_DIVISION[division] || SPONSOR_VALUE_BY_DIVISION.A;
+  const picked = shuffleCopy(SPONSOR_POOL, random).slice(0, 7);
+  const master = picked.slice(0, 2).map(name => ({
+    name,
+    role: 'master',
+    value: valueInRange(ranges.master, random),
+  }));
+  master.sort((a, b) => b.value - a.value);
+  if (master.length === 2 && master[0].value === master[1].value) {
+    const bump = Math.max(50_000, Math.round((ranges.master[1] - ranges.master[0]) * 0.12));
+    master[0].value = Math.min(ranges.master[1], master[0].value + bump);
+  }
+  const secondaries = picked.slice(2, 7).map(name => ({
+    name,
+    role: 'secondary',
+    value: valueInRange(ranges.secondary, random),
+  }));
+  secondaries.sort((a, b) => b.value - a.value);
+  return { master, secondaries, division };
+}
+
+/**
+ * Aplica a escolha do jogador (1 Master + exatamente 3 Secundários).
+ */
+export function applySponsorChoice(club, {
+  master,
+  secondaries,
+  division = 'A',
+  season = 2026,
+  installments = 38,
+} = {}) {
+  if (!club || !master?.name || !Number.isFinite(Number(master.value))) return null;
+  if (!Array.isArray(secondaries) || secondaries.length !== 3) return null;
+  const names = [master.name, ...secondaries.map(item => item?.name)];
+  if (names.some(name => !SPONSOR_POOL.includes(name))) return null;
+  if (new Set(names).size !== 4) return null;
+  if (!secondaries.every(item => item?.name && Number.isFinite(Number(item.value)))) return null;
+  ensureBudget(club, division);
+  const masterContract = { name: master.name, role: 'master', value: Math.round(Number(master.value)) };
+  const secondaryContracts = secondaries.map(item => ({
+    name: item.name,
+    role: 'secondary',
+    value: Math.round(Number(item.value)),
+  }));
+  const total = masterContract.value + secondaryContracts.reduce((sum, item) => sum + item.value, 0);
+  const slots = Math.max(1, Number(installments) || 38);
+  club.sponsors = {
+    season,
+    division,
+    master: masterContract,
+    secondaries: secondaryContracts,
+    total,
+    credited: false,
+    installments: slots,
+    paidAmount: 0,
+    paidInstallments: 0,
+    lastInstallmentRound: null,
+  };
+  return normalizeSponsorContract(club.sponsors, { installments: slots });
+}
+
+/**
+ * Sorteia 4 nomes únicos do pool: 1 Master + 3 Secundários (legado / fallback).
+ * Por padrão só monta o contrato (parcelas por rodada); `creditPackage` mantém o crédito à vista legado.
  */
 export function assignSponsors(club, {
   division = 'A',
   season = 2026,
   random = Math.random,
-  creditPackage = true,
+  creditPackage = false,
+  installments = 38,
 } = {}) {
   if (!club) return null;
-  ensureBudget(club, division);
-  const ranges = SPONSOR_VALUE_BY_DIVISION[division] || SPONSOR_VALUE_BY_DIVISION.A;
-  const picked = shuffleCopy(SPONSOR_POOL, random).slice(0, 4);
-  const master = { name: picked[0], role: 'master', value: valueInRange(ranges.master, random) };
-  const secondaries = picked.slice(1).map(name => ({
-    name,
-    role: 'secondary',
-    value: valueInRange(ranges.secondary, random),
-  }));
-  const total = master.value + secondaries.reduce((sum, item) => sum + item.value, 0);
-  club.sponsors = {
-    season,
+  const offers = generateSponsorOffers({ division, random });
+  applySponsorChoice(club, {
+    master: offers.master[0],
+    secondaries: offers.secondaries.slice(0, 3),
     division,
-    master,
-    secondaries,
-    total,
-    credited: false,
-  };
-  if (creditPackage) {
+    season,
+    installments,
+  });
+  if (creditPackage && club.sponsors) {
+    const total = club.sponsors.total;
+    const slots = club.sponsors.installments;
     credit(club, total, {
       reason: 'sponsorship',
       label: `Patrocínios temporada ${season}`,
       meta: {
-        master: master.name,
-        secondaries: secondaries.map(item => item.name),
+        master: club.sponsors.master.name,
+        secondaries: club.sponsors.secondaries.map(item => item.name),
         total,
       },
     });
     club.sponsors.credited = true;
+    club.sponsors.paidAmount = total;
+    club.sponsors.paidInstallments = slots;
   }
   return club.sponsors;
 }
@@ -904,8 +1630,11 @@ export function assignSponsors(club, {
 /** Garante patrocínios da temporada atual; re-sorteia se inválidos ou temporada mudou. */
 export function ensureSponsors(club, options = {}) {
   if (!club) return null;
+  // Escolha pendente do jogador — não auto-atribuir.
+  if (options.pendingChoice) return null;
   const season = options.season ?? 2026;
   const division = options.division || club.division || 'A';
+  const installments = Math.max(1, Number(options.installments) || 38);
   if (options.savedSponsors && sponsorsAreValid(options.savedSponsors, season)) {
     club.sponsors = {
       ...options.savedSponsors,
@@ -913,22 +1642,232 @@ export function ensureSponsors(club, options = {}) {
       secondaries: options.savedSponsors.secondaries.map(item => ({ ...item })),
       division,
     };
-    return club.sponsors;
+    return normalizeSponsorContract(club.sponsors, { installments });
   }
   if (sponsorsAreValid(club.sponsors, season)) {
     club.sponsors.division = division;
-    return club.sponsors;
+    return normalizeSponsorContract(club.sponsors, { installments });
   }
   return assignSponsors(club, {
     division,
     season,
     random: options.random || Math.random,
-    creditPackage: options.creditPackage !== false,
+    creditPackage: options.creditPackage === true,
+    installments,
   });
+}
+
+/** Custo de Name Rights (renomear estádio) por divisão. */
+export const NAME_RIGHTS_COST_BY_DIVISION = {
+  A: 2_500_000,
+  B: 1_500_000,
+  C: 900_000,
+  D: 450_000,
+};
+
+export function nameRightsCost(division = 'A') {
+  return NAME_RIGHTS_COST_BY_DIVISION[division] ?? NAME_RIGHTS_COST_BY_DIVISION.C;
+}
+
+/**
+ * Renomeia o estádio cobrando Name Rights.
+ * @returns {{ ok: boolean, error?: string, balance?: number, name?: string, cost?: number }}
+ */
+export function purchaseStadiumNameRights(club, newName, { division = 'A' } = {}) {
+  if (!club) return { ok: false, error: 'no_club' };
+  const cleaned = String(newName || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+  if (cleaned.length < 3) return { ok: false, error: 'invalid_name' };
+  ensureStadium(club, division);
+  if (cleaned === (club.stadiumName || '')) return { ok: false, error: 'same_name' };
+  const cost = nameRightsCost(division);
+  const result = spend(club, cost, {
+    reason: 'name_rights',
+    label: `Name Rights · ${cleaned}`,
+    meta: { previousName: club.stadiumName || null, newName: cleaned, cost },
+  });
+  if (!result?.ok) return { ok: false, error: 'insufficient_funds', balance: getBalance(club), cost };
+  club.stadiumName = cleaned;
+  return { ok: true, balance: result.balance, name: cleaned, cost };
 }
 
 export function getSponsors(club) {
   return club?.sponsors || null;
+}
+
+/**
+ * Pool de direitos de TV por temporada (R$).
+ * Calibrado para cobrir parte da folha sem deixar o clube rico demais.
+ */
+export const TV_VALUE_BY_DIVISION = {
+  A: [5_500_000, 7_500_000],
+  B: [2_800_000, 4_200_000],
+  C: [1_400_000, 2_200_000],
+  D: [550_000, 950_000],
+};
+
+function tvRightsAreValid(tvRights, season) {
+  if (!tvRights || typeof tvRights !== 'object') return false;
+  if (Number(tvRights.season) !== Number(season)) return false;
+  return Number.isFinite(Number(tvRights.total)) && Number(tvRights.total) > 0;
+}
+
+/** Normaliza contrato de TV para parcelas por rodada nacional. */
+export function normalizeTvRights(tvRights, { installments } = {}) {
+  if (!tvRights || typeof tvRights !== 'object') return null;
+  const total = Math.max(0, Number(tvRights.total) || 0);
+  const slots = Math.max(1, Number(installments) || Number(tvRights.installments) || 38);
+  tvRights.installments = slots;
+  const hasPaidAmount = Number.isFinite(Number(tvRights.paidAmount));
+  if (tvRights.credited && !hasPaidAmount) {
+    tvRights.paidAmount = total;
+    tvRights.paidInstallments = slots;
+    tvRights.lastInstallmentRound = null;
+    return tvRights;
+  }
+  tvRights.paidAmount = Math.max(0, Number(tvRights.paidAmount) || 0);
+  tvRights.paidInstallments = Math.max(0, Number(tvRights.paidInstallments) || 0);
+  if (total > 0 && tvRights.paidAmount >= total) tvRights.credited = true;
+  return tvRights;
+}
+
+/** Valor da próxima parcela de TV (0 se já quitado). */
+export function estimateTvInstallment(club, options = {}) {
+  const tvRights = club?.tvRights;
+  if (!tvRights) return 0;
+  normalizeTvRights(tvRights, { installments: options.installments });
+  const total = Math.max(0, Number(tvRights.total) || 0);
+  const slots = Math.max(1, Number(tvRights.installments) || 38);
+  const paidInstallments = Number(tvRights.paidInstallments) || 0;
+  const paidAmount = Number(tvRights.paidAmount) || 0;
+  if (!(total > 0) || paidInstallments >= slots || paidAmount >= total) return 0;
+  const nextIndex = paidInstallments + 1;
+  const dueSoFar = nextIndex >= slots ? total : Math.floor((total * nextIndex) / slots);
+  return Math.max(0, dueSoFar - paidAmount);
+}
+
+/**
+ * Credita uma parcela de direitos de TV (rodada nacional).
+ * Idempotente por `round`. Soma das parcelas = total do contrato.
+ */
+export function creditTvInstallment(club, { round = null, installments = null } = {}) {
+  if (!club?.tvRights) {
+    return { ok: false, amount: 0, skipped: true };
+  }
+  normalizeTvRights(club.tvRights, {
+    installments: installments ?? club.tvRights.installments,
+  });
+  const roundKey = Number.isFinite(Number(round)) ? Number(round) : null;
+  if (roundKey != null && club.tvRights.lastInstallmentRound === roundKey) {
+    return {
+      ok: true,
+      amount: 0,
+      skipped: true,
+      paidInstallments: club.tvRights.paidInstallments,
+      paidAmount: club.tvRights.paidAmount,
+    };
+  }
+  const amount = estimateTvInstallment(club);
+  if (!(amount > 0)) {
+    if ((Number(club.tvRights.total) || 0) > 0) club.tvRights.credited = true;
+    return {
+      ok: true,
+      amount: 0,
+      skipped: true,
+      complete: true,
+      paidInstallments: club.tvRights.paidInstallments,
+      paidAmount: club.tvRights.paidAmount,
+    };
+  }
+  const installmentIndex = (Number(club.tvRights.paidInstallments) || 0) + 1;
+  const slots = club.tvRights.installments;
+  credit(club, amount, {
+    reason: 'tv_rights',
+    label:
+      roundKey != null
+        ? `Direitos de TV · Rodada ${roundKey}`
+        : `Direitos de TV · parcela ${installmentIndex}/${slots}`,
+    meta: {
+      installment: installmentIndex,
+      installments: slots,
+      total: club.tvRights.total,
+      amount,
+    },
+  });
+  club.tvRights.paidAmount = (Number(club.tvRights.paidAmount) || 0) + amount;
+  club.tvRights.paidInstallments = installmentIndex;
+  if (roundKey != null) club.tvRights.lastInstallmentRound = roundKey;
+  if (club.tvRights.paidAmount >= (Number(club.tvRights.total) || 0)) {
+    club.tvRights.credited = true;
+  }
+  club.lastTvInstallment = {
+    amount,
+    round: roundKey,
+    installment: installmentIndex,
+    installments: slots,
+    at: new Date().toISOString(),
+  };
+  return {
+    ok: true,
+    amount,
+    skipped: false,
+    complete: !!club.tvRights.credited,
+    paidInstallments: club.tvRights.paidInstallments,
+    paidAmount: club.tvRights.paidAmount,
+  };
+}
+
+/** Define o contrato de TV da temporada (sem crédito à vista). */
+export function assignTvRights(club, {
+  division = 'A',
+  season = 2026,
+  random = Math.random,
+  installments = 38,
+} = {}) {
+  if (!club) return null;
+  ensureBudget(club, division);
+  const range = TV_VALUE_BY_DIVISION[division] || TV_VALUE_BY_DIVISION.A;
+  const total = valueInRange(range, random);
+  const slots = Math.max(1, Number(installments) || 38);
+  club.tvRights = {
+    season,
+    division,
+    total,
+    credited: false,
+    installments: slots,
+    paidAmount: 0,
+    paidInstallments: 0,
+    lastInstallmentRound: null,
+  };
+  return club.tvRights;
+}
+
+/** Garante direitos de TV da temporada; re-sorteia se inválidos ou temporada mudou. */
+export function ensureTvRights(club, options = {}) {
+  if (!club) return null;
+  const season = options.season ?? 2026;
+  const division = options.division || club.division || 'A';
+  const installments = Math.max(1, Number(options.installments) || 38);
+  if (options.savedTvRights && tvRightsAreValid(options.savedTvRights, season)) {
+    club.tvRights = { ...options.savedTvRights, division };
+    return normalizeTvRights(club.tvRights, { installments });
+  }
+  if (tvRightsAreValid(club.tvRights, season)) {
+    club.tvRights.division = division;
+    return normalizeTvRights(club.tvRights, { installments });
+  }
+  return assignTvRights(club, {
+    division,
+    season,
+    random: options.random || Math.random,
+    installments,
+  });
+}
+
+export function getTvRights(club) {
+  return club?.tvRights || null;
 }
 
 export function createEconomyEngine() {
@@ -942,6 +1881,7 @@ export function createEconomyEngine() {
     SPONSOR_LOGO_SLUG,
     sponsorLogoSlug,
     SPONSOR_VALUE_BY_DIVISION,
+    TV_VALUE_BY_DIVISION,
     CLUB_UPGRADES,
     STADIUM_UPGRADES,
     initialBudget,
@@ -951,8 +1891,19 @@ export function createEconomyEngine() {
     computeSeasonPrize,
     resolveSerieDPrizePhase,
     resolveCupPrizePhase,
+    generateSponsorOffers,
+    applySponsorChoice,
+    nameRightsCost,
+    purchaseStadiumNameRights,
+    PARTICIPATION_PRIZE,
+    POSITION_POOL,
+    TITLE_BONUS,
+    PROMOTION_BONUS,
+    SERIE_D_PHASE_POOL,
     SERIE_D_PHASE_SHARE,
+    CUP_PHASE_POOL,
     CUP_PHASE_SHARE,
+    NAME_RIGHTS_COST_BY_DIVISION,
     getBalance,
     ensureBudget,
     ensureStadium,
@@ -964,9 +1915,38 @@ export function createEconomyEngine() {
     ensureSponsors,
     assignSponsors,
     getSponsors,
+    normalizeSponsorContract,
+    estimateSponsorInstallment,
+    creditSponsorInstallment,
+    ensureSeasonCashflow,
+    getSeasonCashflowStatement,
+    ensureTvRights,
+    assignTvRights,
+    getTvRights,
+    normalizeTvRights,
+    estimateTvInstallment,
+    creditTvInstallment,
     canAfford,
     credit,
     spend,
+    WAGE_BASE_BY_DIVISION,
+    WAGE_BILL_SOFT_CAP,
+    STAFF_BASE_BY_DIVISION,
+    STAFF_BILL_SOFT_CAP,
+    STAFF_DIVISION_PRESTIGE,
+    computeStaffWageScore,
+    computeStaffBillFromScore,
+    ensureStaffContract,
+    STADIUM_OPS_BASE_BY_DIVISION,
+    STADIUM_OPS_SOFT_CAP,
+    estimatePlayerWage,
+    estimateWageBill,
+    estimateStaffBill,
+    estimateStadiumOpsBill,
+    estimateRoundCostBill,
+    estimateWageRunway,
+    chargeRoundCosts,
+    chargeWageBill,
     upgradeCost,
     getUpgrade,
     listUpgrades,

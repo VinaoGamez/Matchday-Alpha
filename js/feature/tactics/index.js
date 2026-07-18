@@ -204,7 +204,8 @@ export function createTacticsFeature(deps) {
             targetWasVacant
               ? `${moved.name} ocupa a posição de ${positionAssignments[targetIndex]}; a vaga da expulsão passa para ${positionAssignments[sourceIndex]}.`
               : `${moved.name} troca de posição com ${exchanged.name}: ${positionAssignments[targetIndex]} e ${positionAssignments[sourceIndex]}.`,
-            'substitution'
+            'substitution',
+            'home',
           );
         }
         renderTacticRoster();
@@ -501,7 +502,8 @@ export function createTacticsFeature(deps) {
     commitLiveSubstitution?.(outgoing.name, { wasInjured, wasAtRisk });
     log(
       `Substituição no ${userClub}: sai ${outgoing.name}, entra ${incoming.name}${improvised ? ` (${incoming.pos} adaptado para ${expectedRole}).` : ''}.`,
-      'substitution'
+      'substitution',
+      'home',
     );
     $('#substitutionOut').value = '';
     $('#substitutionIn').value = '';

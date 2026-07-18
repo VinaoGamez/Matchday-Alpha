@@ -204,6 +204,28 @@ export function createMatchLiveSessionFeature(deps) {
     return true;
   };
 
+  const setPauseTacticsOpen = open => {
+    const panel = $('#pauseTacticAdjust');
+    const toggle = $('#togglePauseTactics');
+    if (!panel || !toggle) return;
+    panel.classList.toggle('hidden', !open);
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.classList.toggle('open', !!open);
+    toggle.textContent = open ? '✕ FECHAR AJUSTE TÁTICO' : '⚙ AJUSTE TÁTICO';
+    $('#pausePanel')?.classList.toggle('tactics-open', !!open);
+  };
+
+  let pauseTacticsBound = false;
+  const bindPauseTacticsToggle = () => {
+    if (pauseTacticsBound) return;
+    pauseTacticsBound = true;
+    onClick('#togglePauseTactics', () => {
+      const panel = $('#pauseTacticAdjust');
+      if (!panel) return;
+      setPauseTacticsOpen(panel.classList.contains('hidden'));
+    });
+  };
+
   const openPreparation = title => {
     stopMatchClock();
     setActivePreparationTitle(title);
@@ -216,6 +238,8 @@ export function createMatchLiveSessionFeature(deps) {
     $('#matchActions').classList.add('hidden');
     $('#stats').classList.toggle('hidden', preMatchPreparation);
     $('#pausePanel').classList.remove('hidden');
+    bindPauseTacticsToggle();
+    setPauseTacticsOpen(false);
     syncTactics(); drawBoard(); renderSubstitutionControls(); renderTacticalConfrontation({ context: 'pause' });
     if (!preMatchPreparation) renderStats();
     updateLiveMatchClock();

@@ -4,7 +4,7 @@ import { SAVE_KEYS } from './constants.js';
 export const MEMORY_LIMITS = {
   injuryHistory: 5,
   rankingTitles: 12,
-  liveTimeline: 80,
+  liveTimeline: 40,
   persistDebounceMs: 300,
 };
 
@@ -99,7 +99,7 @@ export function involvesClub(game, clubName) {
 /** Compacta um resultado de partida para RAM/disco (sem events/fatigue/etc.). */
 export function compactMatchResult(game, { keepData = false } = {}) {
   if (!game) return null;
-  return {
+  const compact = {
     home: game.home,
     away: game.away,
     homeGoals: game.homeGoals,
@@ -109,6 +109,14 @@ export function compactMatchResult(game, { keepData = false } = {}) {
       ? { home: [...(game.goals.home || [])], away: [...(game.goals.away || [])] }
       : null,
   };
+  // Público/bilheteria: necessário para resumo de temporada (ledger/mensagens são podados).
+  if (Number.isFinite(Number(game.attendance))) {
+    compact.attendance = Math.round(Number(game.attendance));
+    if (Number.isFinite(Number(game.fillRate))) compact.fillRate = Number(game.fillRate);
+  }
+  if (Number.isFinite(Number(game.gateRevenue))) compact.gateRevenue = Number(game.gateRevenue);
+  if (game.gateCredited) compact.gateCredited = true;
+  return compact;
 }
 
 function compactUserStats(userStats) {
@@ -187,7 +195,7 @@ export function slimAvailabilitySnapshot(clubs, userClub) {
 export function compactCupFixture(game, userClub) {
   if (!game) return null;
   const keepData = involvesClub(game, userClub);
-  return {
+  const compact = {
     home: game.home,
     away: game.away,
     competition: game.competition,
@@ -208,6 +216,13 @@ export function compactCupFixture(game, userClub) {
       ? { home: [...(game.goals.home || [])], away: [...(game.goals.away || [])] }
       : null,
   };
+  if (keepData && Number.isFinite(Number(game.attendance))) {
+    compact.attendance = Math.round(Number(game.attendance));
+    if (Number.isFinite(Number(game.fillRate))) compact.fillRate = Number(game.fillRate);
+  }
+  if (keepData && Number.isFinite(Number(game.gateRevenue))) compact.gateRevenue = Number(game.gateRevenue);
+  if (keepData && game.gateCredited) compact.gateCredited = true;
+  return compact;
 }
 
 /** Aplica tetos de histórico in-place nos clubes (RAM). */

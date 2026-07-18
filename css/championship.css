@@ -313,6 +313,63 @@
   }
 }
 
+/* Ranking de Técnicos — mesma linguagem do Ranking Nacional. */
+.manager-ranking-legend .manager-ranking-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  padding: 0;
+}
+
+.manager-ranking-stats article {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-right: 1px solid #234b55;
+}
+
+.manager-ranking-stats article:last-child { border-right: 0; }
+
+.manager-ranking-stats small {
+  color: #63d9ff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .7px;
+}
+
+.manager-ranking-stats strong {
+  color: #edf8f5;
+  font: 800 22px Barlow Condensed;
+}
+
+.manager-ranking-head,
+.manager-ranking-row {
+  grid-template-columns: 52px minmax(0, 1.05fr) minmax(0, 1fr) 64px 0 minmax(72px, 0.22fr) minmax(96px, 0.28fr);
+}
+
+.manager-ranking-row.manager-free .manager-ranking-club {
+  color: #789da2;
+  font-weight: 600;
+}
+
+.manager-ranking-row .manager-ranking-season {
+  color: #9ebfc2;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .manager-ranking-legend .manager-ranking-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .manager-ranking-stats article:nth-child(2) { border-right: 0; }
+  .manager-ranking-stats article:nth-child(n+3) { border-top: 1px solid #234b55; }
+  .manager-ranking-head,
+  .manager-ranking-row {
+    grid-template-columns: 40px minmax(110px, 1fr) minmax(90px, 1fr) 48px 0 56px 64px;
+    padding: 0 12px;
+  }
+}
+
 .championship-page-heading {
   margin-bottom: 18px;
 }

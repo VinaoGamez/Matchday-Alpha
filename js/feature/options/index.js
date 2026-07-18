@@ -51,7 +51,7 @@ export function createOptionsFeature(deps) {
   const injectModals = () => {
     document.body.insertAdjacentHTML(
       'beforeend',
-      `<div id="optionsModal" class="modal hidden"><div class="modal-card options-modal"><button id="closeOptions" class="close">×</button><label>CONFIGURAÇÕES</label><h2>Opções do Jogo</h2><section class="option-section"><label>NOVA CARREIRA</label><div class="new-game-action"><div><strong>Criar clube e iniciar carreira</strong><small>Escolha seu clube, treinador e divisão. O universo nacional será gerado novamente.</small></div><button id="openNewGame" type="button">NOVO JOGO</button></div></section><section class="option-section"><label>RITMO DE JOGO</label><p>Define a duração da simulação contínua. Pausas técnicas e decisões do treinador continuam sob seu controle.</p><div id="paceChoices" class="option-choices">${Object.entries(GAME_PACE_CONFIG).map(([key, pace]) => `<button class="pace-choice" data-pace="${key}"><b>${pace.name}</b><small>${pace.detail}</small></button>`).join('')}</div></section><section class="option-section"><label>INFORMAÇÕES DE ATUALIZAÇÕES</label><div class="updates-info-row"><div class="updates-info-summary"><strong>Última Atualização</strong><span id="optionsLatestUpdate">—</span></div><button id="openReleaseNotes" type="button">CONSULTAR</button></div></section><section class="option-section"><label>TESTERS</label><div class="new-game-action"><div><strong>Guia e feedback</strong><small>Como testar a build e enviar relatório estruturado (GitHub ou copiar texto).</small></div><div class="option-choices" style="flex:none;display:flex;gap:8px"><button id="openTesterGuide" type="button">GUIA</button><button id="openTesterFeedback" type="button">FEEDBACK</button></div></div></section></div></div><div id="newGameModal" class="modal hidden"><div class="modal-card new-game-modal"><button id="closeNewGame" class="close">×</button><label>NOVA CARREIRA</label><h2>Crie sua história</h2><p>Defina a identidade do seu clube e a divisão em que a carreira começará.</p><div class="career-fields"><div class="career-field"><label for="careerClubName">NOME DO TIME</label><input id="careerClubName" maxlength="32" autocomplete="off" placeholder="Ex.: Atlético Fênix"></div><div class="career-field"><label for="careerManagerName">NOME DO TREINADOR</label><input id="careerManagerName" maxlength="40" autocomplete="off" placeholder="Ex.: Ricardo Almeida"></div></div><div class="division-choice"><label>DIVISÃO INICIAL</label><div class="division-choice-grid"><button class="division-card selected" data-career-division="A"><b>SÉRIE A</b><small>20 clubes · elite nacional</small></button><button class="division-card" data-career-division="B"><b>SÉRIE B</b><small>20 clubes · luta pelo acesso</small></button><button class="division-card" data-career-division="C"><b>SÉRIE C</b><small>20 clubes · primeira fase nacional</small></button><button class="division-card" data-career-division="D"><b>SÉRIE D</b><small>96 clubes · fase regional</small></button></div></div><p id="newGameError" class="new-game-error"></p><div class="new-game-buttons"><button id="cancelNewGame" type="button" class="secondary">CANCELAR</button><button id="confirmNewGame" type="button">CRIAR CARREIRA</button></div></div></div>`,
+      `<div id="optionsModal" class="modal hidden"><div class="modal-card options-modal"><button id="closeOptions" class="close">×</button><label>CONFIGURAÇÕES</label><h2>Opções do Jogo</h2><section class="option-section"><label>NOVA CARREIRA</label><div class="new-game-action"><div><strong>Criar clube e iniciar carreira</strong><small>Escolha seu clube, treinador e divisão. O universo nacional será gerado novamente.</small></div><button id="openNewGame" type="button">NOVO JOGO</button></div></section><section class="option-section"><label>RITMO DE JOGO</label><p>Define a duração da simulação contínua. Pausas técnicas e decisões do treinador continuam sob seu controle.</p><div id="paceChoices" class="option-choices">${Object.entries(GAME_PACE_CONFIG).map(([key, pace]) => `<button class="pace-choice" data-pace="${key}"><b>${pace.name}</b><small>${pace.detail}</small></button>`).join('')}</div></section><section class="option-section"><label>INFORMAÇÕES DE ATUALIZAÇÕES</label><div class="updates-info-row"><div class="updates-info-summary"><strong>Última Atualização</strong><span id="optionsLatestUpdate">—</span></div><button id="openReleaseNotes" type="button">CONSULTAR</button></div></section><section class="option-section"><label>TESTERS</label><div class="new-game-action"><div><strong>Guia e feedback</strong><small>Como testar a build e enviar relatório estruturado (GitHub ou copiar texto).</small></div><div class="option-choices" style="flex:none;display:flex;gap:8px"><button id="openTesterGuide" type="button">GUIA</button><button id="openTesterFeedback" type="button">FEEDBACK</button></div></div></section></div></div><div id="newGameModal" class="modal hidden"><div class="modal-card new-game-modal"><button id="closeNewGame" class="close">×</button><label>NOVA CARREIRA</label><h2>Crie sua história</h2><p>Defina a identidade do seu clube e a divisão em que a carreira começará.</p><div class="career-fields"><div class="career-field"><label for="careerClubName">NOME DO TIME</label><input id="careerClubName" maxlength="32" autocomplete="off" placeholder="Ex.: Atlético Fênix"></div><div class="career-field"><label for="careerManagerName">NOME DO TREINADOR</label><input id="careerManagerName" maxlength="40" autocomplete="off" placeholder="Ex.: Ricardo Almeida"></div><div class="career-field"><label for="careerStadiumName">NOME DO ESTÁDIO</label><input id="careerStadiumName" maxlength="40" autocomplete="off" placeholder="Ex.: Arena Fênix"></div></div><div class="division-choice"><label>DIVISÃO INICIAL</label><div class="division-choice-grid"><button class="division-card selected" data-career-division="A"><b>SÉRIE A</b><small>20 clubes · elite nacional</small></button><button class="division-card" data-career-division="B"><b>SÉRIE B</b><small>20 clubes · luta pelo acesso</small></button><button class="division-card" data-career-division="C"><b>SÉRIE C</b><small>20 clubes · primeira fase nacional</small></button><button class="division-card" data-career-division="D"><b>SÉRIE D</b><small>96 clubes · fase regional</small></button></div></div><p id="newGameError" class="new-game-error"></p><div class="new-game-buttons"><button id="cancelNewGame" type="button" class="secondary">CANCELAR</button><button id="confirmNewGame" type="button">CRIAR CARREIRA</button></div></div></div>`,
     );
   };
 
@@ -105,6 +105,7 @@ export function createOptionsFeature(deps) {
     const savedCareer = getSavedCareer();
     $('#careerClubName').value = savedCareer?.clubName || '';
     $('#careerManagerName').value = savedCareer?.managerName || '';
+    $('#careerStadiumName').value = savedCareer?.stadiumName || '';
     $('#newGameError').textContent = '';
     selectCareerDivision(savedCareer?.division || 'A');
     $('#optionsModal').classList.add('hidden');
@@ -143,6 +144,7 @@ export function createOptionsFeature(deps) {
   onClick('#confirmNewGame', () => {
     const clubName = cleanCareerText($('#careerClubName').value, '');
     const managerName = cleanCareerText($('#careerManagerName').value, '');
+    const stadiumName = cleanCareerText($('#careerStadiumName').value, '');
     const error = $('#newGameError');
     if (clubName.length < 3) {
       error.textContent = 'Informe um nome de time com pelo menos 3 caracteres.';
@@ -152,6 +154,11 @@ export function createOptionsFeature(deps) {
     if (managerName.length < 3) {
       error.textContent = 'Informe o nome do treinador com pelo menos 3 caracteres.';
       $('#careerManagerName').focus();
+      return;
+    }
+    if (stadiumName.length < 3) {
+      error.textContent = 'Informe o nome do estádio com pelo menos 3 caracteres.';
+      $('#careerStadiumName').focus();
       return;
     }
     const seed = (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 0;
@@ -168,6 +175,8 @@ export function createOptionsFeature(deps) {
       seed,
       clubName,
       managerName,
+      stadiumName,
+      pendingSponsorChoice: true,
       division: selectedCareerDivision,
       clubStatus,
       season: defaultCareerSeason,

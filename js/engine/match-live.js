@@ -68,7 +68,7 @@ export function createLiveMatchActions(deps) {
     const onTarget=options.penalty || options.shootout || random()<clamp(options.freeKick ? (freeKickSpecialist ? clamp(.50+(finishing-keeperData.positioning)/170+(current.attack-other.defense)/600,.42,.58) : clamp(.30+(finishing-keeperData.positioning)/220,.25,.42)) : options.corner ? clamp(.30+(attackerData.heading-keeperData.positioning)/165,.22,.57) : clamp(.37+(finishing-keeperData.positioning)/158+(current.attack-other.defense)/175,.25,.76),.18,.76);
     if(!onTarget){
       if(!options.shootout){s.off++;}
-      writeLog(`${attacker} finaliza ${label}, mas a bola sai para fora.`, options.shootout ? 'shootout-miss' : undefined);
+      writeLog(`${attacker} finaliza ${label}, mas a bola sai para fora.`, options.shootout ? 'shootout-miss' : undefined, side);
       return options.shootout ? false : undefined;
     }
     if(!options.shootout){s.on++;}
@@ -77,16 +77,16 @@ export function createLiveMatchActions(deps) {
     if(random()<goalChance){
       if(options.shootout){
         const goalType=`goal shootout-${penaltySpecialist?'specialist':'standard'}`;
-        writeLog(`GOL! ${attacker} converte ${label} para o ${team}.`, goalType);
+        writeLog(`GOL! ${attacker} converte ${label} para o ${team}.`, goalType, side);
         return true;
       }
-      incrementScore(side);const suggestedAssist=options.penalty||options.freeKick?null:playerFor(side,'pass'),assist=suggestedAssist&&suggestedAssist!==attacker?suggestedAssist:null;getGoals()?.[side].push({name:attacker,minute:getMinute(),assist});updateScoreboard();influencePossession(side,3.8);const goalType=options.freeKick ? `goal free-kick-${freeKickSpecialist?'specialist':'standard'}` : options.penalty ? `goal penalty-${penaltySpecialist?'specialist':'standard'}` : 'goal';writeLog(`GOOOL! ${attacker} marca ${label} para o ${team}${assist?`, assistência de ${assist}`:''}.`,goalType);
+      incrementScore(side);const suggestedAssist=options.penalty||options.freeKick?null:playerFor(side,'pass'),assist=suggestedAssist&&suggestedAssist!==attacker?suggestedAssist:null;getGoals()?.[side].push({name:attacker,minute:getMinute(),assist});updateScoreboard();influencePossession(side,3.8);const goalType=options.freeKick ? `goal free-kick-${freeKickSpecialist?'specialist':'standard'}` : options.penalty ? `goal penalty-${penaltySpecialist?'specialist':'standard'}` : 'goal';writeLog(`GOOOL! ${attacker} marca ${label} para o ${team}${assist?`, assistência de ${assist}`:''}.`,goalType,side);
       if(options.shootout) return true;
     }
     else{
       if(!options.shootout){s.saved++;otherStats.keeperSaves++;}
       influencePossession(side === 'home'?'away':'home', options.shootout ? 0 : 1.4);
-      writeLog(`${attacker} finaliza ${label}, mas ${goalkeeper} faz a defesa.`, options.shootout ? 'shootout-miss' : undefined);
+      writeLog(`${attacker} finaliza ${label}, mas ${goalkeeper} faz a defesa.`, options.shootout ? 'shootout-miss' : undefined, side);
       if(options.shootout) return false;
     }
     if(options.shootout) return false;
@@ -99,9 +99,9 @@ export function createLiveMatchActions(deps) {
     if(!taker) return;
     const directAttempt=clamp(.30+(taker.freeKick-45)/105,.22,.72);
     if(random()<directAttempt){
-      log(`${taker.name} assume a cobrança de falta na entrada da área.`, `free-kick-${taker.freeKick>85?'specialist':'standard'}`);
+      log(`${taker.name} assume a cobrança de falta na entrada da área.`, `free-kick-${taker.freeKick>85?'specialist':'standard'}`, side);
       shot(side,current,other,{freeKick:true,taker:taker.name});
-    } else log(`${taker.name} levanta a falta na área, mas a defesa afasta.`);
+    } else log(`${taker.name} levanta a falta na área, mas a defesa afasta.`, '', side);
   };
   const penaltyTaker = side => {
     const lineup=side==='home'?getStarters():getMatchClub().roster.slice(0,11);

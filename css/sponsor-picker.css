@@ -1,0 +1,167 @@
+.sponsor-picker-modal{
+  width:min(920px,calc(100vw - 28px));
+  max-height:calc(100vh - 36px);
+  overflow:auto;
+  text-align:left;
+  padding:26px 28px 22px!important;
+}
+.sponsor-picker-modal>label{
+  display:block;
+  margin-bottom:4px;
+  color:#63d9ff;
+  font:700 10px DM Sans,sans-serif;
+  letter-spacing:1px;
+}
+.sponsor-picker-modal h2{
+  margin:4px 0 8px;
+  font:800 32px Barlow Condensed,sans-serif;
+  color:#f4fcfc;
+  line-height:1.05;
+}
+.sponsor-picker-lead{
+  margin:0 0 18px;
+  color:#9eb6b8;
+  font-size:12px;
+  line-height:1.45;
+}
+.sponsor-picker-section{
+  margin:0 0 16px;
+}
+.sponsor-picker-section>header{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.sponsor-picker-section h3{
+  margin:0;
+  font:800 18px Barlow Condensed,sans-serif;
+  color:#edf8f5;
+}
+.sponsor-picker-section small{
+  color:#8eb8c2;
+  font:700 10px DM Sans,sans-serif;
+  letter-spacing:.35px;
+  text-transform:uppercase;
+}
+.sponsor-picker-grid{
+  display:grid;
+  gap:10px;
+}
+.sponsor-picker-grid.master{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+.sponsor-picker-grid.secondary{
+  grid-template-columns:repeat(5,minmax(0,1fr));
+}
+.sponsor-offer-card{
+  display:grid;
+  grid-template-columns:56px minmax(0,1fr);
+  gap:10px;
+  align-items:center;
+  padding:12px;
+  border:1px solid #2f5a68;
+  border-radius:10px;
+  background:linear-gradient(145deg,#0d2732,#0b1d25);
+  color:#edf8f5;
+  cursor:pointer;
+  text-align:left;
+  transition:border-color .15s,box-shadow .15s,transform .12s;
+}
+.sponsor-offer-card:hover{
+  border-color:#63d9ff;
+  transform:translateY(-1px);
+}
+.sponsor-offer-card.selected{
+  border-color:#b6ff38;
+  box-shadow:inset 0 0 0 1px #b6ff3844,0 0 18px #b6ff3818;
+}
+.sponsor-offer-logo{
+  display:grid;
+  place-items:center;
+  width:56px;
+  height:56px;
+  border-radius:10px;
+  background:#08151c;
+  overflow:hidden;
+}
+.sponsor-offer-logo img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+}
+.sponsor-picker-fallback{
+  font:800 16px Barlow Condensed,sans-serif;
+  color:#63d9ff;
+}
+.sponsor-offer-copy{
+  display:grid;
+  gap:2px;
+  min-width:0;
+}
+.sponsor-offer-copy b{
+  font:700 13px DM Sans,sans-serif;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.sponsor-offer-copy strong{
+  font:800 20px Barlow Condensed,sans-serif;
+  color:#b6ff38;
+  line-height:1.05;
+}
+.sponsor-offer-copy small{
+  color:#8eb8c2;
+  font:600 10px DM Sans,sans-serif;
+}
+.sponsor-picker-error{
+  min-height:18px;
+  margin:0 0 8px;
+  color:#ff8c94;
+  font:600 12px DM Sans,sans-serif;
+}
+.sponsor-picker-summary{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:8px 0 14px;
+  padding:12px 14px;
+  border:1px solid #2f5a68;
+  border-radius:8px;
+  background:#0a1820;
+}
+.sponsor-picker-summary span{
+  color:#9eb6b8;
+  font:700 11px DM Sans,sans-serif;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+}
+.sponsor-picker-summary strong{
+  font:800 26px Barlow Condensed,sans-serif;
+  color:#f4fcfc;
+}
+.sponsor-picker-actions{
+  display:flex;
+  justify-content:flex-end;
+}
+.sponsor-picker-actions button{
+  min-width:240px;
+  background:linear-gradient(115deg,#b6ff38,#72e1ff)!important;
+  color:#06131b!important;
+  border:0!important;
+  font-weight:800!important;
+}
+.sponsor-picker-actions button:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+@media(max-width:900px){
+  .sponsor-picker-grid.secondary{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:640px){
+  .sponsor-picker-grid.master,
+  .sponsor-picker-grid.secondary{grid-template-columns:1fr}
+  .sponsor-picker-actions button{width:100%;min-width:0}
+}

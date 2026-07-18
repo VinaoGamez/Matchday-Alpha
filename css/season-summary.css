@@ -27,6 +27,36 @@
   font-size:12px;
   line-height:1.5;
 }
+.season-goal-result{
+  display:grid;
+  gap:6px;
+  padding:14px 16px;
+  border:1px solid #397487;
+  border-radius:8px;
+  background:#0b1d25;
+}
+.season-goal-result strong{
+  color:#edf8f5;
+  font:700 18px Barlow Condensed;
+}
+.season-goal-result span{
+  color:#63d9ff;
+  font:700 11px DM Sans;
+  letter-spacing:.4px;
+}
+.season-goal-result small{
+  color:#9eb6b8;
+  font-size:12px;
+  line-height:1.4;
+}
+.season-goal-result em{
+  font-style:normal;
+  color:#b6ff38;
+  font:700 12px DM Sans;
+}
+.season-goal-result.goal-missed em{color:#ff8c94}
+.season-goal-result.goal-near em{color:#ffc94f}
+.season-goal-result.goal-exceeded em,.season-goal-result.goal-met em{color:#b6ff38}
 .season-summary-user{
   display:grid;
   grid-template-columns:auto 1fr;
@@ -413,18 +443,27 @@
 .season-summary-section.hidden{display:none!important}
 .season-summary-actions{
   display:flex;
+  flex-wrap:wrap;
   justify-content:flex-end;
+  gap:10px;
   margin-top:8px;
   padding-top:18px;
   border-top:1px solid #28505b;
 }
 .season-summary-actions button{
-  min-width:240px;
+  min-width:200px;
   background:linear-gradient(115deg,#b6ff38,#72e1ff)!important;
   color:#06131b!important;
   border:0!important;
   font-weight:800!important;
   letter-spacing:.35px!important;
+}
+.season-summary-actions button.season-summary-dismiss{
+  min-width:180px;
+  background:#0d2732!important;
+  color:#d7ecec!important;
+  border:1px solid #397487!important;
+  font-weight:700!important;
 }
 .idle-sim-modal{
   width:min(420px,calc(100vw - 28px));

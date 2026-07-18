@@ -124,6 +124,209 @@ main > .view.active {
   grid-row: auto !important;
 }
 
+/* Fim de temporada: resumo estatístico preenche o card. */
+.view#dashboard .match.season-ended {
+  display: flex !important;
+  flex-direction: column;
+  min-height: 100%;
+}
+.view#dashboard .match.season-ended > label {
+  margin-bottom: 10px !important;
+  font-size: 11px !important;
+  letter-spacing: 0.8px;
+}
+.view#dashboard .match.season-ended > label em {
+  display: none;
+}
+.view#dashboard .match.season-ended .teams,
+.view#dashboard .match.season-ended .match-recent-form,
+.view#dashboard .match.season-ended .club-upcoming {
+  display: none !important;
+}
+.view#dashboard .match.season-ended .season-review-board {
+  display: grid;
+  grid-template-columns: minmax(140px, 22%) minmax(0, 1fr);
+  gap: 16px 20px;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-height: 320px;
+  margin: 0 0 12px;
+  padding: 18px 18px 16px;
+  border: 1px solid #2f5f6e;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 12% 18%, #63d9ff22, transparent 42%),
+    radial-gradient(circle at 88% 82%, #b6ff3818, transparent 40%),
+    linear-gradient(155deg, #0e2a35 0%, #0a1c25 55%, #08151c 100%);
+  box-shadow: inset 0 0 0 1px #63d9ff14;
+}
+.view#dashboard .match.season-ended .season-review-club {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 12px 16px 12px 4px;
+  border-right: 1px solid #3a6d7d;
+  min-height: 100%;
+}
+.view#dashboard .match.season-ended .season-review-crest-wrap {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #2a6b4a, #163528 70%);
+  box-shadow: 0 0 0 3px #b6ff3844, 0 10px 28px #00000055;
+}
+.view#dashboard .match.season-ended .season-review-club i {
+  display: grid;
+  place-items: center;
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #245a3f, #163528);
+  color: #f4fcf8;
+  font: 800 28px 'Barlow Condensed', sans-serif;
+  font-style: normal;
+  letter-spacing: 0.5px;
+}
+.view#dashboard .match.season-ended .season-review-club b {
+  font: 800 34px 'Barlow Condensed', sans-serif;
+  color: #f4fcfc;
+  line-height: 1.05;
+  letter-spacing: 0.3px;
+}
+.view#dashboard .match.season-ended .season-review-club small {
+  color: #8ec5d2;
+  font: 700 11px 'DM Sans', sans-serif;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.view#dashboard .match.season-ended .season-review-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+  min-height: 100%;
+}
+.view#dashboard .match.season-ended .season-review-tile {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px 12px;
+  align-items: center;
+  min-height: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #2f5a68;
+  background: linear-gradient(135deg, #102833ee, #0c1f28f0);
+  box-shadow: inset 0 0 0 1px #ffffff06;
+}
+.view#dashboard .match.season-ended .season-review-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: #0a1820;
+  color: #63d9ff;
+}
+.view#dashboard .match.season-ended .season-review-tile-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-lime {
+  border-color: #4f7a3a;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-lime .season-review-tile-icon {
+  color: #b6ff38;
+  background: #152414;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-red {
+  border-color: #6d3a42;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-red .season-review-tile-icon {
+  color: #ff8c94;
+  background: #2a1418;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-cyan {
+  border-color: #2f6d7c;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-cyan .season-review-tile-icon {
+  color: #63d9ff;
+  background: #0d2430;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-amber {
+  border-color: #6d5a2f;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-amber .season-review-tile-icon {
+  color: #ffc94f;
+  background: #261e0f;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-muted {
+  border-color: #3a5560;
+}
+.view#dashboard .match.season-ended .season-review-tile.tone-muted .season-review-tile-icon {
+  color: #9eb6b8;
+  background: #152028;
+}
+.view#dashboard .match.season-ended .season-review-tile-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.view#dashboard .match.season-ended .season-review-tile-copy span {
+  color: #8eb8c2;
+  font: 700 10px 'DM Sans', sans-serif;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
+}
+.view#dashboard .match.season-ended .season-review-tile-copy strong {
+  color: #f4fcfc;
+  font: 800 26px 'Barlow Condensed', sans-serif;
+  line-height: 1.05;
+  letter-spacing: 0.2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.view#dashboard .match.season-ended .season-review-tile-copy small {
+  color: #9eb6b8;
+  font: 600 11px 'DM Sans', sans-serif;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.view#dashboard .match.season-ended .match-actions-footer {
+  justify-content: flex-end;
+  margin-top: auto;
+  flex: 0 0 auto;
+}
+@media (max-width: 900px) {
+  .view#dashboard .match.season-ended .season-review-board {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .view#dashboard .match.season-ended .season-review-club {
+    padding: 8px 0 14px;
+    border-right: 0;
+    border-bottom: 1px solid #3a6d7d;
+  }
+  .view#dashboard .match.season-ended .season-review-stats {
+    grid-template-rows: none;
+  }
+}
+@media (max-width: 560px) {
+  .view#dashboard .match.season-ended .season-review-stats {
+    grid-template-columns: 1fr;
+  }
+  .view#dashboard .match.season-ended .season-review-tile-copy strong {
+    font-size: 22px;
+  }
+}
+
 .view#dashboard .dashboard-tables .mini-table-head,
 .view#dashboard .dashboard-tables .standing-row {
   display: grid !important;

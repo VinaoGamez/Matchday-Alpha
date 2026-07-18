@@ -7,7 +7,8 @@ const GUIDE_SECTIONS = [
   {
     title: 'Como abrir o jogo',
     body: [
-      'Use o link público de testers (GitHub Pages) ou o servidor local hardened na porta 5081.',
+      'Use o link público de testers (GitHub Pages) ou o servidor local na porta 5081 / Vite 5080.',
+      'Restrições de F12/cópia valem só no link público; no local você pode inspecionar erros no DevTools.',
       'A home é o ponto de entrada: Novo Jogo ou Continuar Carreira.',
       'Após uma atualização, faça hard refresh (Ctrl+Shift+R) para carregar o bundle novo.',
     ],

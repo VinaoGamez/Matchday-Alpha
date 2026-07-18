@@ -55,6 +55,10 @@ const MODAL_HTML = `
     <h2 id="seasonSummaryTitle">Balanço da temporada</h2>
     <p id="seasonTransitionLead" class="season-summary-lead">Resultados finais das competições nacionais.</p>
     <div id="seasonTransitionSummary" class="season-summary-user"></div>
+    <section class="season-summary-section" id="seasonGoalSection">
+      <header><h3>Meta da temporada</h3><small>Avaliação da diretoria sobre o combinado</small></header>
+      <div id="seasonGoalResult" class="season-goal-result"></div>
+    </section>
     <section class="season-summary-section">
       <header><h3>Campeões</h3><small>Títulos conquistados em <span id="seasonSummaryYear"></span></small></header>
       <div id="seasonChampions" class="season-champions-grid"></div>
@@ -72,7 +76,8 @@ const MODAL_HTML = `
       <div id="seasonMovements" class="season-movements-grid"></div>
     </section>
     <div class="season-summary-actions">
-      <button id="startNextSeason" type="button">INICIAR PRÓXIMA TEMPORADA →</button>
+      <button id="closeSeasonSummary" type="button" class="season-summary-dismiss">VOLTAR À TEMPORADA</button>
+      <button id="startNextSeason" type="button">AVANÇAR TEMPORADA →</button>
     </div>
   </div>
 </div>
@@ -89,13 +94,21 @@ const MODAL_HTML = `
  * Resumo de fim de temporada — campeões, líderes e movimentos de divisão.
  */
 export function createSeasonSummaryFeature(deps) {
-  const { $, clubCrestInitials, onStartNextSeason } = deps;
+  const { $, clubCrestInitials, onStartNextSeason, onCloseSeasonSummary } = deps;
   let handlersBound = false;
 
   const bindHandlers = () => {
     if (handlersBound) return;
     handlersBound = true;
     document.addEventListener('click', event => {
+      const closeBtn = event.target.closest('#closeSeasonSummary');
+      if (closeBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (onCloseSeasonSummary) onCloseSeasonSummary();
+        else $('#seasonTransitionModal')?.classList.add('hidden');
+        return;
+      }
       const button = event.target.closest('#startNextSeason');
       if (!button) return;
       event.preventDefault();
@@ -190,6 +203,7 @@ export function createSeasonSummaryFeature(deps) {
     leadText,
     seasonRewards = null,
     formatBudget = value => `R$ ${value}`,
+    seasonGoalResult = null,
   }) => {
     injectDom();
     $('#seasonSummaryTitle').textContent = `Balanço da temporada ${careerSeason}`;
@@ -200,6 +214,26 @@ export function createSeasonSummaryFeature(deps) {
     if (summary) {
       summary.className = `season-summary-user ${userStatus}`;
       summary.innerHTML = `<div class="season-summary-user-crest" aria-hidden="true">${clubCrestInitials(userClub)}</div><div class="season-summary-user-copy"><strong>Situação de ${userClub}</strong><span>${userLine}${idleNote}</span></div>`;
+    }
+    const goalSection = $('#seasonGoalSection');
+    const goalEl = $('#seasonGoalResult');
+    if (goalSection && goalEl) {
+      if (seasonGoalResult?.label) {
+        goalSection.classList.remove('hidden');
+        const statusLabel = {
+          exceeded: 'Superou a meta',
+          met: 'Meta cumprida',
+          near: 'Quase alcançou',
+          missed: 'Meta não cumprida',
+        }[seasonGoalResult.status] || 'Avaliação';
+        const delta = Number(seasonGoalResult.boardDelta) || 0;
+        const deltaText = delta > 0 ? `Diretoria +${delta}` : delta < 0 ? `Diretoria ${delta}` : 'Diretoria sem alteração';
+        goalEl.className = `season-goal-result goal-${seasonGoalResult.status || 'met'}`;
+        goalEl.innerHTML = `<strong>${seasonGoalResult.label}</strong><span>${statusLabel}</span><small>${seasonGoalResult.feeling || ''}</small><em>${deltaText}</em>`;
+      } else {
+        goalSection.classList.add('hidden');
+        goalEl.innerHTML = '';
+      }
     }
     $('#seasonChampions').innerHTML = LEAGUE_ORDER.map(league =>
       championCard(league, champions[league.key])

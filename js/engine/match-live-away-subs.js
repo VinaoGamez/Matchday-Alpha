@@ -80,7 +80,7 @@ export function createAwaySubController(deps) {
     incoming.fatigue = clamp(incoming.fatigue - minute * .02, 0, 100);
     liveMinutesPlayed.away.set(incoming.name, liveMinutesPlayed.away.get(incoming.name) ?? 0);
     incrementAwaySubstitutions();
-    log(`${club.name}: sai ${outgoing.name}, entra ${incoming.name}${incoming.pos !== outgoing.pos ? ' improvisado na função' : ''}.`, tag);
+    log(`${club.name}: sai ${outgoing.name}, entra ${incoming.name}${incoming.pos !== outgoing.pos ? ' improvisado na função' : ''}.`, tag, 'away');
     return true;
   };
 

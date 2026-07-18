@@ -1,6 +1,30 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-20',
+    date: '2026-07-18',
+    publishedAt: '2026-07-18T18:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'AO VIVO',
+        items: [
+          'Gráfico Volume de Jogo com marcadores de gol e artilheiros sob o placar.',
+          'Timeline só com ocorrências importantes e escudo do time em cada evento.',
+          'Ajuste tático na pausa fica recolhido por padrão (botão AJUSTE TÁTICO).',
+        ],
+      },
+      {
+        label: 'Economia e clube',
+        items: [
+          'Escolha de patrocínios (Master + 3 Secundários) no Novo Jogo e a cada temporada.',
+          'Nome do estádio no Novo Jogo; rename só via Name Rights no Escritório.',
+          'Metas da diretoria, status do clube e risco de demissão do técnico.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-19',
     date: '2026-07-17',
     publishedAt: '2026-07-17T21:00:00-03:00',

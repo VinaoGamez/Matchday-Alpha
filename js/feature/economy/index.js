@@ -29,20 +29,31 @@ export function createEconomyFeature(deps) {
     formatCapacity,
     formatTicketPrice,
     getBalance,
+    estimateWageBill,
+    estimateStaffBill,
+    estimateStadiumOpsBill,
+    estimateRoundCostBill,
     ensureStadium,
     getTicketPrices,
     adjustTicketPrice,
     estimateGateReceipt,
     getSponsors,
+    estimateSponsorInstallment,
+    estimateTvInstallment,
+    getSeasonCashflowStatement,
     getStructureLevel,
     getPitchLevel,
     maxPitchForStructure,
     pitchTierLabel,
+    purchaseStadiumNameRights,
+    nameRightsCost,
     TICKET_PRICE_RANGE,
     getUserClub,
     getClubs,
     getUserDivision,
     getCareerSeason,
+    getSeasonGoal,
+    getBoardBriefContext,
     onBudgetChanged,
     pushMessage,
     getCurrentRound,
@@ -99,6 +110,18 @@ export function createEconomyFeature(deps) {
       .join('');
   };
 
+  const setMeterBar = (barId, pct, meterSelector = null) => {
+    const bar = $(barId);
+    if (bar) bar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    if (!meterSelector) return;
+    const meter = document.querySelector(meterSelector);
+    if (!meter) return;
+    let tone = '';
+    if (pct < 35) tone = 'risk';
+    else if (pct < 50) tone = 'warn';
+    meter.setAttribute('data-tone', tone);
+  };
+
   const renderOffice = () => {
     const club = userClubState();
     if (!club) return;
@@ -107,19 +130,59 @@ export function createEconomyFeature(deps) {
     const metaEl = $('#officeBudgetMeta');
     const medicalEl = $('#officeMedicalLevel');
     const preventionEl = $('#officePreventionLevel');
-    const capacityEl = $('#officeCapacityStat');
     if (balanceEl) balanceEl.textContent = formatBudget(balance);
     if (metaEl) {
       metaEl.textContent = `${getUserClub()} · Série ${getUserDivision?.() || club.division || 'A'} · caixa disponível para investimentos`;
     }
-    if (medicalEl) medicalEl.textContent = `${Number(club.medicalInvestment) || 0}/5`;
-    if (preventionEl) preventionEl.textContent = `${Number(club.preventionProgram) || 0}/3`;
-    if (capacityEl) capacityEl.textContent = formatCapacity(club.stadiumCapacity);
+    const goalEl = $('#officeSeasonGoal');
+    const goalMetaEl = $('#officeSeasonGoalMeta');
+    const goal = getSeasonGoal?.() || null;
+    if (goalEl) {
+      if (!goal?.label) {
+        goalEl.textContent = '—';
+        if (goalMetaEl) goalMetaEl.textContent = 'A diretoria define a expectativa da campanha.';
+      } else {
+        goalEl.textContent = goal.label;
+        if (goalMetaEl) {
+          const tierLabel =
+            goal.tier === 'soft'
+              ? 'Expectativa conservadora'
+              : goal.tier === 'stretch'
+                ? 'Expectativa ambiciosa'
+                : 'Expectativa equilibrada';
+          goalMetaEl.textContent = `Série ${goal.division || getUserDivision?.() || club.division || 'A'} · ${tierLabel}`;
+        }
+      }
+    }
+    const medicalLevel = Number(club.medicalInvestment) || 0;
+    const preventionLevel = Number(club.preventionProgram) || 0;
+    const financesPct = Math.round(Number(club.finances) || 0);
+    if (medicalEl) medicalEl.textContent = `${medicalLevel}/5`;
+    if (preventionEl) preventionEl.textContent = `${preventionLevel}/3`;
     const financesEl = $('#officeFinancesStat');
-    if (financesEl) financesEl.textContent = `${Math.round(Number(club.finances) || 0)}%`;
+    if (financesEl) financesEl.textContent = `${financesPct}%`;
+    setMeterBar('#officeMedicalBar', (medicalLevel / 5) * 100);
+    setMeterBar('#officePreventionBar', (preventionLevel / 3) * 100);
+    setMeterBar('#officeFinancesBar', financesPct, '.office-meter[data-meter="finances"]');
+    renderBoardBrief(club);
     renderInvestments();
     renderSponsors();
-    renderLedger();
+    renderCashflow();
+  };
+
+  const renderBoardBrief = club => {
+    const wrap = $('#officeBoardBrief');
+    const bodyEl = $('#officeBoardBriefBody');
+    if (!wrap || !bodyEl) return;
+    const brief = getBoardBriefContext?.(club) || {
+      tone: 'neutral',
+      eyebrow: 'DIRETORIA',
+      body: 'A diretoria acompanha a temporada com atenção profissional.',
+    };
+    wrap.dataset.tone = brief.tone || 'neutral';
+    const eyebrow = wrap.querySelector('small');
+    if (eyebrow) eyebrow.textContent = brief.eyebrow || 'DIRETORIA';
+    bodyEl.textContent = brief.body || '';
   };
 
   const sponsorCardHtml = (item, { master = false } = {}) => {
@@ -144,8 +207,14 @@ export function createEconomyFeature(deps) {
       return;
     }
     const season = sponsors.season || getCareerSeason?.() || '—';
+    const division = sponsors.division || getUserDivision?.() || 'A';
+    const installments = Math.max(1, Number(sponsors.installments) || (division === 'D' ? 22 : 38));
+    const installment =
+      estimateSponsorInstallment?.(club, { installments }) ||
+      (sponsors.total > 0 ? Math.floor(Number(sponsors.total) / installments) : 0);
+    const paid = Number(sponsors.paidInstallments) || 0;
     if (meta) {
-      meta.textContent = `Temporada ${season} · Série ${sponsors.division || getUserDivision?.() || 'A'} · total ${formatBudget(sponsors.total || 0)}`;
+      meta.textContent = `Temporada ${season} · Série ${division} · total ${formatBudget(sponsors.total || 0)} · ${formatBudget(installment)}/rodada · ${paid}/${installments} parcelas`;
     }
     const cards = [
       sponsorCardHtml(sponsors.master, { master: true }),
@@ -177,6 +246,10 @@ export function createEconomyFeature(deps) {
     const pitchLevel = getPitchLevel?.(club) ?? (Number(club.pitchLevel) || 0);
     const pitchCap = maxPitchForStructure?.(structureLevel) ?? Math.min(5, structureLevel + 1);
     if (nameEl) nameEl.textContent = club.stadiumName || 'Estádio Solar';
+    const rightsMeta = $('#stadiumNameRightsMeta');
+    if (rightsMeta && nameRightsCost) {
+      rightsMeta.textContent = `Name Rights: ${formatBudget(nameRightsCost(division))} · único jeito de renomear durante a campanha.`;
+    }
     if (capacityEl) capacityEl.textContent = formatCapacity(club.stadiumCapacity);
     if (structureEl) structureEl.textContent = `${structureLevel}/5`;
     if (pitchEl) pitchEl.textContent = pitchTierLabel?.(club) || 'Médio';
@@ -230,24 +303,174 @@ export function createEconomyFeature(deps) {
       .join('');
   };
 
-  const renderLedger = () => {
-    const list = $('#officeLedgerList');
-    if (!list) return;
-    const club = userClubState();
-    const ledger = Array.isArray(club?.budgetLedger) ? club.budgetLedger : [];
-    if (!ledger.length) {
-      list.innerHTML =
-        '<p class="office-ledger-empty">Nenhum movimento registrado ainda. Premiações, bilheteria e investimentos aparecem aqui.</p>';
-      return;
+  const INFLOW_CATEGORIES = [
+    { key: 'gate', label: 'Bilheteria', match: reason => reason === 'gate_receipt' },
+    { key: 'sponsorship', label: 'Patrocínios', match: reason => reason === 'sponsorship' },
+    { key: 'tv', label: 'Direitos de TV', match: reason => reason === 'tv_rights' },
+    { key: 'prize', label: 'Premiações', match: reason => reason === 'season_prize' },
+    { key: 'other_in', label: 'Outras receitas', match: () => true },
+  ];
+
+  const OUTFLOW_CATEGORIES = [
+    { key: 'wages', label: 'Folha salarial', match: reason => reason === 'wages' },
+    { key: 'staff', label: 'Comissão técnica', match: reason => reason === 'staff_wages' },
+    { key: 'stadium', label: 'Manutenção do estádio', match: reason => reason === 'stadium_ops' },
+    { key: 'upgrades', label: 'Investimentos', match: reason => String(reason || '').startsWith('upgrade:') },
+    { key: 'other_out', label: 'Outras despesas', match: () => true },
+  ];
+
+  const categorizeAmount = (categories, reason, amount, buckets) => {
+    const hit = categories.find(cat => cat.match(reason));
+    if (!hit) return;
+    buckets[hit.key] = (buckets[hit.key] || 0) + amount;
+  };
+
+  const buildCashflowStatementFromLedger = ledger => {
+    const inflows = Object.fromEntries(INFLOW_CATEGORIES.map(cat => [cat.key, 0]));
+    const outflows = Object.fromEntries(OUTFLOW_CATEGORIES.map(cat => [cat.key, 0]));
+    for (const entry of ledger) {
+      const amount = Math.max(0, Number(entry?.amount) || 0);
+      if (!(amount > 0)) continue;
+      const reason = entry?.reason || '';
+      if (entry?.type === 'credit') categorizeAmount(INFLOW_CATEGORIES, reason, amount, inflows);
+      else categorizeAmount(OUTFLOW_CATEGORIES, reason, amount, outflows);
     }
-    list.innerHTML = ledger
-      .slice(0, 20)
-      .map(entry => {
-        const sign = entry.type === 'credit' ? '+' : '−';
-        const tone = entry.type === 'credit' ? 'credit' : 'spend';
-        return `<div class="office-ledger-row"><span>${entry.label || entry.reason || 'Movimento'}</span><b class="${tone}">${sign} ${formatBudget(entry.amount)}</b></div>`;
-      })
+    const totalIn = INFLOW_CATEGORIES.reduce((sum, cat) => sum + (inflows[cat.key] || 0), 0);
+    const totalOut = OUTFLOW_CATEGORIES.reduce((sum, cat) => sum + (outflows[cat.key] || 0), 0);
+    return {
+      inflows,
+      outflows,
+      totalIn,
+      totalOut,
+      net: totalIn - totalOut,
+      count: ledger.length,
+      fullSeason: false,
+    };
+  };
+
+  const statementRowsHtml = (categories, buckets, tone) =>
+    categories
+      .filter(cat => (buckets[cat.key] || 0) > 0)
+      .map(
+        cat =>
+          `<div class="office-cashflow-row"><span>${cat.label}</span><b class="${tone}">${
+            tone === 'credit' ? '+' : '−'
+          } ${formatBudget(buckets[cat.key])}</b></div>`,
+      )
       .join('');
+
+  const renderCashflow = () => {
+    const root = $('#officeCashflow');
+    const meta = $('#officeCashflowMeta');
+    if (!root) return;
+    const club = userClubState();
+    const division = getUserDivision?.() || club?.division || 'A';
+    const season = getCareerSeason?.() || club?.sponsors?.season || '—';
+    const ledger = Array.isArray(club?.budgetLedger) ? club.budgetLedger : [];
+    const seasonStatement = getSeasonCashflowStatement?.(club, season);
+    const statement =
+      seasonStatement && (seasonStatement.count > 0 || seasonStatement.fullSeason)
+        ? seasonStatement
+        : buildCashflowStatementFromLedger(ledger);
+    const staffOpts = { managerReputation: club?.managerReputation };
+    const wageBill = estimateWageBill?.(club, division) || 0;
+    const staffBill = estimateStaffBill?.(club, division, staffOpts) || 0;
+    const stadiumBill = estimateStadiumOpsBill?.(club, division) || 0;
+    const roundCost =
+      estimateRoundCostBill?.(club, division, staffOpts) || wageBill + staffBill + stadiumBill;
+    const installments = Math.max(
+      1,
+      Number(club?.sponsors?.installments) ||
+        Number(club?.tvRights?.installments) ||
+        (division === 'D' ? 22 : 38),
+    );
+    const sponsorInstallment = estimateSponsorInstallment?.(club, { installments }) || 0;
+    const lastSponsor = club?.lastSponsorInstallment;
+    const sponsorValue =
+      sponsorInstallment > 0
+        ? sponsorInstallment
+        : lastSponsor?.amount > 0
+          ? lastSponsor.amount
+          : 0;
+    const sponsorNote =
+      sponsorInstallment > 0
+        ? `Próxima parcela · ${(Number(club?.sponsors?.paidInstallments) || 0) + 1}/${installments}`
+        : lastSponsor?.round != null
+          ? `Última · Rodada ${lastSponsor.round}`
+          : club?.sponsors?.credited
+            ? 'Contrato quitado nesta temporada'
+            : 'Sem parcela pendente';
+    const tvInstallment = estimateTvInstallment?.(club, { installments }) || 0;
+    const lastTv = club?.lastTvInstallment;
+    const tvValue =
+      tvInstallment > 0 ? tvInstallment : lastTv?.amount > 0 ? lastTv.amount : 0;
+    const tvNote =
+      tvInstallment > 0
+        ? `Próxima parcela · ${(Number(club?.tvRights?.paidInstallments) || 0) + 1}/${installments}`
+        : lastTv?.round != null
+          ? `Última · Rodada ${lastTv.round}`
+          : club?.tvRights?.credited
+            ? 'Contrato quitado nesta temporada'
+            : 'Sem parcela pendente';
+    const balance = getBalance?.(club) ?? (Number(club?.budget) || 0);
+    const netTone = statement.net > 0 ? 'credit' : statement.net < 0 ? 'spend' : '';
+    const netSign = statement.net > 0 ? '+' : statement.net < 0 ? '−' : '';
+
+    if (meta) {
+      meta.textContent =
+        statement.count > 0
+          ? `Temporada ${season} · demonstrativo completo · ${statement.count} movimento${statement.count === 1 ? '' : 's'}`
+          : `Temporada ${season} · ainda sem movimentos registrados`;
+    }
+
+    const projectionHtml = `
+      <div class="office-cashflow-projection">
+        <div>
+          <small>CUSTO / RODADA</small>
+          <b class="spend">${formatBudget(roundCost)}</b>
+          <span>Jogadores ${formatBudget(wageBill)} + comissão ${formatBudget(staffBill)} + estádio ${formatBudget(stadiumBill)}</span>
+        </div>
+        <div>
+          <small>PATROCÍNIO / RODADA</small>
+          <b class="credit">${sponsorValue > 0 ? formatBudget(sponsorValue) : '—'}</b>
+          <span>${sponsorNote}</span>
+        </div>
+        <div>
+          <small>TV / RODADA</small>
+          <b class="credit">${tvValue > 0 ? formatBudget(tvValue) : '—'}</b>
+          <span>${tvNote}</span>
+        </div>
+      </div>`;
+
+    const inRows = statementRowsHtml(INFLOW_CATEGORIES, statement.inflows, 'credit');
+    const outRows = statementRowsHtml(OUTFLOW_CATEGORIES, statement.outflows, 'spend');
+
+    const bodyHtml =
+      statement.count === 0
+        ? `<p class="office-cashflow-empty">Ainda sem movimentos nesta temporada. Folha, bilheteria, patrocínio, TV e investimentos entram aqui agregados.</p>`
+        : `
+      <section class="office-cashflow-section">
+        <header>Entradas</header>
+        ${inRows || '<div class="office-cashflow-row muted"><span>Nenhuma entrada registrada</span><b>—</b></div>'}
+        <div class="office-cashflow-row total"><span>Total de entradas</span><b class="credit">+ ${formatBudget(statement.totalIn)}</b></div>
+      </section>
+      <section class="office-cashflow-section">
+        <header>Saídas</header>
+        ${outRows || '<div class="office-cashflow-row muted"><span>Nenhuma saída registrada</span><b>—</b></div>'}
+        <div class="office-cashflow-row total"><span>Total de saídas</span><b class="spend">− ${formatBudget(statement.totalOut)}</b></div>
+      </section>
+      <div class="office-cashflow-result">
+        <span>Resultado da temporada</span>
+        <b class="${netTone}">${netSign}${netSign ? ' ' : ''}${formatBudget(Math.abs(statement.net))}</b>
+      </div>`;
+
+    root.innerHTML = `
+      ${projectionHtml}
+      ${bodyHtml}
+      <div class="office-cashflow-balance">
+        <span>Saldo atual</span>
+        <b>${formatBudget(balance)}</b>
+      </div>`;
   };
 
   const upgradeTitle = upgradeId =>
@@ -320,6 +543,48 @@ export function createEconomyFeature(deps) {
       const club = userClubState();
       if (!club) return;
       adjustTicketPrice(club, button.dataset.ticketAdjust, Number(button.dataset.delta));
+      renderStadium();
+      onBudgetChanged?.();
+    });
+
+    onClick('#openStadiumNameRights', () => {
+      const club = userClubState();
+      if (!club || !purchaseStadiumNameRights) return;
+      const division = getUserDivision?.() || club.division || 'A';
+      const cost = nameRightsCost?.(division) ?? 0;
+      const next = window.prompt(
+        `Novo nome do estádio (custa ${formatBudget(cost)}):`,
+        club.stadiumName || '',
+      );
+      if (next == null) return;
+      const result = purchaseStadiumNameRights(club, next, { division });
+      if (!result.ok) {
+        const body =
+          result.error === 'insufficient_funds'
+            ? `Saldo insuficiente. Name Rights custa ${formatBudget(result.cost ?? cost)}.`
+            : result.error === 'same_name'
+              ? 'Informe um nome diferente do atual.'
+              : 'Use um nome com pelo menos 3 caracteres.';
+        pushMessage?.({
+          category: 'club',
+          type: 'budget',
+          title: 'Name Rights',
+          body,
+          round: getCurrentRound?.() ?? 1,
+          meta: { competition: 'Estádio' },
+        });
+        renderStadium();
+        onBudgetChanged?.();
+        return;
+      }
+      pushMessage?.({
+        category: 'club',
+        type: 'budget',
+        title: `Name Rights · ${result.name}`,
+        body: `Estádio renomeado por ${formatBudget(result.cost)}. Orçamento atual: ${formatBudget(result.balance)}.`,
+        round: getCurrentRound?.() ?? 1,
+        meta: { competition: 'Estádio' },
+      });
       renderStadium();
       onBudgetChanged?.();
     });

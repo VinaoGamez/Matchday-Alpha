@@ -1,10 +1,16 @@
 (() => {
   const host = location.hostname.toLowerCase();
-  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || location.protocol === 'file:';
-  const isTesterPort = location.port === '5081';
-  const isPublicTunnel = /\.trycloudflare\.com$/i.test(host);
-  const isFixedTesterHost = /\.pages\.dev$/i.test(host) || /\.github\.io$/i.test(host);
-  if (isLocal && !isTesterPort) return;
+  const isLocal =
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '[::1]' ||
+    location.protocol === 'file:';
+  // Bloqueio de F12/cópia só em links externos públicos — local (5080/5081) fica livre para debug.
+  const isPublicHost =
+    /\.github\.io$/i.test(host) ||
+    /\.pages\.dev$/i.test(host) ||
+    /\.trycloudflare\.com$/i.test(host);
+  if (isLocal || !isPublicHost) return;
 
   const block = event => {
     event.preventDefault();
@@ -51,8 +57,6 @@
   `;
   document.documentElement.appendChild(style);
 
-  if (isPublicTunnel || isTesterPort || isFixedTesterHost) {
-    console.log('%cMatchday Football — build de testers.', 'color:#63d9ff;font-weight:700;font-size:12px');
-    console.log('%cInspeção e cópia do cliente estão restritas neste ambiente.', 'color:#9eb6b8;font-size:11px');
-  }
+  console.log('%cMatchday Football — build pública de testers.', 'color:#63d9ff;font-weight:700;font-size:12px');
+  console.log('%cInspeção e cópia do cliente estão restritas neste ambiente.', 'color:#9eb6b8;font-size:11px');
 })();

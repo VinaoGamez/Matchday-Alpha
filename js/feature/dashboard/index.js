@@ -22,6 +22,7 @@ export function createDashboardFeature(deps) {
     isUserFixture,
     isFixtureCompleted,
     seasonComplete,
+    seasonFullyComplete,
     isUserSeasonIdle,
     nextPendingUserEntry,
     pendingUserSchedule,
@@ -35,12 +36,18 @@ export function createDashboardFeature(deps) {
     isKnockoutShootoutCompetition,
     knockoutCompetitionLabel,
     leadersFor,
+    clubSeasonLeaders,
     getSeasonRoundHistory,
     getCopaFixtures,
     getNationalCompetitions,
+    getCareerMessages,
+    getUserBudgetLedger,
+    getUserSeasonCrowds,
     openCalendarMatchReport,
     calendarGameResult,
     isCompletedDashboardGame,
+    isSponsorChoicePending,
+    onRequestSponsorPicker,
   } = deps;
 
   let leaderMode = 'scorers';
@@ -53,6 +60,242 @@ export function createDashboardFeature(deps) {
 
   const formatDashboardDate = date =>
     date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '').toUpperCase();
+
+  const clubCrestInitials = name =>
+    String(name || '')
+      .split(' ')
+      .map(part => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '—';
+
+  const longestResultStreak = (results, letter) => {
+    let best = 0;
+    let current = 0;
+    results.forEach(game => {
+      if (game.result === letter) {
+        current += 1;
+        best = Math.max(best, current);
+      } else {
+        current = 0;
+      }
+    });
+    return best;
+  };
+
+  const biggestGoalMargin = (results, userClub, wantWin) => {
+    let best = null;
+    results.forEach(game => {
+      const atHome = game.home === userClub;
+      const own = Number(atHome ? game.homeGoals : game.awayGoals);
+      const opp = Number(atHome ? game.awayGoals : game.homeGoals);
+      if (!Number.isFinite(own) || !Number.isFinite(opp)) return;
+      const diff = own - opp;
+      if (wantWin ? diff <= 0 : diff >= 0) return;
+      const margin = Math.abs(diff);
+      const opponent = atHome ? game.away : game.home;
+      const score = `${Number(game.homeGoals)}×${Number(game.awayGoals)}`;
+      if (!best || margin > best.margin || (margin === best.margin && (wantWin ? diff > best.diff : diff < best.diff))) {
+        best = { margin, diff, score, opponent, label: game.label || 'Jogo' };
+      }
+    });
+    return best;
+  };
+
+  const collectHomeCrowdRecords = userClub => {
+    const byKey = new Map();
+    const put = entry => {
+      const attendance = Number(entry?.attendance);
+      if (!Number.isFinite(attendance) || attendance <= 0) return;
+      const opponent = entry.opponent || entry.away || '—';
+      const key = `${entry.home || userClub}|${opponent}|${entry.round ?? ''}|${entry.leg ?? ''}|${entry.phase ?? ''}|${Math.round(attendance)}`;
+      const prev = byKey.get(key);
+      if (prev) {
+        if ((!prev.label || prev.label === 'Jogo em casa') && entry.label) prev.label = entry.label;
+        return;
+      }
+      byKey.set(key, {
+        attendance: Math.round(attendance),
+        opponent,
+        label: entry.label || 'Jogo em casa',
+      });
+    };
+
+    // Fonte principal: log da temporada (não depende do limite do ledger/mensagens).
+    (typeof getUserSeasonCrowds === 'function' ? getUserSeasonCrowds() : []).forEach(entry => {
+      if (entry?.home && entry.home !== userClub) return;
+      put(entry);
+    });
+
+    (typeof getCareerMessages === 'function' ? getCareerMessages() : []).forEach(message => {
+      if (message?.type !== 'match-result') return;
+      const meta = message.meta || {};
+      if (meta.home !== userClub) return;
+      put({
+        home: meta.home,
+        attendance: meta.attendance,
+        opponent: meta.away,
+        away: meta.away,
+        label: meta.competition || 'Jogo em casa',
+        round: message.round ?? null,
+      });
+    });
+
+    (typeof getUserBudgetLedger === 'function' ? getUserBudgetLedger() : []).forEach(entry => {
+      if (entry?.reason !== 'gate_receipt') return;
+      const meta = entry.meta || {};
+      put({
+        home: userClub,
+        attendance: meta.attendance,
+        opponent: meta.opponent,
+        away: meta.opponent,
+        label: entry.label || 'Bilheteria',
+        phase: meta.phase || null,
+      });
+    });
+
+    (typeof getCopaFixtures === 'function' ? getCopaFixtures() : []).forEach(game => {
+      if (game?.home !== userClub || !game.completed) return;
+      put({
+        home: game.home,
+        attendance: game.attendance,
+        opponent: game.away,
+        away: game.away,
+        label: `Copa · ${game.phase || ''}${game.leg ? ` · ${game.leg}` : ''}`.trim(),
+        phase: game.phase || null,
+        leg: game.leg || null,
+      });
+    });
+
+    (typeof getSeasonRoundHistory === 'function' ? getSeasonRoundHistory() : []).forEach(round => {
+      (round.games || []).forEach(game => {
+        if (game?.home !== userClub) return;
+        put({
+          home: game.home,
+          attendance: game.attendance,
+          opponent: game.away,
+          away: game.away,
+          label: `Rodada ${round.round}`,
+          round: round.round,
+        });
+      });
+    });
+
+    return [...byKey.values()];
+  };
+
+  const buildSeasonReviewStats = () => {
+    const userClub = getUserClub();
+    const results = userCompletedMatchResults();
+    const winStreak = longestResultStreak(results, 'V');
+    const lossStreak = longestResultStreak(results, 'D');
+    const biggestWin = biggestGoalMargin(results, userClub, true);
+    const biggestDefeat = biggestGoalMargin(results, userClub, false);
+    const crowds = collectHomeCrowdRecords(userClub);
+    let maxCrowd = null;
+    let minCrowd = null;
+    crowds.forEach(row => {
+      if (!maxCrowd || row.attendance > maxCrowd.attendance) maxCrowd = row;
+      if (!minCrowd || row.attendance < minCrowd.attendance) minCrowd = row;
+    });
+    const leaders =
+      typeof clubSeasonLeaders === 'function'
+        ? clubSeasonLeaders(userClub)
+        : { scorer: { name: '—' }, goals: 0, assistant: { name: '—' }, assists: 0 };
+    return {
+      gameCount: results.length,
+      winStreak,
+      lossStreak,
+      biggestWin,
+      biggestDefeat,
+      maxCrowd,
+      minCrowd,
+      leaders,
+    };
+  };
+
+  const seasonReviewIcon = kind => {
+    const icons = {
+      win: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 4h10v3c0 3.2-1.8 5.7-4.2 7L13 16v2h3v2H8v-2h3v-2l-.8-2C7.8 12.7 6 10.2 6 7V4zm1.5 1.5v1.7c0 2.2 1.1 4 2.9 5.1l.6.4.6-.4c1.8-1.1 2.9-2.9 2.9-5.1V5.5h-7z"/></svg>',
+      loss: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.3 13.3-1.4 1.4L12 13.8l-1.9 1.9-1.4-1.4 1.9-1.9-1.9-1.9 1.4-1.4 1.9 1.9 1.9-1.9 1.4 1.4-1.9 1.9 1.9 1.9z"/></svg>',
+      smash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2c1.7 3.4 3.2 5.6 5.5 8.2C20.2 13.4 22 16 22 19a5 5 0 0 1-10 0c0-1.2.4-2.4 1-3.5C11.3 17.8 10 19.2 8.5 20.2 6.2 18 4.8 15.4 4 12.8c2.2.2 4.1-.2 5.8-1.2C8.2 9.8 7 7.6 6.2 5.2 8.4 5.8 10.3 4.6 12 2z"/></svg>',
+      concede: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 11h6V5h4v6h6v2h-6v6h-4v-6H4v-2z" opacity=".35"/><path fill="currentColor" d="M3 12h18v2H3z"/></svg>',
+      crowdUp: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 18V8l8-4 8 4v10h-3v-6H7v6H4zm5 0v-4h6v4H9z"/></svg>',
+      crowdDown: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 20h18v-2H3v2zm2-4h14l-1.2-7H6.2L5 16zm4.5-9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zm5 0a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"/></svg>',
+      scorer: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/><path fill="none" stroke="currentColor" stroke-width="1.6" d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',
+      assist: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M5 12h9M11 7l5 5-5 5"/><circle cx="5" cy="12" r="2.2" fill="currentColor"/></svg>',
+    };
+    return icons[kind] || icons.win;
+  };
+
+  const seasonReviewTile = ({ tone, icon, label, value, meta = '' }) => `
+    <article class="season-review-tile tone-${tone}">
+      <div class="season-review-tile-icon">${seasonReviewIcon(icon)}</div>
+      <div class="season-review-tile-copy">
+        <span>${label}</span>
+        <strong>${value}</strong>
+        ${meta ? `<small>${meta}</small>` : ''}
+      </div>
+    </article>`;
+
+  const renderSeasonReviewBoard = () => {
+    const board = $('#seasonReviewBoard');
+    if (!board) return;
+    const userClub = getUserClub();
+    const careerSeason = typeof getCareerSeason === 'function' ? getCareerSeason() : '';
+    const stats = buildSeasonReviewStats();
+    const hasGames = stats.gameCount > 0;
+    const streakValue = count => (hasGames ? String(count) : '—');
+    const streakMeta = count => (hasGames ? `jogo${count === 1 ? '' : 's'} seguidos` : '');
+    const winValue = stats.biggestWin?.score || '—';
+    const winMeta = stats.biggestWin
+      ? `vs ${stats.biggestWin.opponent} · ${stats.biggestWin.label}`
+      : '';
+    const defeatValue = stats.biggestDefeat?.score || '—';
+    const defeatMeta = stats.biggestDefeat
+      ? `vs ${stats.biggestDefeat.opponent} · ${stats.biggestDefeat.label}`
+      : '';
+    const maxCrowdValue = stats.maxCrowd
+      ? stats.maxCrowd.attendance.toLocaleString('pt-BR')
+      : '—';
+    const maxCrowdMeta = stats.maxCrowd
+      ? `vs ${stats.maxCrowd.opponent} · ${stats.maxCrowd.label}`
+      : '';
+    const minCrowdValue = stats.minCrowd
+      ? stats.minCrowd.attendance.toLocaleString('pt-BR')
+      : '—';
+    const minCrowdMeta = stats.minCrowd
+      ? `vs ${stats.minCrowd.opponent} · ${stats.minCrowd.label}`
+      : '';
+    const scorerName = stats.leaders?.scorer?.name || '—';
+    const assistantName = stats.leaders?.assistant?.name || '—';
+    const goals = Number(stats.leaders?.goals) || 0;
+    const assists = Number(stats.leaders?.assists) || 0;
+    board.innerHTML = `
+      <div class="season-review-club">
+        <div class="season-review-crest-wrap"><i aria-hidden="true">${clubCrestInitials(userClub)}</i></div>
+        <b>${userClub}</b>
+        <small>${careerSeason ? `Temporada ${careerSeason}` : 'Campanha encerrada'}${hasGames ? ` · ${stats.gameCount} jogos` : ''}</small>
+      </div>
+      <div class="season-review-stats">
+        ${seasonReviewTile({ tone: 'lime', icon: 'win', label: 'Maior sequência de vitórias', value: streakValue(stats.winStreak), meta: streakMeta(stats.winStreak) })}
+        ${seasonReviewTile({ tone: 'red', icon: 'loss', label: 'Maior sequência de derrotas', value: streakValue(stats.lossStreak), meta: streakMeta(stats.lossStreak) })}
+        ${seasonReviewTile({ tone: 'cyan', icon: 'smash', label: 'Maior goleada realizada', value: winValue, meta: winMeta })}
+        ${seasonReviewTile({ tone: 'amber', icon: 'concede', label: 'Maior goleada sofrida', value: defeatValue, meta: defeatMeta })}
+        ${seasonReviewTile({ tone: 'cyan', icon: 'crowdUp', label: 'Maior público', value: maxCrowdValue, meta: maxCrowdMeta })}
+        ${seasonReviewTile({ tone: 'muted', icon: 'crowdDown', label: 'Menor público', value: minCrowdValue, meta: minCrowdMeta })}
+        ${seasonReviewTile({ tone: 'lime', icon: 'scorer', label: 'Artilheiro', value: scorerName === '—' ? '—' : scorerName, meta: scorerName === '—' ? '' : `${goals} gol${goals === 1 ? '' : 's'}` })}
+        ${seasonReviewTile({ tone: 'cyan', icon: 'assist', label: 'Melhor assistente', value: assistantName === '—' ? '—' : assistantName, meta: assistantName === '—' ? '' : `${assists} assistência${assists === 1 ? '' : 's'}` })}
+      </div>`;
+    board.classList.remove('hidden');
+  };
+
+  const hideSeasonReviewBoard = () => {
+    const board = $('#seasonReviewBoard');
+    if (!board) return;
+    board.classList.add('hidden');
+    board.innerHTML = '';
+  };
 
   const setNextMatchMeta = (lines = []) => {
     const el = $('#nextMatchMeta');
@@ -107,24 +350,41 @@ export function createDashboardFeature(deps) {
     const userClub = getUserClub();
     const userDivision = getUserDivision();
     const currentRound = getCurrentRound();
-    const careerSeason = getCareerSeason();
     const careerCalendarDate = getCareerCalendarDate();
     const clubs = getClubs();
     const display = nextPendingUserEntry();
     const idle = isUserSeasonIdle();
+    const fullyComplete = typeof seasonFullyComplete === 'function' ? seasonFullyComplete() : seasonComplete();
     const playBtn = $('#playMatch');
     const simBtn = $('#simulateRemainder');
     const inspectBtn = $('#inspectOpponent');
     const calendarBtn = $('#openDashboardCalendar');
+    const matchCard = playBtn?.closest('.match') || document.querySelector('#dashboard .match');
+    matchCard?.classList.toggle('season-ended', !!fullyComplete);
+    const cardTitle = $('#nextMatchCardTitle');
+    if (cardTitle) cardTitle.textContent = fullyComplete ? 'RESUMO DA TEMPORADA' : 'PRÓXIMA PARTIDA';
 
-    if (playBtn) playBtn.classList.toggle('hidden', idle || seasonComplete());
-    if (simBtn) simBtn.classList.toggle('hidden', !idle);
-    if (inspectBtn) inspectBtn.classList.toggle('hidden', idle || seasonComplete() || !display);
-    if (calendarBtn) calendarBtn.classList.toggle('hidden', idle || seasonComplete());
-    if (playBtn && (idle || seasonComplete())) {
+    const sponsorPending = typeof isSponsorChoicePending === 'function' && isSponsorChoicePending();
+
+    // Temporada fechada: o CTA precisa ficar visível para reabrir o balanço / avançar.
+    if (playBtn) {
+      playBtn.classList.toggle('hidden', idle && !sponsorPending);
       playBtn.disabled = false;
-      playBtn.title = '';
+      if (sponsorPending) {
+        playBtn.textContent = 'ESCOLHA OS PATROCÍNIOS →';
+        playBtn.title = 'Feche os contratos Master e Secundários para liberar a temporada';
+        playBtn.disabled = false;
+      } else if (fullyComplete) {
+        playBtn.textContent = 'BALANÇO / PRÓXIMA TEMPORADA →';
+        playBtn.title = 'Abrir balanço da temporada e avançar quando estiver pronto';
+      } else {
+        playBtn.textContent = 'JOGAR PARTIDA →';
+        playBtn.title = '';
+      }
     }
+    if (simBtn) simBtn.classList.toggle('hidden', !idle);
+    if (inspectBtn) inspectBtn.classList.toggle('hidden', idle || fullyComplete || !display);
+    if (calendarBtn) calendarBtn.classList.toggle('hidden', idle || fullyComplete);
 
     const userUpcomingGames = pendingUserSchedule().slice(0, 3).map(entry => entry.game);
 
@@ -142,20 +402,6 @@ export function createDashboardFeature(deps) {
         .toUpperCase();
       $('#nextMatchAwayCrest').textContent = 'NF';
       setNextMatchMeta(['Sem partidas pendentes', 'Simule o restante da temporada']);
-    } else if (seasonComplete()) {
-      $('#nextMatchRound').textContent = `TEMPORADA ${careerSeason} ENCERRADA`;
-      $('#nextMatchHome').textContent = userClub;
-      $('#nextMatchAway').textContent = 'Próxima temporada';
-      $('#nextMatchHomePosition').textContent = `Série ${userDivision}`;
-      $('#nextMatchAwayPosition').textContent = 'Transição';
-      $('#nextMatchHome').previousElementSibling.textContent = userClub
-        .split(' ')
-        .map(part => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
-      $('#nextMatchAwayCrest').textContent = '→';
-      setNextMatchMeta(['Temporada encerrada', 'Confira acessos e rebaixamentos', 'Inicie a próxima temporada']);
     } else if (display) {
       const { game, details } = display;
       const atHome = game.home === userClub;
@@ -168,7 +414,7 @@ export function createDashboardFeature(deps) {
       const onMatchDay = sameCalendarDay(details.date, careerCalendarDate);
       const todayLabel = `HOJE · ${formatDashboardDate(careerCalendarDate)}`;
 
-      if (playBtn) {
+      if (playBtn && !sponsorPending) {
         playBtn.disabled = !onMatchDay;
         playBtn.title = onMatchDay ? 'Disputar a partida agendada para hoje' : 'Avance até o dia do jogo para disputar a partida';
       }
@@ -211,7 +457,13 @@ export function createDashboardFeature(deps) {
               daysUntil > 0 ? `Use Dia de Jogo para avançar (${daysUntil} ${daysUntil === 1 ? 'dia' : 'dias'})` : 'Use Dia de Jogo para avançar',
             ]
       );
+    } else if (fullyComplete) {
+      $('#nextMatchRound').textContent = '';
+      setNextMatchMeta([]);
+      renderSeasonReviewBoard();
     }
+
+    if (!fullyComplete) hideSeasonReviewBoard();
 
     $('#clubUpcomingMatches').innerHTML = userUpcomingGames.length
       ? userUpcomingGames
@@ -224,7 +476,7 @@ export function createDashboardFeature(deps) {
             return `<div class="club-upcoming-row ${isCup || isKo ? 'cup-row' : ''}"><span>${label}</span><span><b class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</b> <i>×</i> <b class="club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</b></span><span>${details.display} · ${details.time}</span><span class="${atHome ? 'home' : 'away'}">${atHome ? 'CASA' : 'FORA'}</span></div>`;
           })
           .join('')
-      : `<div class="club-upcoming-row idle-row"><span>—</span><span><b>${idle ? 'Nenhum jogo restante do clube' : seasonComplete() ? 'Temporada encerrada' : 'Agenda em atualização'}</b></span><span>${idle ? `Nacional na rodada ${currentRound}` : '—'}</span><span class="away">—</span></div>`;
+      : `<div class="club-upcoming-row idle-row"><span>—</span><span><b>${idle ? 'Nenhum jogo restante do clube' : fullyComplete ? 'Temporada encerrada' : 'Agenda em atualização'}</b></span><span>${idle ? `Nacional na rodada ${currentRound}` : '—'}</span><span class="away">—</span></div>`;
   };
 
   const renderLeaders = () => {

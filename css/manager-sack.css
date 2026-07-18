@@ -1,0 +1,127 @@
+.manager-sack-modal{
+  width:min(640px,calc(100vw - 28px));
+  max-height:calc(100vh - 40px);
+  overflow:auto;
+  text-align:left;
+  padding:28px 30px 24px!important;
+  scrollbar-width:thin;
+  scrollbar-color:#397487 #091820;
+}
+.manager-sack-modal>label{
+  display:block;
+  margin-bottom:4px;
+  color:#ff8c94;
+  font:700 10px DM Sans,sans-serif;
+  letter-spacing:1px;
+}
+.manager-sack-modal h2{
+  margin:4px 0 6px;
+  font:700 32px Barlow Condensed,sans-serif;
+  line-height:1.05;
+  color:#f4fcfc;
+}
+.manager-sack-lead{
+  margin:0 0 16px;
+  color:#9eb6b8;
+  font-size:12px;
+  line-height:1.5;
+}
+.manager-sack-stats{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin-bottom:18px;
+}
+.manager-sack-stats>div{
+  padding:10px 8px;
+  border:1px solid #3a4a52;
+  border-radius:6px;
+  background:#0b1d25;
+  text-align:center;
+}
+.manager-sack-stats small{
+  display:block;
+  color:#7fa8b0;
+  font:700 8px DM Sans,sans-serif;
+  letter-spacing:.3px;
+  margin-bottom:4px;
+}
+.manager-sack-stats b{
+  color:#ffc94f;
+  font:700 18px Barlow Condensed,sans-serif;
+}
+.manager-sack-section header{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:6px;
+  margin-bottom:10px;
+}
+.manager-sack-section h3{
+  margin:0;
+  color:#edf8f5;
+  font:700 16px Barlow Condensed,sans-serif;
+}
+.manager-sack-section small{
+  color:#7fa8b0;
+  font-size:11px;
+}
+.manager-sack-offers{
+  display:grid;
+  gap:8px;
+}
+.manager-sack-offer{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+  padding:12px 14px;
+  border:1px solid #28505b;
+  border-radius:8px;
+  background:#102b35;
+}
+.manager-sack-offer b{
+  display:block;
+  color:#edf8f5;
+  font:700 17px Barlow Condensed,sans-serif;
+}
+.manager-sack-offer small{
+  display:block;
+  margin-top:3px;
+  color:#9eb6b8;
+  font-size:11px;
+  line-height:1.35;
+}
+.manager-sack-incumbent{color:#7fa8b0!important}
+.manager-sack-offer button{
+  min-width:96px;
+  padding:10px 12px!important;
+  font-size:11px!important;
+  letter-spacing:.3px;
+  white-space:nowrap;
+}
+.manager-sack-empty{
+  margin:0;
+  padding:12px;
+  color:#9eb6b8;
+  font-size:12px;
+  line-height:1.45;
+  border:1px dashed #28505b;
+  border-radius:8px;
+}
+.manager-sack-actions{
+  margin-top:18px;
+  display:flex;
+  justify-content:flex-end;
+}
+.manager-sack-refuse{
+  background:transparent!important;
+  border:1px solid #5a3a3e!important;
+  color:#ff8c94!important;
+}
+@media(max-width:560px){
+  .manager-sack-stats{grid-template-columns:1fr}
+  .manager-sack-offer{grid-template-columns:1fr}
+  .manager-sack-offer button{width:100%}
+}

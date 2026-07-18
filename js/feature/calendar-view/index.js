@@ -29,6 +29,7 @@ export function createCalendarViewFeature(deps) {
     fixtureResultLabel,
     fixtureDate,
     seasonComplete,
+    seasonFullyComplete,
     isUserSeasonIdle,
     nextPendingUserEntry,
     restDaysUntilNextFixture,
@@ -225,9 +226,10 @@ export function createCalendarViewFeature(deps) {
     const { start: weekStart, end: weekEnd } = weekBounds(careerCalendarDate);
     const weekLabel = `${formatWeekDay(weekStart)} — ${formatWeekDay(weekEnd)}`;
     const onMatchDay = isOnPendingMatchDay();
+    const seasonDone = typeof seasonFullyComplete === 'function' ? seasonFullyComplete() : seasonComplete();
     const nextLabel = next
       ? `${next.details.display} · ${next.game.competition === 'COPA DO BRASIL' ? `Copa · ${next.game.phase}` : `Rodada ${next.game.round}`}`
-      : seasonComplete()
+      : seasonDone
         ? 'Temporada encerrada'
         : isUserSeasonIdle()
           ? `Sem jogos do clube · calendário nacional (R${currentRound})`
@@ -238,11 +240,11 @@ export function createCalendarViewFeature(deps) {
     }
     const advanceBtn = $('#calendarAdvanceWeek');
     if (advanceBtn) {
-      const blocked = onMatchDay || seasonComplete() || isUserSeasonIdle();
+      const blocked = onMatchDay || seasonDone || isUserSeasonIdle();
       advanceBtn.disabled = blocked;
       advanceBtn.title = onMatchDay
         ? 'Dispute a partida antes de avançar a semana'
-        : seasonComplete()
+        : seasonDone
           ? 'Temporada encerrada'
           : isUserSeasonIdle()
             ? 'Sem jogos do clube nesta fase'
