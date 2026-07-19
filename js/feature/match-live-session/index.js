@@ -104,7 +104,7 @@ export function createMatchLiveSessionFeature(deps) {
     renderTacticalConfrontation,
   } = deps;
 
-  const renderFinalSummary = () => {
+  const renderFinalSummary = ({ processMedical = true } = {}) => {
     const userClub = getUserClub(), club = getMatchClub(), clubs = getClubs(), currentRound = getCurrentRound();
     const liveInjuries = getLiveInjuries(), liveDeferredInjuries = getLiveDeferredInjuries();
     const medicalReports = [['home', liveInjuries.home, clubs[userClub]], ['away', liveInjuries.away, club]].flatMap(([, entries, matchClub]) => entries.map(entry => {
@@ -164,6 +164,7 @@ export function createMatchLiveSessionFeature(deps) {
     const homeClub = (liveMatchGame || nextUserGame)?.home || userClub, awayClub = (liveMatchGame || nextUserGame)?.away || club.name;
     $('#stats').innerHTML = `<section class="final-goals"><h3>GOLS</h3><div><article><b>${homeClub.toUpperCase()}</b>${scorers('home')}</article><article><b>${awayClub.toUpperCase()}</b>${scorers('away')}</article></div></section><section class="final-basic"><h3>ESTATÍSTICAS DA PARTIDA</h3>${rows.map(row => `<div class="stat"><span>${row[1]}</span><span>${row[0]}</span><span>${row[2]}</span></div>`).join('')}</section>${injurySection}`;
     $('#stats').classList.remove('hidden');
+    if (!processMedical) return;
     const postMatchMedicalQueue = getPostMatchMedicalQueue();
     if (postMatchMedicalQueue.length) {
       if (postMatchMedicalQueue.length === 1) {
@@ -180,9 +181,9 @@ export function createMatchLiveSessionFeature(deps) {
     }
   };
 
-  const showFinalActions = () => {
+  const showFinalActions = ({ reopen = false } = {}) => {
     const liveMatchGame = getLiveMatchGame();
-    if (liveMatchGame) {
+    if (!reopen && liveMatchGame) {
       const matchDate = liveMatchGame.competition === 'COPA DO BRASIL' ? new Date(liveMatchGame.date) : fixtureDetails(liveMatchGame).date;
       if (matchDate) advanceCareerCalendarTo(matchDate);
       if (getHasCareer()) persistSeason(true);
@@ -237,8 +238,9 @@ export function createMatchLiveSessionFeature(deps) {
       if (shootoutState) { renderShootoutTrack(); $('#shootoutPanel').classList.remove('hidden'); }
       else if (liveMatchGame?.penalties) { $('#shootoutTitle').textContent = `Shootout ${liveMatchGame.penalties}`; $('#shootoutPanel').classList.remove('hidden'); }
       $('#matchStatus').textContent = shootoutState ? 'Disputa de pênaltis em andamento.' : liveMatchGame?.penalties ? `Partida encerrada · Shootout ${liveMatchGame.penalties}.` : 'Partida encerrada.';
-      renderFinalSummary();
-      showFinalActions();
+      // Reabertura: não reprocessa fila médica / calendário (já feitos no fim do jogo).
+      renderFinalSummary({ processMedical: false });
+      showFinalActions({ reopen: true });
       return true;
     }
     const penaltyOpen = !!$('#penaltyDuelModal')

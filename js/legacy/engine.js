@@ -1981,6 +1981,8 @@ export async function bootEngine({ bus } = {}) {
     getUserSerieDGroupIndex:()=>userSerieDGroupIndex,
     isSponsorChoicePending:()=>!!pendingSponsorChoice,
     onRequestSponsorPicker:()=>openSponsorPickerIfPending?.(),
+    canReopenLivePostMatch:()=>!!(matchStarted&&matchFinished&&!roundCommitted),
+    lastCompletedUserEntry,
   });
   let openSponsorPickerIfPending=()=>{};
   const {renderDashboardMiniTable,renderDashboardUpcoming,renderUserMatchPresentation,renderLeaders,renderRecentResults}=dashboard;
@@ -5761,8 +5763,42 @@ export async function bootEngine({ bus } = {}) {
     persistSeason(true);
   });
   onClick('#simulateRemainder',()=>simulateNonHumanSeasonRemainder());
+  const openLastPostMatchView=()=>{
+    if(matchStarted&&matchFinished&&!roundCommitted){
+      reopenMatchWindow();
+      return true;
+    }
+    const entry=lastCompletedUserEntry();
+    if(!entry?.game)return false;
+    const report=calendarGameResult(entry.game);
+    if(!report)return false;
+    const historyLog=typeof playerHistory?.findMatchLog==='function'
+      ? playerHistory.findMatchLog({
+          home:entry.game.home,
+          away:entry.game.away,
+          season:careerSeason,
+          round:entry.game.round??entry.game.phaseIndex??null,
+          leg:entry.game.leg||null,
+        })
+      : null;
+    if(historyLog?.players?.length)report.ratingPlayers=historyLog.players;
+    if(Array.isArray(historyLog?.incidents))report.incidents=historyLog.incidents;
+    openCalendarMatchReport(report);
+    return true;
+  };
+  onClick('#reopenPostMatch',()=>{openLastPostMatchView();});
   onClick('#closeMatch',()=>{
-    if(matchFinished&&!roundCommitted){exitLiveMatch();return;}
+    // Pós-jogo: × só fecha a janela — SAIR / CLASSIFICAÇÃO avançam a rodada.
+    if(matchFinished&&!roundCommitted){
+      flushLiveMatchPersist();
+      if(matchStarted)persistSeason(true);
+      stopMatchClock();
+      modal.classList.add('hidden');
+      $('#liveOpponentModal').classList.add('hidden');
+      closeFormationSuggestion();
+      renderUserMatchPresentation();
+      return;
+    }
     flushLiveMatchPersist();
     if(matchStarted)persistSeason(true);
     stopMatchClock();

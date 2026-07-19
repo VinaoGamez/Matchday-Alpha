@@ -1,6 +1,21 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-29',
+    date: '2026-07-19',
+    publishedAt: '2026-07-19T17:45:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Central',
+        items: [
+          'Botão PÓS-JOGO entre JOGAR PARTIDA e DIA DE JOGO para reabrir o resumo depois de fechar a janela.',
+          'O × no pós-jogo só fecha a tela; SAIR continua avançando a rodada.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-28',
     date: '2026-07-19',
     publishedAt: '2026-07-19T17:35:00-03:00',

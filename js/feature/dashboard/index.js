@@ -48,6 +48,8 @@ export function createDashboardFeature(deps) {
     isCompletedDashboardGame,
     isSponsorChoicePending,
     onRequestSponsorPicker,
+    canReopenLivePostMatch,
+    lastCompletedUserEntry,
   } = deps;
 
   let leaderMode = 'scorers';
@@ -365,6 +367,7 @@ export function createDashboardFeature(deps) {
     const idle = isUserSeasonIdle();
     const fullyComplete = typeof seasonFullyComplete === 'function' ? seasonFullyComplete() : seasonComplete();
     const playBtn = $('#playMatch');
+    const postMatchBtn = $('#reopenPostMatch');
     const simBtn = $('#simulateRemainder');
     const inspectBtn = $('#inspectOpponent');
     const calendarBtn = $('#openDashboardCalendar');
@@ -374,6 +377,8 @@ export function createDashboardFeature(deps) {
     if (cardTitle) cardTitle.textContent = fullyComplete ? 'RESUMO DA TEMPORADA' : 'PRÓXIMA PARTIDA';
 
     const sponsorPending = typeof isSponsorChoicePending === 'function' && isSponsorChoicePending();
+    const livePostMatch = typeof canReopenLivePostMatch === 'function' && canReopenLivePostMatch();
+    const hasCompletedMatch = typeof lastCompletedUserEntry === 'function' && !!lastCompletedUserEntry();
 
     // Temporada fechada: o CTA precisa ficar visível para reabrir o balanço / avançar.
     if (playBtn) {
@@ -390,6 +395,12 @@ export function createDashboardFeature(deps) {
         playBtn.textContent = 'JOGAR PARTIDA →';
         playBtn.title = '';
       }
+    }
+    if (postMatchBtn) {
+      postMatchBtn.classList.toggle('hidden', !livePostMatch && !hasCompletedMatch);
+      postMatchBtn.title = livePostMatch
+        ? 'Reabrir o resumo pós-jogo da partida atual'
+        : 'Ver o relatório da última partida concluída';
     }
     if (simBtn) simBtn.classList.toggle('hidden', !idle);
     if (inspectBtn) inspectBtn.classList.toggle('hidden', idle || fullyComplete || !display);

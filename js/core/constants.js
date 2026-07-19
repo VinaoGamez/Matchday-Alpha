@@ -1,5 +1,5 @@
 /** Build e versões de save — contrato estável entre módulos. */
-export const BUILD_VERSION = 'alpha-02-tester-28';
+export const BUILD_VERSION = 'alpha-02-tester-29';
 
 export const SAVE_KEYS = {
   career: 'matchday-new-game',
@@ -26,7 +26,7 @@ export const MODULE_VERSIONS = {
   matchCore: 1,
   matchLive: 4,
   calendar: 4,
-  dashboard: 5,
+  dashboard: 6,
   tactics: 3,
   seasonSummary: 2,
   discipline: 2,
@@ -40,7 +40,7 @@ export const MODULE_VERSIONS = {
   matchAvailability: 1,
   matchLiveAwaySubs: 1,
   matchLiveOrchestration: 4,
-  matchLiveSession: 4,
+  matchLiveSession: 5,
   liveMatchPersist: 2,
   clubStatus: 8,
   managerRanking: 2,
