@@ -30,6 +30,7 @@ import { MODULE_VERSIONS } from '../core/constants.js';
  * @param {Function} deps.drawBoard
  * @param {Function} deps.renderStats
  * @param {Function} deps.renderLiveOpponent
+ * @param {Function} [deps.pushLiveVolumeIncident]
  */
 export function createAwaySubController(deps) {
   const {
@@ -59,6 +60,7 @@ export function createAwaySubController(deps) {
     drawBoard,
     renderStats,
     renderLiveOpponent,
+    pushLiveVolumeIncident,
   } = deps;
 
   const awayBenchPlayers = () =>
@@ -81,6 +83,7 @@ export function createAwaySubController(deps) {
     liveMinutesPlayed.away.set(incoming.name, liveMinutesPlayed.away.get(incoming.name) ?? 0);
     incrementAwaySubstitutions();
     log(`${club.name}: sai ${outgoing.name}, entra ${incoming.name}${incoming.pos !== outgoing.pos ? ' improvisado na função' : ''}.`, tag, 'away');
+    pushLiveVolumeIncident?.('away', 'substitution', { name: `${outgoing.name} → ${incoming.name}` });
     return true;
   };
 

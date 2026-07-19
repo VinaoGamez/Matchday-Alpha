@@ -1,6 +1,54 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-25',
+    date: '2026-07-19',
+    publishedAt: '2026-07-19T00:45:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'AO VIVO',
+        items: [
+          'Pênalti contra: comparativo cobrador × goleiro; cobrança só após o botão ASSISTIR (tempo para ler).',
+          'Acréscimos passam a seguir interrupções reais: sem cartão/substituição no 2º tempo, o quadro fica em 2–3\' (não mais 7\' por sorte).',
+          'Gol contra no Volume: bola vermelha com detalhes brancos no lado do time que sofreu.',
+          'Substituições no Volume: setas verde/vermelha no lado do time que fez a troca.',
+          'Disputa de pênaltis no mata-mata: cobranças da IA também com comparativo e animação; título repetido removido.',
+        ],
+      },
+      {
+        label: 'Campeonatos',
+        items: [
+          'Todas as competições vira dropdown na página (sem modal); setas para grupos da Série D e fases da Copa/mata-mata.',
+          'Com mata-mata da D ativo, alterne Grupos ↔ Mata-mata no modal e na página Campeonatos.',
+          'Zonas de acesso/rebaixamento nas tabelas A/B/C; escudos e badges de divisão nos confrontos.',
+        ],
+      },
+      {
+        label: 'Temporada',
+        items: [
+          'Medidor gráfico no balanço: desempenho entregue vs meta pedida pela diretoria.',
+          'Preview seguro: Opções → PREVIEW META (ou ?preview=season-goal) — não altera a carreira.',
+        ],
+      },
+    ],
+  },
+  {
+    version: 'alpha-02-tester-24',
+    date: '2026-07-18',
+    publishedAt: '2026-07-19T00:15:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'AO VIVO',
+        items: [
+          'Acréscimos recalibrados: 1º ~1–3\', 2º ~3–5\' (7\' raro). Em mata-mata ou nas 2 últimas rodadas da liga, o 2º pode chegar a 8–10\' — extremamente raro.',
+          'Badge de suspensão só aparece no torneio da partida (não vaza de Copa/liga cruzada). Elenco continua mostrando todas.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-23',
     date: '2026-07-18',
     publishedAt: '2026-07-18T23:30:00-03:00',

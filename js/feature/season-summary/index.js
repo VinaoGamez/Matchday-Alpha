@@ -48,6 +48,42 @@ const assistMedalIcon = () =>
     <text x="14" y="22" text-anchor="middle" fill="#9ae8ff" font-size="4.5" font-weight="800" font-family="DM Sans,sans-serif">AST</text>
   </svg>`;
 
+/** Medidor visual: desempenho entregue vs meta pedida pela diretoria. */
+const GOAL_GAUGE = {
+  exceeded: { score: 100, short: 'Superou', hint: 'Acima do pedido', color: '#b6ff38' },
+  met: { score: 78, short: 'Cumpriu', hint: 'No combinado', color: '#63d9ff' },
+  near: { score: 48, short: 'Quase', hint: 'Perto da meta', color: '#ffc94f' },
+  missed: { score: 22, short: 'Abaixo', hint: 'Abaixo do pedido', color: '#ff8c94' },
+};
+
+const seasonGoalGauge = (status = 'met') => {
+  const key = GOAL_GAUGE[status] ? status : 'met';
+  const { score, short, hint, color } = GOAL_GAUGE[key];
+  const radius = 34;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.max(0, Math.min(100, score)) / 100;
+  const dash = (circumference * progress).toFixed(2);
+  const gap = (circumference - circumference * progress).toFixed(2);
+  // Meta da diretoria = 100% do pedido (marcador no topo do anel).
+  return `<aside class="season-goal-gauge goal-${key}" style="--gauge-color:${color};--gauge-score:${score}" aria-label="Desempenho frente à meta: ${hint}">
+    <div class="season-goal-gauge-ring">
+      <svg viewBox="0 0 88 88" aria-hidden="true" focusable="false">
+        <circle class="season-goal-gauge-track" cx="44" cy="44" r="${radius}"/>
+        <circle class="season-goal-gauge-progress" cx="44" cy="44" r="${radius}" stroke-dasharray="${dash} ${gap}"/>
+        <circle class="season-goal-gauge-target" cx="${44 + radius}" cy="44" r="3.2"/>
+      </svg>
+      <div class="season-goal-gauge-score">
+        <strong>${score}%</strong>
+        <span>${short}</span>
+      </div>
+    </div>
+    <div class="season-goal-gauge-legend">
+      <span><i class="delivered" aria-hidden="true"></i>Entregue</span>
+      <span><i class="requested" aria-hidden="true"></i>Pedido</span>
+    </div>
+  </aside>`;
+};
+
 const MODAL_HTML = `
 <div id="seasonTransitionModal" class="modal hidden">
   <div class="modal-card season-summary-modal">
@@ -57,6 +93,12 @@ const MODAL_HTML = `
     <div id="seasonTransitionSummary" class="season-summary-user"></div>
     <section class="season-summary-section" id="seasonGoalSection">
       <header><h3>Meta da temporada</h3><small>Avaliação da diretoria sobre o combinado</small></header>
+      <div id="seasonGoalPreviewSwitcher" class="season-goal-preview-switcher hidden" role="tablist" aria-label="Status da meta (preview)">
+        <button type="button" data-goal-preview-status="missed">Abaixo</button>
+        <button type="button" data-goal-preview-status="near">Quase</button>
+        <button type="button" data-goal-preview-status="met">Cumpriu</button>
+        <button type="button" data-goal-preview-status="exceeded">Superou</button>
+      </div>
       <div id="seasonGoalResult" class="season-goal-result"></div>
     </section>
     <section class="season-summary-section">
@@ -93,24 +135,99 @@ const MODAL_HTML = `
 /**
  * Resumo de fim de temporada — campeões, líderes e movimentos de divisão.
  */
+const PREVIEW_GOAL_SAMPLES = {
+  missed: {
+    status: 'missed',
+    label: 'Conquistar o acesso à Série C',
+    feeling: 'Abaixo do combinado. A diretoria cobrará mudanças. Com um pacote comercial alto, a cobrança pela meta ficou mais dura.',
+    boardDelta: -17,
+  },
+  near: {
+    status: 'near',
+    label: 'Chegar às oitavas do mata-mata',
+    feeling: 'Quase lá — a diretoria mantém o projeto, com ressalvas.',
+    boardDelta: -3,
+  },
+  met: {
+    status: 'met',
+    label: 'Avançar da fase de grupos',
+    feeling: 'Meta da temporada cumprida. A diretoria está satisfeita.',
+    boardDelta: 4,
+  },
+  exceeded: {
+    status: 'exceeded',
+    label: 'Conquistar o acesso à Série C',
+    feeling: 'A diretoria celebra: a meta foi superada. O pacote de patrocínio elevado reforçou o crédito junto à diretoria.',
+    boardDelta: 18,
+  },
+};
+
 export function createSeasonSummaryFeature(deps) {
   const { $, clubCrestInitials, onStartNextSeason, onCloseSeasonSummary } = deps;
   let handlersBound = false;
+  let previewMode = false;
+  let previewStatus = 'missed';
+
+  const syncPreviewChrome = () => {
+    const modal = $('#seasonTransitionModal');
+    const switcher = $('#seasonGoalPreviewSwitcher');
+    const closeBtn = $('#closeSeasonSummary');
+    const startBtn = $('#startNextSeason');
+    const label = modal?.querySelector('label');
+    modal?.classList.toggle('is-preview', previewMode);
+    switcher?.classList.toggle('hidden', !previewMode);
+    if (switcher && previewMode) {
+      switcher.querySelectorAll('[data-goal-preview-status]').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.goalPreviewStatus === previewStatus);
+      });
+    }
+    if (closeBtn) closeBtn.textContent = previewMode ? 'FECHAR PREVIEW' : 'VOLTAR À TEMPORADA';
+    if (startBtn) {
+      startBtn.classList.toggle('hidden', previewMode);
+      startBtn.disabled = previewMode;
+    }
+    if (label) label.textContent = previewMode ? 'PREVIEW · NÃO ALTERA A CARREIRA' : 'TEMPORADA CONCLUÍDA';
+  };
+
+  const exitPreview = () => {
+    previewMode = false;
+    syncPreviewChrome();
+    $('#seasonTransitionModal')?.classList.add('hidden');
+  };
 
   const bindHandlers = () => {
     if (handlersBound) return;
     handlersBound = true;
     document.addEventListener('click', event => {
+      const previewStatusBtn = event.target.closest('[data-goal-preview-status]');
+      if (previewStatusBtn && previewMode) {
+        event.preventDefault();
+        event.stopPropagation();
+        const next = previewStatusBtn.dataset.goalPreviewStatus;
+        if (!PREVIEW_GOAL_SAMPLES[next] || next === previewStatus) return;
+        previewStatus = next;
+        openPreview(previewStatus);
+        return;
+      }
       const closeBtn = event.target.closest('#closeSeasonSummary');
       if (closeBtn) {
         event.preventDefault();
         event.stopPropagation();
+        if (previewMode) {
+          exitPreview();
+          return;
+        }
         if (onCloseSeasonSummary) onCloseSeasonSummary();
         else $('#seasonTransitionModal')?.classList.add('hidden');
         return;
       }
       const button = event.target.closest('#startNextSeason');
       if (!button) return;
+      if (previewMode) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       onStartNextSeason?.();
@@ -204,8 +321,13 @@ export function createSeasonSummaryFeature(deps) {
     seasonRewards = null,
     formatBudget = value => `R$ ${value}`,
     seasonGoalResult = null,
+    preview = false,
   }) => {
     injectDom();
+    previewMode = !!preview;
+    if (preview && seasonGoalResult?.status && PREVIEW_GOAL_SAMPLES[seasonGoalResult.status]) {
+      previewStatus = seasonGoalResult.status;
+    }
     $('#seasonSummaryTitle').textContent = `Balanço da temporada ${careerSeason}`;
     $('#seasonSummaryYear').textContent = careerSeason;
     $('#seasonTransitionLead').textContent =
@@ -228,8 +350,9 @@ export function createSeasonSummaryFeature(deps) {
         }[seasonGoalResult.status] || 'Avaliação';
         const delta = Number(seasonGoalResult.boardDelta) || 0;
         const deltaText = delta > 0 ? `Diretoria +${delta}` : delta < 0 ? `Diretoria ${delta}` : 'Diretoria sem alteração';
-        goalEl.className = `season-goal-result goal-${seasonGoalResult.status || 'met'}`;
-        goalEl.innerHTML = `<strong>${seasonGoalResult.label}</strong><span>${statusLabel}</span><small>${seasonGoalResult.feeling || ''}</small><em>${deltaText}</em>`;
+        const status = seasonGoalResult.status || 'met';
+        goalEl.className = `season-goal-result goal-${status}`;
+        goalEl.innerHTML = `<div class="season-goal-result-copy"><strong>${seasonGoalResult.label}</strong><span>${statusLabel}</span><small>${seasonGoalResult.feeling || ''}</small><em>${deltaText}</em></div>${seasonGoalGauge(status)}`;
       } else {
         goalSection.classList.add('hidden');
         goalEl.innerHTML = '';
@@ -256,10 +379,49 @@ export function createSeasonSummaryFeature(deps) {
     $('#seasonMovements').innerHTML = movements
       .map(({ title, clubs, type }) => movementCard(title, clubs, userClub, type))
       .join('');
+    syncPreviewChrome();
     $('#seasonTransitionModal').classList.remove('hidden');
   };
 
-  const close = () => $('#seasonTransitionModal')?.classList.add('hidden');
+  /**
+   * Abre o balanço com dados fictícios só para validar o medidor da meta.
+   * Não chama callbacks de temporada e não altera save/carreira.
+   */
+  const openPreview = (status = 'missed') => {
+    previewStatus = PREVIEW_GOAL_SAMPLES[status] ? status : 'missed';
+    const sample = PREVIEW_GOAL_SAMPLES[previewStatus];
+    const emptyLeaders = { scorers: [], assistants: [] };
+    open({
+      userClub: 'Atlético Preview',
+      careerSeason: 2027,
+      userLine: 'Permanecerá na Série D em 2028. (dados fictícios do preview)',
+      userStatus: 'neutral',
+      leadText: 'Preview seguro: use os botões da meta para trocar o status do medidor. Fechar não altera a carreira.',
+      champions: { A: 'Clube Alfa', B: 'Clube Beta', C: 'Clube Gama', D: 'Atlético Preview', CUP: 'Clube Copa' },
+      leadersByDivision: {
+        A: emptyLeaders,
+        B: emptyLeaders,
+        C: emptyLeaders,
+        D: emptyLeaders,
+        CUP: emptyLeaders,
+      },
+      movements: [
+        { title: 'Acesso à Série C', clubs: ['Clube Norte', 'Clube Sul'], type: 'promote' },
+        { title: 'Permanece na Série D', clubs: ['Atlético Preview'], type: 'relegate' },
+      ],
+      seasonRewards: null,
+      seasonGoalResult: { ...sample },
+      preview: true,
+    });
+  };
+
+  const close = () => {
+    if (previewMode) {
+      exitPreview();
+      return;
+    }
+    $('#seasonTransitionModal')?.classList.add('hidden');
+  };
 
   const setIdleSimStatus = text => {
     injectDom();
@@ -280,6 +442,7 @@ export function createSeasonSummaryFeature(deps) {
     moduleVersion: MODULE_VERSIONS.seasonSummary,
     init,
     open,
+    openPreview,
     close,
     openIdleSim,
     closeIdleSim,

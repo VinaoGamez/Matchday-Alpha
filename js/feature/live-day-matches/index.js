@@ -207,7 +207,7 @@ export function createLiveDayMatchesFeature(deps) {
         liveDayMatchSnapshots.set(id, { game, isUser: true });
         return;
       }
-      const result = simulateRoundMatch(game.home, game.away);
+      const result = simulateRoundMatch(game.home, game.away, game);
       liveDayMatchSnapshots.set(id, {
         game,
         isUser: false,

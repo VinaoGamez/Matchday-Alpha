@@ -167,11 +167,19 @@ export function createTacticsFeature(deps) {
           span.append('Expulso');
         }
       });
+      const labels = [...existing.querySelectorAll('span')].map(span => span.textContent.trim());
+      if (!labels.includes('Suspenso')) {
+        const vacant = [...existing.querySelectorAll('span')].find(span => span.textContent.trim() === 'Expulso');
+        const html =
+          '<span><i class="board-legend-dot board-legend-suspended"></i>Suspenso</span>';
+        if (vacant) vacant.insertAdjacentHTML('beforebegin', html);
+        else existing.insertAdjacentHTML('beforeend', html);
+      }
       return;
     }
     stack.insertAdjacentHTML(
       'beforeend',
-      '<div class="board-legend" aria-hidden="true"><span><i class="board-legend-card board-legend-yellow"></i>Amarelo</span><span><i class="board-legend-dot board-legend-injury"></i>Lesão</span><span><i class="board-legend-dot board-legend-risk"></i>Incômodo</span><span><i class="board-legend-dot board-legend-vacant"></i>Expulso</span></div>'
+      '<div class="board-legend" aria-hidden="true"><span><i class="board-legend-card board-legend-yellow"></i>Amarelo</span><span><i class="board-legend-dot board-legend-injury"></i>Lesão</span><span><i class="board-legend-dot board-legend-risk"></i>Incômodo</span><span><i class="board-legend-dot board-legend-suspended"></i>Suspenso</span><span><i class="board-legend-dot board-legend-vacant"></i>Expulso</span></div>'
     );
   };
 
@@ -609,7 +617,11 @@ export function createTacticsFeature(deps) {
       if (getHasCareer()) persistSeason();
       return;
     }
-    commitLiveSubstitution?.(outgoing.name, { wasInjured, wasAtRisk });
+    commitLiveSubstitution?.(outgoing.name, {
+      wasInjured,
+      wasAtRisk,
+      incomingName: incoming.name,
+    });
     log(
       `Substituição no ${userClub}: sai ${outgoing.name}, entra ${incoming.name}${improvised ? ` (${incoming.pos} adaptado para ${expectedRole}).` : ''}.`,
       'substitution',

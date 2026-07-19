@@ -75,7 +75,10 @@ export function createPlayerCells({
     if (seasonYellows) parts.push(seasonYellows);
 
     const discipline = player?.discipline || {};
-    const suspensions = activeSuspensions?.(discipline) || [];
+    // Igual aos amarelos: no jogo/preparação só a competição em foco; elenco pode ver todas.
+    const suspensions = allCompetitions
+      ? activeSuspensions?.(discipline) || []
+      : activeSuspensions?.(discipline, focusKey()) || [];
     if (suspensions.length) {
       const summary = suspensions
         .map(

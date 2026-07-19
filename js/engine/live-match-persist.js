@@ -142,6 +142,15 @@ export function buildLiveMatchSnapshot(state) {
     stoppageSecond: Number(state.stoppageSecond) || 0,
     stoppageElapsed: Number(state.stoppageElapsed) || 0,
     stoppageActive: state.stoppageActive || null,
+    stoppageHalfSnap: state.stoppageHalfSnap && typeof state.stoppageHalfSnap === 'object'
+      ? {
+          fouls: Number(state.stoppageHalfSnap.fouls) || 0,
+          yellow: Number(state.stoppageHalfSnap.yellow) || 0,
+          red: Number(state.stoppageHalfSnap.red) || 0,
+          subs: Number(state.stoppageHalfSnap.subs) || 0,
+          goals: Number(state.stoppageHalfSnap.goals) || 0,
+        }
+      : null,
     userFormation: state.userFormation || null,
     userLineupOrder: Array.isArray(state.userLineupOrder) ? [...state.userLineupOrder] : [],
     awayFormation: state.awayFormation || null,

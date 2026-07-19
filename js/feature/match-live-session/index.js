@@ -202,6 +202,7 @@ export function createMatchLiveSessionFeature(deps) {
     $('#shootoutPanel')?.classList.add('hidden');
     $('#penaltyDuelModal')?.classList.add('hidden');
     $('#penaltyChoice')?.classList.add('hidden');
+    $('#penaltyCompare')?.classList.add('hidden');
     $('#liveOpponentModal').classList.add('hidden');
     closeFormationSuggestion();
     advanceSeasonRound();

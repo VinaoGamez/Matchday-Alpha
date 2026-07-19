@@ -28,6 +28,7 @@ const GUIDE_SECTIONS = [
       'Calendário e rotina de treinos; Escritório (orçamento/investimentos); Estádio (bilheteria).',
       'Série D: fase de grupos + mata-mata. Copa do Brasil: fases e sorteios progressivos.',
       'Fim de temporada: confira acessos, premiação por fase (Série D / Copa) e transição.',
+      'Medidor da meta: Opções → PREVIEW META (ou ?preview=season-goal). Dados fictícios; não altera o save.',
     ],
   },
   {

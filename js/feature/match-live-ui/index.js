@@ -8,6 +8,8 @@ import {
   chartSpan,
 } from '../../engine/match-clock.js';
 import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
+import ownGoalBallUrl from '../../../assets/ui/goal-ball-own.png?url';
+import subArrowsUrl from '../../../assets/ui/sub-arrows.png?url';
 
 /**
  * Fatia de UI da partida ao vivo — modal do adversário, relógio, placar,
@@ -446,12 +448,24 @@ export function createMatchLiveUiFeature(deps) {
     const screenH = svg.clientHeight || 112;
     const scaleX = Math.max(0.001, screenW / W);
     const scaleY = Math.max(0.001, screenH / H);
+    // Gol normal: lado de quem marcou. Gol contra: lado de quem sofreu (bola vermelha).
+    const mapGoalEvent = (goal, scoredSide) => {
+      const own = goal?.type === 'own';
+      const sufferSide = scoredSide === 'home' ? 'away' : 'home';
+      return {
+        ...goal,
+        side: own ? sufferSide : scoredSide,
+        kind: own ? 'own-goal' : 'goal',
+      };
+    };
     const goalEvents = [
-      ...(sideGoals.home || []).map(goal => ({ ...goal, side: 'home', kind: 'goal' })),
-      ...(sideGoals.away || []).map(goal => ({ ...goal, side: 'away', kind: 'goal' })),
+      ...(sideGoals.home || []).map(goal => mapGoalEvent(goal, 'home')),
+      ...(sideGoals.away || []).map(goal => mapGoalEvent(goal, 'away')),
     ];
     const incidentEvents = (typeof getVolumeIncidents === 'function' ? getVolumeIncidents() || [] : [])
-      .filter(item => ['yellow', 'red', 'injury', 'penalty-miss'].includes(item?.type))
+      .filter(item =>
+        ['yellow', 'red', 'injury', 'penalty-miss', 'substitution'].includes(item?.type),
+      )
       .map(item => ({
         minute: Number(item.minute) || 0,
         stoppage: Number(item.stoppage) || 0,
@@ -468,15 +482,23 @@ export function createMatchLiveUiFeature(deps) {
     const kindLabel = kind =>
       ({
         goal: 'Gol',
+        'own-goal': 'Gol contra',
         yellow: 'Amarelo',
         red: 'Vermelho',
         injury: 'Lesão',
         'penalty-miss': 'Pênalti perdido',
+        substitution: 'Substituição',
       })[kind] || kind;
     const markerIcon = (kind, x, y) => {
       const t = `translate(${x.toFixed(2)} ${y.toFixed(2)}) scale(${(1 / scaleX).toFixed(4)} ${(1 / scaleY).toFixed(4)})`;
       if (kind === 'goal') {
         return `<g transform="${t}"><image href="${goalBallUrl}" xlink:href="${goalBallUrl}" x="-10" y="-10" width="20" height="20" preserveAspectRatio="xMidYMid meet"/></g>`;
+      }
+      if (kind === 'own-goal') {
+        return `<g transform="${t}"><image href="${ownGoalBallUrl}" xlink:href="${ownGoalBallUrl}" x="-10" y="-10" width="20" height="20" preserveAspectRatio="xMidYMid meet"/></g>`;
+      }
+      if (kind === 'substitution') {
+        return `<g transform="${t}"><image href="${subArrowsUrl}" xlink:href="${subArrowsUrl}" x="-11" y="-11" width="22" height="22" preserveAspectRatio="xMidYMid meet"/></g>`;
       }
       if (kind === 'penalty-miss') {
         return `<g transform="${t}">
@@ -500,22 +522,42 @@ export function createMatchLiveUiFeature(deps) {
       </g>`;
     };
     const markerBand = kind => {
-      if (kind === 'goal' || kind === 'penalty-miss') return 0.88;
+      if (kind === 'goal' || kind === 'own-goal' || kind === 'penalty-miss') return 0.88;
+      if (kind === 'substitution') return 0.72;
       if (kind === 'injury') return 0.62;
       return 0.38;
     };
+    // Conta ocorrências no mesmo minuto/lado para espalhar na horizontal.
+    const stackTotals = new Map();
+    allMarkers.forEach(event => {
+      const key = stackKey(event.side, eventChart(event));
+      stackTotals.set(key, (stackTotals.get(key) || 0) + 1);
+    });
     const markers = allMarkers
       .map(event => {
         const cMin = eventChart(event);
-        const x = toX(cMin);
+        const baseX = toX(cMin);
         const amp = volumeAt(cMin, event.side);
         const key = stackKey(event.side, cMin);
         const stack = stackCount.get(key) || 0;
         stackCount.set(key, stack + 1);
+        const total = stackTotals.get(key) || 1;
+        // Espaço em px de tela (ícones grandes como sub precisam de mais folga).
+        const gapPx =
+          event.kind === 'substitution' || event.kind === 'goal' || event.kind === 'own-goal'
+            ? 18
+            : event.kind === 'injury' || event.kind === 'penalty-miss'
+              ? 15
+              : 11;
+        const gapChart = gapPx / scaleX;
+        const offsetIndex = stack - (total - 1) / 2;
+        const x = clamp(baseX + offsetIndex * gapChart, 10, W - 10);
         const band = markerBand(event.kind);
         const baseY = volumePeakY(midY, event.side === 'home', Math.max(amp, band * 0.7), maxAmp * band);
-        const stackShift = stack * (8 / scaleY) * (event.side === 'home' ? -1 : 1);
-        const y = clamp(baseY + stackShift, padY + 6, H - padY - 6);
+        // Só empilha na vertical se ainda houver muitos no mesmo ponto.
+        const row = Math.floor(stack / 4);
+        const stackShiftY = row * (10 / scaleY) * (event.side === 'home' ? -1 : 1);
+        const y = clamp(baseY + stackShiftY, padY + 6, H - padY - 6);
         const tipY = event.side === 'home' ? y + 3 : y - 3;
         const minLabel = formatMatchMinuteLabel(event.minute, event.stoppage || 0);
         const title = event.name

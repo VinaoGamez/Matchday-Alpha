@@ -370,19 +370,19 @@
   }
 }
 
-.championship-page-heading {
-  margin-bottom: 18px;
-}
-
 .championship-page-table {
   padding: 0 !important;
   border: 1px solid #28505b !important;
   border-radius: 8px !important;
-  overflow: hidden;
+  /* visible: o menu "Todas as competições" não pode ser cortado */
+  overflow: visible;
   background: #0b1a22 !important;
+  margin-top: 0;
 }
 
 .championship-page-table-title {
+  position: relative;
+  z-index: 5;
   min-height: 66px;
   padding: 14px 18px;
   display: flex;
@@ -391,26 +391,121 @@
   gap: 18px;
   background: #0d2029;
   border-bottom: 1px solid #28505b;
+  border-radius: 8px 8px 0 0;
 }
 
-.championship-page-table-title > div {
+.championship-page-title-block {
   display: grid;
   gap: 3px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
-.championship-page-table-title small {
+.championship-page-table-title small,
+#championshipPageSub {
   color: #63d9ff;
   font: 700 8px 'DM Sans', sans-serif;
   letter-spacing: 1px;
 }
 
-.championship-page-table-title strong {
+.championship-page-title-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.championship-page-title-nav strong,
+#championshipPageTitle {
   color: #eef9f7;
   font: 700 22px 'Barlow Condensed', sans-serif;
   letter-spacing: .25px;
+  min-width: 0;
 }
 
-.championship-page-table-title button {
+.championship-page-nav-btn {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0 !important;
+  border: 1px solid #315b68 !important;
+  border-radius: 5px !important;
+  background: #102b35 !important;
+  color: #9edff0 !important;
+  font: 700 18px/1 'DM Sans', sans-serif !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.championship-page-nav-btn:hover:not(:disabled),
+.championship-page-nav-btn:focus-visible:not(:disabled) {
+  background: #1d5a6d !important;
+  border-color: #63d9ff !important;
+  color: #fff !important;
+  outline: 0;
+}
+
+.championship-page-nav-btn:disabled {
+  opacity: .35;
+  cursor: default;
+  color: #5f7e86 !important;
+}
+
+.championship-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.championship-page-serie-d-mode {
+  display: flex;
+  gap: 4px;
+}
+
+.championship-page-serie-d-mode.hidden {
+  display: none !important;
+}
+
+.championship-page-serie-d-mode button {
+  border: 1px solid #315b68 !important;
+  border-radius: 4px !important;
+  background: #0c1e28 !important;
+  color: #8eb4b8 !important;
+  padding: 8px 10px !important;
+  font: 700 9px 'DM Sans', sans-serif !important;
+  letter-spacing: .4px !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.championship-page-serie-d-mode button:hover,
+.championship-page-serie-d-mode button:focus-visible {
+  background: #143443 !important;
+  border-color: #63d9ff !important;
+  color: #fff !important;
+  outline: 0;
+}
+
+.championship-page-serie-d-mode button.is-active {
+  background: #174052 !important;
+  border-color: #63d9ff !important;
+  color: #f4fcfc !important;
+  box-shadow: inset 0 -2px #63d9ff !important;
+}
+
+.championship-page-picker {
+  position: relative;
+  z-index: 6;
+  flex: 0 0 auto;
+}
+
+.championship-page-picker > button,
+#championshipPagePickerBtn {
   border: 1px solid #397487;
   border-radius: 4px;
   background: #102b35;
@@ -419,14 +514,243 @@
   font: 700 9px 'DM Sans', sans-serif;
   letter-spacing: .45px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
-.championship-page-table-title button:hover,
-.championship-page-table-title button:focus-visible {
+.championship-page-picker > button:hover,
+.championship-page-picker > button:focus-visible,
+#championshipPagePickerBtn[aria-expanded="true"] {
   background: #1d5a6d;
   border-color: #63d9ff;
   color: #fff;
   outline: 0;
+}
+
+.championship-page-picker-menu {
+  position: fixed;
+  z-index: 5000;
+  min-width: 220px;
+  max-height: min(360px, 70vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid #3a6d7e;
+  border-radius: 6px;
+  background: #0c1e28;
+  box-shadow: 0 12px 28px #000a;
+  display: grid;
+  gap: 4px;
+}
+
+.championship-page-picker-menu.hidden {
+  display: none !important;
+}
+
+.championship-page-picker-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px !important;
+  border: 1px solid transparent !important;
+  border-radius: 4px !important;
+  background: transparent !important;
+  color: #d7ecee !important;
+  font: 700 11px 'DM Sans', sans-serif !important;
+  letter-spacing: .2px !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.championship-page-picker-menu button:hover,
+.championship-page-picker-menu button:focus-visible {
+  background: #143443 !important;
+  border-color: #315b68 !important;
+  color: #fff !important;
+  outline: 0;
+}
+
+.championship-page-picker-menu button.is-active {
+  background: #174052 !important;
+  border-color: #63d9ff !important;
+  color: #f4fcfc !important;
+  box-shadow: inset 3px 0 #63d9ff !important;
+}
+
+.championship-page-table .league-head,
+.championship-page-table #leagueTable {
+  position: relative;
+  z-index: 1;
+}
+
+.championship-page-table #leagueTable {
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+}
+
+.championship-page-table.is-knockout .league-head {
+  display: none !important;
+}
+
+.championship-page-table.is-knockout #leagueTable {
+  display: flex;
+  justify-content: center;
+  padding: 16px 16px 20px;
+  background: #09151c;
+}
+
+.championship-page-ties {
+  width: min(640px, 100%);
+  display: grid;
+  gap: 8px;
+}
+
+.championship-page-tie {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #2c5460;
+  border-radius: 7px;
+  background: #0d2029;
+  color: #eef9f7;
+  box-shadow: inset 0 1px 0 #ffffff08;
+}
+
+.championship-page-tie.user-tie {
+  background: #1a3224;
+  border-color: #3f6a48;
+  box-shadow: inset 3px 0 0 #b6ff38, inset 0 1px 0 #ffffff08;
+}
+
+.championship-page-tie-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.championship-page-tie-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.championship-page-tie-side.is-away {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.championship-page-tie-side.is-away .club-label {
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+}
+
+.championship-page-tie-crest {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #174052;
+  border: 1px solid #3a6a7a;
+  color: #edf8f5;
+  font: 800 10px/1 'Barlow Condensed', sans-serif;
+  font-style: normal;
+  letter-spacing: .2px;
+}
+
+.championship-page-tie.user-tie .championship-page-tie-crest {
+  border-color: #6fb87a;
+  box-shadow: 0 0 0 1px #b6ff3822;
+}
+
+.championship-page-tie-club {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.championship-page-tie-club .club-label {
+  max-width: 100%;
+}
+
+.championship-page-tie-club .club-label > b,
+.championship-page-tie-club .club-label > .club-link {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #f4fcfc;
+  font: 700 15px/1.2 'Barlow Condensed', sans-serif;
+  letter-spacing: .2px;
+}
+
+.championship-page-tie-club .club-div {
+  font-size: 8px;
+  padding: 0.15em 0.4em;
+}
+
+.championship-page-tie-line > em {
+  justify-self: center;
+  min-width: 52px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: #122b35;
+  border: 1px solid #315b68;
+  color: #b6ff38;
+  font: 800 15px/1 'Barlow Condensed', sans-serif;
+  font-style: normal;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.championship-page-tie-meta {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  text-align: center;
+  padding-top: 2px;
+  border-top: 1px solid #234650;
+}
+
+.championship-page-tie-meta small {
+  color: #8fb0b8;
+  font: 600 11px/1.35 'DM Sans', sans-serif;
+}
+
+.championship-page-tie strong.winner-note {
+  color: #9edff0;
+  font: 700 11px 'DM Sans', sans-serif;
+}
+
+.championship-page-empty {
+  width: min(640px, 100%);
+  margin: 0 auto;
+  padding: 28px 18px;
+  color: #8ba7aa;
+  font: 600 13px/1.45 'DM Sans', sans-serif;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .championship-page-tie-line {
+    grid-template-columns: minmax(0, 1fr) 48px minmax(0, 1fr);
+    gap: 6px;
+  }
+  .championship-page-tie-crest {
+    width: 24px;
+    height: 24px;
+    font-size: 9px;
+  }
+  .championship-page-tie-club .club-label > b,
+  .championship-page-tie-club .club-label > .club-link {
+    font-size: 13px;
+  }
+  .championship-page-tie-line > em {
+    min-width: 44px;
+    font-size: 14px;
+  }
 }
 
 .championship-page-table .league-head,
@@ -462,10 +786,40 @@
   background: #102832 !important;
 }
 
+.championship-page-table .league-row.promotion {
+  background: #173b2b !important;
+  box-shadow: inset 3px 0 0 #58e6a8;
+}
+
+.championship-page-table .league-row.relegation {
+  background: #3a1d25 !important;
+  box-shadow: inset 3px 0 0 #ff6370;
+}
+
+.championship-page-table .league-row.promotion:hover {
+  background: #1a4230 !important;
+}
+
+.championship-page-table .league-row.relegation:hover {
+  background: #452028 !important;
+}
+
 .championship-page-table .league-row.highlight {
   background: #203b26 !important;
   color: #dcffa9 !important;
   box-shadow: inset 4px 0 0 #b6ff38;
+}
+
+.championship-page-table .league-row.promotion.highlight {
+  background: #1f4632 !important;
+  color: #dcffa9 !important;
+  box-shadow: inset 3px 0 0 #b6ff38;
+}
+
+.championship-page-table .league-row.relegation.highlight {
+  background: #4a2430 !important;
+  color: #ffd0d6 !important;
+  box-shadow: inset 3px 0 0 #b6ff38;
 }
 
 .championship-page-table .league-row span:nth-child(2) {
@@ -477,9 +831,47 @@
   font-weight: 800;
 }
 
+.championship-page-table .league-row.relegation span:last-child {
+  color: #ff8e8e;
+}
+
 .championship-page-table .league-row:focus-visible {
   outline: 2px solid #63d9ff;
   outline-offset: -2px;
+}
+
+.championship-page-zone-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 10px 18px 12px;
+  border-top: 1px solid #234650;
+  background: #0a161c;
+  color: #8ba7aa;
+  font: 600 10px 'DM Sans', sans-serif;
+}
+
+.championship-page-zone-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.championship-page-zone-legend i {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.championship-page-zone-legend i.promotion {
+  background: #173b2b;
+  box-shadow: inset 2px 0 0 #58e6a8;
+}
+
+.championship-page-zone-legend i.relegation {
+  background: #3a1d25;
+  box-shadow: inset 2px 0 0 #ff6370;
 }
 
 @media (min-width: 1500px) {
@@ -515,10 +907,6 @@
 }
 
 @media (max-width: 560px) {
-  .championship-page-heading h1 {
-    font-size: 32px;
-  }
-
   .championship-page-table-title {
     min-height: 58px;
     padding: 11px 12px;

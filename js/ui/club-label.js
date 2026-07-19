@@ -1,6 +1,6 @@
 /**
  * Badge de divisão ao lado do nome do clube (Série A/B/C/D).
- * Uso intencional: chaveamento da Copa do Brasil apenas.
+ * Uso: chaveamento da Copa e lista de confrontos na página Campeonatos.
  */
 
 const DIVISIONS = new Set(['A', 'B', 'C', 'D']);

@@ -11,6 +11,8 @@
 .player-badge-red{width:10px;height:14px;border-radius:2px;background:linear-gradient(180deg,#ff7a7a,#e31b1b);border:1px solid #8b1010;box-shadow:0 1px 3px #0007}
 .player-badge-suspended{width:15px;height:15px;border-radius:50%;border:1.5px solid #ff8993;background:#3a1519;box-shadow:inset 0 0 0 1px #ff637055,0 1px 3px #0006}
 .player-badge-suspended:after{content:"";display:block;width:11px;height:2px;margin:5.5px auto;background:#ff8993;transform:rotate(-35deg);border-radius:1px}
+.board-legend-suspended{position:relative;background:#3a1519;border-color:#ff8993}
+.board-legend-suspended:after{content:"";position:absolute;left:1px;right:1px;top:4px;height:2px;background:#ff8993;transform:rotate(-35deg);border-radius:1px}
 .player-badge-injury{width:17px;height:17px;border-radius:50%;position:relative;color:#ffd06b;border:1.5px solid currentColor;background:#2a2418;box-shadow:0 1px 3px #0006}
 .player-badge-injury.moderate{color:#ff9b3d;background:#2a1f14}
 .player-badge-injury.severe{color:#ff6370;background:#3a1519}
