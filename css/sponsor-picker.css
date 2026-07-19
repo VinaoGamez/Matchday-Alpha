@@ -1,3 +1,7 @@
+#sponsorPickerModal,
+#sponsorRerollWarnModal{
+  z-index:40;
+}
 .sponsor-picker-modal{
   width:min(920px,calc(100vw - 28px));
   max-height:calc(100vh - 36px);
@@ -29,20 +33,25 @@
 }
 .sponsor-picker-section>header{
   display:flex;
-  align-items:baseline;
+  align-items:center;
   justify-content:space-between;
   gap:10px;
   margin-bottom:10px;
+  padding:10px 14px;
+  border:1px solid #2a5560;
+  border-radius:8px;
+  background:linear-gradient(180deg,#102a36 0%,#0c222c 100%);
 }
 .sponsor-picker-section h3{
   margin:0;
-  font:800 18px Barlow Condensed,sans-serif;
+  font:800 22px/1.1 Barlow Condensed,sans-serif;
   color:#edf8f5;
+  letter-spacing:.3px;
 }
 .sponsor-picker-section small{
-  color:#8eb8c2;
-  font:700 10px DM Sans,sans-serif;
-  letter-spacing:.35px;
+  color:#9fcfd8;
+  font:700 12px DM Sans,sans-serif;
+  letter-spacing:.4px;
   text-transform:uppercase;
 }
 .sponsor-picker-grid{
@@ -56,40 +65,49 @@
   grid-template-columns:repeat(5,minmax(0,1fr));
 }
 .sponsor-offer-card{
+  position:relative;
   display:grid;
   grid-template-columns:56px minmax(0,1fr);
   gap:10px;
   align-items:center;
   padding:12px;
-  border:1px solid #2f5a68;
+  border:2px solid #2f5a68;
   border-radius:10px;
   background:linear-gradient(145deg,#0d2732,#0b1d25);
   color:#edf8f5;
   cursor:pointer;
   text-align:left;
-  transition:border-color .15s,box-shadow .15s,transform .12s;
+  transition:border-color .15s,background .15s,box-shadow .15s;
 }
 .sponsor-offer-card:hover{
   border-color:#63d9ff;
-  transform:translateY(-1px);
 }
 .sponsor-offer-card.selected{
   border-color:#b6ff38;
-  box-shadow:inset 0 0 0 1px #b6ff3844,0 0 18px #b6ff3818;
+  background:linear-gradient(145deg,#1b3d2a,#10281c);
+  box-shadow:inset 0 0 0 1px #b6ff3888,0 0 0 1px #b6ff3833;
+  outline:2px solid #b6ff38aa;
+  outline-offset:1px;
 }
 .sponsor-offer-logo{
   display:grid;
   place-items:center;
   width:56px;
   height:56px;
+  padding:5px;
   border-radius:10px;
+  box-sizing:border-box;
   background:#08151c;
   overflow:hidden;
 }
 .sponsor-offer-logo img{
+  display:block;
   width:100%;
   height:100%;
+  max-width:100%;
+  max-height:100%;
   object-fit:contain;
+  object-position:center;
 }
 .sponsor-picker-fallback{
   font:800 16px Barlow Condensed,sans-serif;
@@ -145,17 +163,75 @@
 .sponsor-picker-actions{
   display:flex;
   justify-content:flex-end;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
 }
 .sponsor-picker-actions button{
-  min-width:240px;
+  min-width:220px;
   background:linear-gradient(115deg,#b6ff38,#72e1ff)!important;
   color:#06131b!important;
   border:0!important;
   font-weight:800!important;
 }
+.sponsor-picker-actions button.sponsor-picker-reroll{
+  min-width:200px;
+  background:#0d2732!important;
+  color:#d7f4fb!important;
+  border:1px solid #3a7a8c!important;
+  box-shadow:none!important;
+}
+.sponsor-picker-actions button.sponsor-picker-reroll:hover:not(:disabled){
+  border-color:#63d9ff!important;
+  color:#f4fcfc!important;
+}
 .sponsor-picker-actions button:disabled{
   opacity:.45;
   cursor:not-allowed;
+}
+.sponsor-reroll-warn{
+  width:min(460px,calc(100vw - 28px));
+  text-align:left;
+  padding:24px 26px 20px!important;
+}
+.sponsor-reroll-warn>label{
+  display:block;
+  margin-bottom:4px;
+  color:#ffb45c;
+  font:700 10px DM Sans,sans-serif;
+  letter-spacing:1px;
+}
+.sponsor-reroll-warn h2{
+  margin:4px 0 10px;
+  font:800 28px Barlow Condensed,sans-serif;
+  color:#f4fcfc;
+  line-height:1.05;
+}
+.sponsor-reroll-warn p{
+  margin:0 0 18px;
+  color:#c5d5d7;
+  font:500 14px/1.45 DM Sans,sans-serif;
+}
+.sponsor-reroll-warn-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.sponsor-reroll-warn-actions button{
+  min-width:140px;
+  font-weight:800!important;
+}
+.sponsor-reroll-warn-actions .sponsor-reroll-exit{
+  background:#0d2732!important;
+  color:#d7f4fb!important;
+  border:1px solid #3a7a8c!important;
+  box-shadow:none!important;
+}
+.sponsor-reroll-warn-actions #sponsorRerollConfirm{
+  background:linear-gradient(115deg,#b6ff38,#72e1ff)!important;
+  color:#06131b!important;
+  border:0!important;
 }
 @media(max-width:900px){
   .sponsor-picker-grid.secondary{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -163,5 +239,8 @@
 @media(max-width:640px){
   .sponsor-picker-grid.master,
   .sponsor-picker-grid.secondary{grid-template-columns:1fr}
+  .sponsor-picker-actions{flex-direction:column-reverse}
   .sponsor-picker-actions button{width:100%;min-width:0}
+  .sponsor-reroll-warn-actions{flex-direction:column-reverse}
+  .sponsor-reroll-warn-actions button{width:100%}
 }

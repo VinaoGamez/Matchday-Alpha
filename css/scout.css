@@ -1,4 +1,5 @@
 /* from engine.js scoutScaleCss */
+#teamScoutModal{z-index:50}
 #teamScoutModal .environment-gauge{width:82px!important}#teamScoutModal .environment-gauge strong{font-size:26px!important}#teamScoutModal .overall-box{width:82px!important;height:82px!important}.mood .dashboard-overall strong{font-size:30px}.mood .dashboard-overall small{color:#64786b}.dark-mode .mood .dashboard-overall small{color:#b9ccbe}
 /* from engine.js scoutSummaryCss */
 .scout-side{width:270px}.scout-pitch{margin-bottom:6px}

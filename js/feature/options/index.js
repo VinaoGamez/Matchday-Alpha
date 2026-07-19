@@ -19,6 +19,8 @@ const GAME_PACE_CONFIG = {
  * @param {Function} deps.cleanCareerText
  * @param {Function} deps.writeJson
  * @param {Function} deps.clearSeasonSave
+ * @param {Function} [deps.clearCareerStorage]
+ * @param {Function} [deps.markSkipPersistOnce]
  * @param {object} deps.SAVE_KEYS
  * @param {boolean} deps.hasCareer
  * @param {Function} deps.getSavedCareer
@@ -36,6 +38,8 @@ export function createOptionsFeature(deps) {
     cleanCareerText,
     writeJson,
     clearSeasonSave,
+    clearCareerStorage,
+    markSkipPersistOnce,
     SAVE_KEYS,
     hasCareer,
     getSavedCareer,
@@ -171,7 +175,12 @@ export function createOptionsFeature(deps) {
       finances: status(55, 88),
       budget: initialBudget(selectedCareerDivision),
     };
-    writeJson(SAVE_KEYS.career, {
+    // Impede o beforeunload da sessão atual de regravar o save antigo
+    // (conflito de seed + estouro de cota do localStorage).
+    markSkipPersistOnce?.();
+    if (typeof clearCareerStorage === 'function') clearCareerStorage({ clearTraining: true });
+    else clearSeasonSave();
+    const careerPayload = {
       seed,
       clubName,
       managerName,
@@ -182,8 +191,13 @@ export function createOptionsFeature(deps) {
       season: defaultCareerSeason,
       createdAt: new Date().toISOString(),
       version: 4,
-    });
-    clearSeasonSave();
+    };
+    const saved = writeJson(SAVE_KEYS.career, careerPayload);
+    if (!saved) {
+      error.textContent =
+        'Não foi possível salvar a nova carreira (memória do navegador cheia). Limpe dados do site e tente novamente.';
+      return;
+    }
     $('#newGameModal').classList.add('hidden');
     $('#optionsModal').classList.add('hidden');
     redirectGame();

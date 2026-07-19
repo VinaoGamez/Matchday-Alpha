@@ -536,12 +536,15 @@ main > .view.active {
   margin: 0 !important;
 }
 
-.dashboard-tables .messages-feed-card,
 .dashboard-tables .standings,
 .dashboard-tables .upcoming-dashboard,
-.dashboard-tables .recent-dashboard,
-.dashboard-tables .leaders-dashboard {
+.dashboard-tables .recent-dashboard {
   grid-column: auto !important;
+}
+
+.dashboard-tables .leaders-dashboard,
+.dashboard-tables .messages-feed-card {
+  display: none !important;
 }
 
 .dashboard-tables > .card > label {
@@ -666,7 +669,7 @@ main > .view.active {
     grid-column: 1 / -1 !important;
     grid-row: 2 !important;
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    grid-template-rows: auto auto !important;
+    grid-template-rows: auto !important;
     gap: 24px !important;
     column-gap: 24px !important;
     row-gap: 24px !important;
@@ -687,26 +690,11 @@ main > .view.active {
     grid-row: 1;
   }
 
-  .view#dashboard .dashboard-tables .leaders-dashboard {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .view#dashboard .dashboard-tables .messages-feed-card {
-    grid-column: 2 / -1;
-    grid-row: 2;
-  }
-
   .view#dashboard .dashboard-tables .card {
     min-height: 248px !important;
     height: 100% !important;
     max-height: none !important;
     padding: 20px 22px !important;
-  }
-
-  .view#dashboard .dashboard-tables .leaders-dashboard,
-  .view#dashboard .dashboard-tables .messages-feed-card {
-    height: 100% !important;
   }
 }
 
@@ -717,9 +705,7 @@ main > .view.active {
 
   .dashboard-tables .standings,
   .dashboard-tables .upcoming-dashboard,
-  .dashboard-tables .recent-dashboard,
-  .dashboard-tables .leaders-dashboard,
-  .dashboard-tables .messages-feed-card {
+  .dashboard-tables .recent-dashboard {
     grid-column: auto !important;
     grid-row: auto !important;
   }
@@ -1379,29 +1365,73 @@ main > .view.active {
 /* --- Dashboard: alinhamento visual das tabelas --- */
 .view#dashboard .club-upcoming-head,
 .view#dashboard .club-upcoming-row {
-  grid-template-columns: 40px minmax(0, 1.55fr) minmax(118px, 0.9fr) 56px !important;
+  grid-template-columns: minmax(0, 1.7fr) minmax(108px, 0.85fr) 56px !important;
   gap: 8px !important;
   align-items: center;
 }
 
-.view#dashboard .club-upcoming-head span:nth-child(3),
-.view#dashboard .club-upcoming-row span:nth-child(3) {
+.view#dashboard .club-upcoming-head span:nth-child(2),
+.view#dashboard .club-upcoming-row > span:nth-child(2) {
   text-align: right;
 }
 
-.view#dashboard .club-upcoming-head span:nth-child(4) {
+.view#dashboard .club-upcoming-head span:nth-child(3) {
   text-align: right;
 }
 
-.view#dashboard .club-upcoming-row span:nth-child(4) {
+.view#dashboard .club-upcoming-row > span:nth-child(3) {
   justify-self: end;
   text-align: center;
   min-width: 48px;
 }
 
-.view#dashboard .club-upcoming-row span:first-child {
-  font-variant-numeric: tabular-nums;
-  color: #9fcfd8;
+.view#dashboard .club-upcoming-fixture {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.view#dashboard .club-upcoming-matchup {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view#dashboard .club-upcoming-badge.match-competition {
+  max-width: none;
+  flex: 0 0 auto;
+  gap: 4px;
+  padding: 2px 6px 2px 4px;
+  box-shadow: inset 0 0 0 1px #ffffff08;
+}
+
+.view#dashboard .club-upcoming-badge .match-competition-trophy {
+  width: 11px;
+  height: 11px;
+  filter: drop-shadow(0 1px 2px #00000055);
+}
+
+.view#dashboard .club-upcoming-badge.match-competition b {
+  font-size: 8px;
+  letter-spacing: 0.2px;
+  line-height: 1.1;
+}
+
+@media (min-width: 1100px) {
+  .view#dashboard .club-upcoming-badge.match-competition {
+    max-width: none;
+    padding: 2px 6px 2px 4px;
+    gap: 4px;
+  }
+  .view#dashboard .club-upcoming-badge .match-competition-trophy {
+    width: 11px;
+    height: 11px;
+  }
+  .view#dashboard .club-upcoming-badge.match-competition b {
+    font-size: 8px;
+  }
 }
 
 .view#dashboard .fixture-table-head,

@@ -1,5 +1,6 @@
 import './security/tester-hardening.js';
 import { BUILD_VERSION } from './core/constants.js';
+import { SPONSOR_EXTERNAL_LINKS } from './core/sponsor-links.js';
 import { showUpdateAlertIfNeeded } from './ui/update-alert.js';
 import { createTesterHubFeature } from './feature/tester-hub/index.js';
 
@@ -17,6 +18,7 @@ const SPONSOR_LOGO_URLS = Object.fromEntries(
 );
 
 const SPONSOR_ORDER = [
+  'tekno-cursos',
   'nubanco',
   'petrobraz',
   'magazine-luizao',
@@ -98,18 +100,23 @@ const SPONSOR_ORDER = [
     const logos = SPONSOR_ORDER.map(slug => ({
       slug,
       url: SPONSOR_LOGO_URLS[slug],
+      href: SPONSOR_EXTERNAL_LINKS[slug] || '',
+      label: slug.replace(/-/g, ' '),
     })).filter(item => item.url);
 
     if (!logos.length) return;
 
+    const slotMarkup = item => {
+      const img = `<img src="${item.url}" alt="${item.label}" width="72" height="72" decoding="async">`;
+      if (item.href) {
+        return `<a class="home-sponsor-slot" href="${item.href}" target="_blank" rel="noopener noreferrer" title="${item.label}" aria-label="Abrir site de ${item.label}">${img}</a>`;
+      }
+      return `<span class="home-sponsor-slot" title="${item.label}">${img}</span>`;
+    };
+
     // Duplica a lista para loop contínuo sem salto.
     const sequence = [...logos, ...logos];
-    track.innerHTML = sequence
-      .map(
-        item =>
-          `<span class="home-sponsor-slot"><img src="${item.url}" alt="" width="72" height="72" decoding="async"></span>`,
-      )
-      .join('');
+    track.innerHTML = sequence.map(slotMarkup).join('');
 
     const gap = 10;
     const visible = 4;
@@ -122,6 +129,8 @@ const SPONSOR_ORDER = [
       slotSize = (width - gap * (visible - 1)) / visible;
       track.querySelectorAll('.home-sponsor-slot').forEach(slot => {
         slot.style.flex = `0 0 ${slotSize}px`;
+        slot.style.width = `${slotSize}px`;
+        slot.style.height = `${slotSize}px`;
       });
       track.style.transform = `translate3d(-${index * (slotSize + gap)}px,0,0)`;
     };

@@ -1,0 +1,441 @@
+/* Copa do Brasil — chaveamento (leitura ampliada) */
+.cup-bracket-modal .modal-card{
+  width:min(1180px,calc(100vw - 16px));
+  max-height:min(92vh,820px);
+  display:flex;
+  flex-direction:column;
+  text-align:left;
+  padding:18px 22px 16px;
+  background:linear-gradient(180deg,#0d2834 0%,#081820 100%);
+  border:1px solid #2a5560;
+}
+.cup-bracket-modal .close{
+  top:14px;
+  right:14px;
+  width:32px;
+  height:32px;
+  border-radius:6px;
+  background:transparent;
+  border:1px solid transparent;
+  color:#8fb0b8;
+  font-size:20px;
+  line-height:1;
+}
+.cup-bracket-modal .close:hover{
+  color:#edf8f5;
+  border-color:#3a6b77;
+  background:#122b35;
+}
+.cup-bracket-modal .cup-bracket-head{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px 18px;
+  margin:0 0 14px;
+  padding:12px 44px 12px 14px;
+  min-height:64px;
+  border:1px solid rgba(99,217,255,0.12);
+  border-radius:8px;
+  background:linear-gradient(180deg,#102a36 0%,#0c222c 100%);
+  box-shadow:none;
+}
+.cup-bracket-titles{
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  gap:3px;
+  min-width:0;
+  flex:1 1 auto;
+  padding:2px 0;
+}
+.cup-bracket-modal .cup-bracket-head label{
+  display:block;
+  width:auto;
+  margin:0;
+  color:#8fb0b8;
+  font:700 10px/1.2 'DM Sans',sans-serif;
+  letter-spacing:.85px;
+  text-transform:uppercase;
+}
+.cup-bracket-modal .cup-bracket-head h2{
+  margin:0;
+  font:800 22px/1.15 'Barlow Condensed',sans-serif;
+  color:#edf8f5;
+  letter-spacing:.3px;
+}
+.cup-bracket-actions{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  margin:0;
+  flex:0 0 auto;
+  align-self:center;
+}
+.cup-bracket-modal .cup-bracket-status{
+  color:#b6ff38;
+  font:700 11px 'DM Sans',sans-serif;
+  letter-spacing:.45px;
+  white-space:nowrap;
+}
+.cup-bracket-modal .cup-bracket-status.is-wait{color:#7fa8b0}
+.cup-bracket-btn{
+  min-width:0;
+  height:36px;
+  padding:0 14px!important;
+  border-radius:6px!important;
+  font:700 11px 'DM Sans',sans-serif!important;
+  letter-spacing:.4px!important;
+  cursor:pointer;
+  box-shadow:none!important;
+  transform:none!important;
+  display:inline-flex!important;
+  align-items:center;
+  justify-content:center;
+}
+.cup-bracket-btn.ghost,
+.dark-mode .cup-bracket-btn.ghost{
+  background:rgba(18,43,53,0.65)!important;
+  color:#edf8f5!important;
+  border:1px solid #3a6b77!important;
+}
+.cup-bracket-btn.ghost:hover:not(:disabled),
+.dark-mode .cup-bracket-btn.ghost:hover:not(:disabled){
+  border-color:#63d9ff!important;
+  background:#163845!important;
+}
+.cup-bracket-btn.primary,
+.dark-mode .cup-bracket-btn.primary{
+  background:#24667c!important;
+  color:#fff!important;
+  border:1px solid #63d9ff!important;
+}
+.cup-bracket-btn:disabled,
+.dark-mode .cup-bracket-btn:disabled{
+  opacity:.38!important;
+  cursor:not-allowed!important;
+}
+.cup-bracket-phase-nav{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding-left:2px;
+}
+.cup-bracket-btn.cup-bracket-nav,
+.dark-mode .cup-bracket-btn.cup-bracket-nav{
+  min-width:36px;
+  width:36px;
+  height:36px;
+  padding:0!important;
+  font:800 15px 'DM Sans',sans-serif!important;
+  letter-spacing:0!important;
+  line-height:1;
+}
+.cup-tree-center-nav{
+  margin-top:0;
+  display:flex;
+  justify-content:center;
+  width:100%;
+}
+.cup-tree-center-nav .cup-bracket-phase-nav{
+  justify-content:center;
+  padding-left:0;
+}
+.cup-bracket-body{
+  overflow:auto;
+  min-height:200px;
+  flex:1;
+  margin:0 -2px;
+  padding:8px 2px 6px;
+}
+.cup-bracket-empty{
+  padding:40px 18px;
+  text-align:center;
+  color:#7fa8b0;
+  font:600 14px 'DM Sans',sans-serif;
+  border:1px dashed #28505b;
+  border-radius:6px;
+  background:#0b1a22;
+}
+
+.cup-tree{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(168px,220px) minmax(0,1fr);
+  gap:12px 14px;
+  align-items:stretch;
+  min-width:680px;
+  min-height:240px;
+}
+.cup-tree-wing{
+  display:flex;
+  gap:10px;
+  align-items:stretch;
+  min-width:0;
+}
+.cup-tree-wing.left{flex-direction:row;}
+.cup-tree-wing.right{flex-direction:row-reverse;}
+.cup-tree-round{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  flex:1;
+  min-width:0;
+  justify-content:flex-start;
+}
+.cup-tree-round>h4{
+  margin:0 0 8px;
+  text-align:center;
+  color:#63d9ff;
+  font:700 11px 'DM Sans',sans-serif;
+  letter-spacing:.55px;
+  text-transform:uppercase;
+}
+.cup-tree-matches{
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-start;
+  gap:12px;
+  flex:1;
+}
+.cup-tree.phase-only.has-user-path .cup-tree-match.dim-tie{
+  opacity:.62;
+}
+.cup-tree.phase-only.has-user-path .cup-tree-match.dim-tie:hover{
+  opacity:.92;
+}
+.cup-tree-match{
+  position:relative;
+  border:1px solid #2a5563;
+  border-radius:7px;
+  background:rgba(8,28,38,.92);
+  overflow:hidden;
+}
+.cup-tree-match.user-tie{
+  border-color:#63d9ff;
+  box-shadow:0 0 0 1px #63d9ff88,0 0 18px #63d9ff33,inset 4px 0 0 #b6ff38;
+  background:linear-gradient(90deg,rgba(20,55,70,.98),rgba(8,28,38,.96));
+  opacity:1!important;
+  order:-1;
+}
+.cup-tree-user-badge{
+  padding:6px 10px;
+  background:#143040;
+  color:#b6ff38;
+  font:800 11px 'DM Sans',sans-serif;
+  letter-spacing:.55px;
+  border-bottom:1px solid #2a5563;
+}
+.cup-tree-center-user{
+  margin:0;
+  color:#63d9ff;
+  font:700 12px/1.35 'DM Sans',sans-serif;
+}
+.cup-tree-center-count{
+  margin:0;
+  color:#9ebfc2;
+  font:600 11px/1.3 'DM Sans',sans-serif;
+}
+.cup-tree-pot.has-user{
+  border-color:#63d9ff88;
+  box-shadow:0 0 0 1px #63d9ff22;
+}
+.cup-tree-team{
+  display:grid;
+  grid-template-columns:28px minmax(0,1fr) 28px;
+  gap:8px;
+  align-items:center;
+  padding:9px 11px;
+  min-height:38px;
+  color:#e8f4f5;
+  font:600 13px 'DM Sans',sans-serif;
+}
+.cup-tree-team+.cup-tree-team{border-top:1px solid #1e3a44}
+.cup-tree-team .crest{
+  display:grid;
+  place-items:center;
+  width:26px;
+  height:26px;
+  border-radius:50%;
+  background:#174052;
+  border:1px solid #3a6a7a;
+  color:#edf8f5;
+  font:800 10px 'Barlow Condensed',sans-serif;
+  font-style:normal;
+}
+.cup-tree-team.tbd-slot .crest{
+  background:#102b35;
+  color:#7fa8b0;
+  border-color:#315b68;
+}
+.cup-tree-team-main{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:6px 8px;
+  min-width:0;
+}
+.cup-tree-team-main .club-label{max-width:100%}
+.cup-tree-team b{
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  overflow:hidden;
+  white-space:normal;
+  line-height:1.25;
+  font-weight:700;
+  font-size:13px;
+  color:#edf8f5;
+  min-width:0;
+}
+.cup-tree-team em{
+  font-style:normal;
+  font:800 18px 'Barlow Condensed',sans-serif;
+  text-align:right;
+  color:#edf8f5;
+  line-height:1;
+}
+.cup-tree-team.winner b,
+.cup-tree-team.winner em{color:#b6ff38}
+.cup-tree-team.user-club b{color:#63d9ff}
+.cup-tree-team.user-club .crest{
+  border-color:#63d9ff;
+  background:#1a4a5c;
+}
+.cup-tree-match-meta{
+  display:grid;
+  gap:3px;
+  padding:8px 11px 9px;
+  border-top:1px solid #1e3a44;
+  color:#9ebfc2;
+  font:600 12px 'DM Sans',sans-serif;
+  letter-spacing:.15px;
+  line-height:1.35;
+}
+.cup-tree-match-meta strong{
+  color:#b6ff38;
+  font:700 12px 'DM Sans',sans-serif;
+}
+
+.cup-tree-center{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  padding:10px 4px;
+}
+.cup-tree-pot{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:12px;
+  border:1px solid #2a5560;
+  border-radius:8px;
+  background:linear-gradient(180deg,#102a36 0%,#0c222c 100%);
+  padding:14px 12px;
+  text-align:center;
+}
+.cup-tree-pot-info{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  padding:2px 4px 10px;
+  border-bottom:1px solid rgba(99,217,255,0.12);
+}
+.cup-tree-pot-phase,
+.cup-tree-pot>strong{
+  display:block;
+  margin:0;
+  color:#edf8f5;
+  font:800 18px/1.15 'Barlow Condensed',sans-serif;
+  letter-spacing:.4px;
+}
+.cup-tree-pot-status{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-top:4px;
+  padding:4px 10px;
+  border-radius:999px;
+  border:1px solid #3a6b77;
+  background:rgba(18,43,53,0.7);
+  color:#b6ff38;
+  font:700 10px 'DM Sans',sans-serif;
+  letter-spacing:.5px;
+}
+.cup-tree-pot-status.is-wait{
+  color:#7fa8b0;
+  border-color:#315b68;
+}
+.cup-tree-pot-status.is-done{
+  color:#63d9ff;
+  border-color:#3a6b77;
+}
+.cup-tree-pot-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:6px;
+}
+.cup-tree-pot-grid i{
+  display:grid;
+  place-items:center;
+  aspect-ratio:1;
+  border-radius:50%;
+  background:#174052;
+  border:1px solid #3a6a7a;
+  color:#edf8f5;
+  font:800 10px 'Barlow Condensed',sans-serif;
+  font-style:normal;
+}
+.cup-tree-pot-grid i.tbd{
+  border-radius:4px;
+  background:#102b35;
+  color:#7fa8b0;
+  border-style:dashed;
+}
+.cup-tree-pot-grid i.user-club{
+  border-color:#63d9ff;
+  color:#63d9ff;
+}
+.cup-tree-final-slot{
+  width:100%;
+  border:1px solid #63d9ff66;
+  border-radius:7px;
+  background:#0b1a22;
+  overflow:hidden;
+}
+.cup-tree-final-slot>span{
+  display:block;
+  padding:8px 10px;
+  background:#123843;
+  color:#63d9ff;
+  font:700 12px 'DM Sans',sans-serif;
+  letter-spacing:.5px;
+  text-align:center;
+}
+
+.cup-tree.single-final{
+  grid-template-columns:1fr;
+  min-width:0;
+  max-width:420px;
+  margin:0 auto;
+}
+
+@media(max-width:720px){
+  .cup-tree{
+    grid-template-columns:1fr;
+    min-width:0;
+  }
+  .cup-tree-wing.left,
+  .cup-tree-wing.right{
+    flex-direction:column;
+  }
+  .cup-tree-wing.right{order:3}
+  .cup-tree-center{order:2}
+  .cup-tree-team b{font-size:14px}
+  .cup-tree-match-meta{font-size:12px}
+}

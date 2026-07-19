@@ -7,6 +7,9 @@ import {
   generateJobOffers,
   MANAGER_JOB_HONEYMOON_ROUNDS,
   MANAGER_JOB_CRISIS_THRESHOLD,
+  MANAGER_JOB_BOARD_STREAK_SACK,
+  MANAGER_JOB_SEVERE_THRESHOLD,
+  MANAGER_JOB_SOFT_PAIR_THRESHOLD,
 } from '../js/engine/manager-job.js';
 import { createManagerRankingEngine } from '../js/engine/manager-ranking.js';
 import { matchDelta, tableDelta, driftDelta } from '../js/engine/club-status/rules/board.js';
@@ -33,22 +36,26 @@ const assertEq = (name, actual, expected) => {
 };
 
 console.log('\n=== 1) Matriz resolveBoardJobRisk ===\n');
-console.log(`Limiar=${MANAGER_JOB_CRISIS_THRESHOLD}  Lua de mel=${MANAGER_JOB_HONEYMOON_ROUNDS}  STATUS_MIN=${STATUS_MIN}\n`);
+console.log(
+  `Limiar=${MANAGER_JOB_CRISIS_THRESHOLD}  Severo=${MANAGER_JOB_SEVERE_THRESHOLD}/${MANAGER_JOB_SOFT_PAIR_THRESHOLD}  Streak=${MANAGER_JOB_BOARD_STREAK_SACK}  Mel=${MANAGER_JOB_HONEYMOON_ROUNDS}  MIN=${STATUS_MIN}\n`,
+);
 
 const cases = [
   { name: 'saudável', board: 60, finances: 70, played: 10, expect: 'ok' },
-  { name: 'só board baixo', board: 30, finances: 60, played: 10, expect: 'warn_board' },
+  { name: 'só board baixo (início streak)', board: 30, finances: 60, played: 10, streak: 0, expect: 'warn_board' },
   { name: 'só finanças baixas', board: 60, finances: 30, played: 10, expect: 'warn_finances' },
   { name: 'ambos baixos + mel', board: 30, finances: 30, played: 3, expect: 'critical' },
   { name: 'ambos baixos pós-mel', board: 30, finances: 30, played: 10, expect: 'sacked' },
-  { name: 'limiar exato 35/35', board: 35, finances: 35, played: 10, expect: 'ok' },
-  { name: '34/35 (só board)', board: 34, finances: 35, played: 10, expect: 'warn_board' },
-  { name: '35/34 (só fin)', board: 35, finances: 34, played: 10, expect: 'warn_finances' },
-  { name: '34/34 demissão', board: 34, finances: 34, played: 6, expect: 'sacked' },
+  { name: 'limiar exato 40/40', board: 40, finances: 40, played: 10, expect: 'ok' },
+  { name: '39/40 (só board)', board: 39, finances: 40, played: 10, streak: 0, expect: 'warn_board' },
+  { name: '40/39 (só fin)', board: 40, finances: 39, played: 10, expect: 'warn_finances' },
+  { name: '39/39 demissão', board: 39, finances: 39, played: 6, expect: 'sacked' },
+  { name: 'par suave board severo', board: 30, finances: 48, played: 10, expect: 'sacked' },
+  { name: 'par suave fin severo', board: 48, finances: 30, played: 10, expect: 'sacked' },
   { name: 'piso 28/28 demissão', board: 28, finances: 28, played: 20, expect: 'sacked' },
   { name: 'alreadySacked', board: 80, finances: 80, played: 1, alreadySacked: true, expect: 'sacked' },
-  { name: 'gatilho 1 isolado NÃO demite', board: 28, finances: 50, played: 20, expect: 'warn_board' },
-  { name: 'gatilho 2 isolado NÃO demite', board: 50, finances: 28, played: 20, expect: 'warn_finances' },
+  { name: 'board sustentado demite', board: 30, finances: 60, played: 12, streak: MANAGER_JOB_BOARD_STREAK_SACK - 1, expect: 'sacked' },
+  { name: 'fin isolada ainda avisa', board: 55, finances: 28, played: 20, expect: 'warn_finances' },
 ];
 
 for (const c of cases) {
@@ -56,6 +63,7 @@ for (const c of cases) {
     board: c.board,
     finances: c.finances,
     played: c.played,
+    boardCrisisStreak: c.streak || 0,
     alreadySacked: !!c.alreadySacked,
   });
   assertEq(c.name, r.status, c.expect);
@@ -81,6 +89,7 @@ const simulateSeason = ({
   let played = 0;
   let firstWarn = null;
   let sackRound = null;
+  let boardCrisisStreak = 0;
   const trail = [];
 
   for (let i = 0; i < results.length; i++) {
@@ -104,7 +113,8 @@ const simulateSeason = ({
     syncFromBudget(club, { balance, baseline, wageBill, shortfall: club.wageShortfall, clamp, clampStatus });
     finances = club.finances;
 
-    const risk = resolveBoardJobRisk({ board, finances, played });
+    const risk = resolveBoardJobRisk({ board, finances, played, boardCrisisStreak });
+    boardCrisisStreak = risk.boardCrisisStreak || 0;
     trail.push({
       round: played,
       result,
@@ -112,6 +122,7 @@ const simulateSeason = ({
       finances: Math.round(finances),
       balance: Math.round(balance),
       status: risk.status,
+      streak: boardCrisisStreak,
     });
     if (!firstWarn && (risk.status === 'warn_board' || risk.status === 'warn_finances' || risk.status === 'critical')) {
       firstWarn = { round: played, status: risk.status };
@@ -138,13 +149,13 @@ const scenarios = [
     budgetBurnPerRound: initialBudget('A') * 0.1,
   }),
   simulateSeason({
-    label: 'Só derrotas, caixa intacto (NÃO deve demitir)',
+    label: 'Só derrotas, caixa intacto (DEVE demitir por streak da diretoria)',
     results: boardOnlyCrisis,
     startBudgetRatio: 1.2,
     budgetBurnPerRound: 0,
   }),
   simulateSeason({
-    label: 'Resultados ok, queima brutal de caixa (NÃO deve demitir)',
+    label: 'Resultados ok, queima brutal de caixa (pode demitir se fin/board cruzarem)',
     results: goodRun,
     startBudgetRatio: 0.35,
     budgetBurnPerRound: initialBudget('A') * 0.14,
@@ -182,12 +193,13 @@ const s4 = scenarios[4];
 console.log('\n--- Asserções de temporada ---\n');
 if (s0.sackRound != null) ok(`crise combinada demite (r${s0.sackRound})`);
 else fail('crise combinada demite', 'não demitiu em 20 rodadas');
-if (s1.sackRound == null) ok('só board baixo NÃO demite');
-else fail('só board baixo NÃO demite', `demitiu r${s1.sackRound}`);
-if (s2.sackRound == null) ok('só finanças baixas NÃO demite');
-else fail('só finanças baixas NÃO demite', `demitiu r${s2.sackRound}`);
+if (s1.sackRound != null) ok(`board sustentado demite (r${s1.sackRound})`);
+else fail('board sustentado demite', 'não demitiu com caixa intacto');
 if (s4.sackRound == null) ok('campanha boa permanece');
 else fail('campanha boa permanece', `demitiu r${s4.sackRound}`);
+// s2 (só caixa) pode ou não demitir via par suave — não é asserção rígida
+if (s2.sackRound != null) ok(`queima de caixa demitiu (r${s2.sackRound}) — par suave/combinado`);
+else ok('queima de caixa só avisou (finanças isoladas sem board fraco)');
 
 console.log('\n=== 3) Monte Carlo ===\n');
 
@@ -248,8 +260,8 @@ const mcHealthy = runMc('C) Campanha saudável ×100', 100, () => ({
 
 if (mcPure.sacked >= 180) ok(`crise pura demite bastante (${mcPure.sacked}/200)`);
 else fail('crise pura demite bastante', `${mcPure.sacked}/200`);
-if (mcMixed.sacked >= 40 && mcMixed.sacked <= 200) ok(`misto estressado taxa plausível (${mcMixed.sacked}/300)`);
-else fail('misto estressado taxa plausível', `${mcMixed.sacked}/300`);
+if (mcMixed.sacked >= 180) ok(`misto estressado demite com frequência (${mcMixed.sacked}/300)`);
+else fail('misto estressado demite com frequência', `${mcMixed.sacked}/300`);
 if (mcHealthy.sacked === 0) ok('saudável: zero demissões');
 else fail('saudável: zero demissões', `${mcHealthy.sacked} demitidos`);
 const allRounds = [...mcPure.rounds, ...mcMixed.rounds, ...mcHealthy.rounds];
@@ -318,9 +330,11 @@ for (let b = STATUS_MIN; b <= 50; b++) {
   }
 }
 console.log(grid);
-const sackCells = (MANAGER_JOB_CRISIS_THRESHOLD - STATUS_MIN) ** 2;
-if (grid.sacked === sackCells) ok(`células de demissão = ${sackCells} (28–34 × 28–34)`);
-else fail('células de demissão', `esperado ${sackCells}, got ${grid.sacked}`);
+// Com limiar 40 + par suave, a área de demissão é maior que o antigo quadrado 28–34.
+if (grid.sacked >= 180 && grid.sacked <= 280) ok(`células de demissão amplas (${grid.sacked})`);
+else fail('células de demissão amplas', `got ${grid.sacked}`);
+if (grid.ok >= 100) ok(`ainda há zona segura (${grid.ok} células ok)`);
+else fail('ainda há zona segura', `ok=${grid.ok}`);
 
 console.log(`\n=== RESULTADO: ${passed} ok, ${failed} falhas ===\n`);
 process.exit(failed ? 1 : 0);

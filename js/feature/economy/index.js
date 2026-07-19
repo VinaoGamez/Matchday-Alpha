@@ -1,5 +1,5 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
-import { sponsorLogoSlug } from '../../engine/economy.js';
+import { sponsorExternalUrl, sponsorLogoSlug } from '../../engine/economy.js';
 
 const SPONSOR_LOGO_URLS = Object.fromEntries(
   Object.entries(
@@ -189,11 +189,19 @@ export function createEconomyFeature(deps) {
     const name = item?.name || '—';
     const slug = sponsorLogoSlug(name);
     const logoUrl = slug ? SPONSOR_LOGO_URLS[slug] : null;
-    const size = master ? 96 : 88;
+    const href = sponsorExternalUrl(name);
+    const img = logoUrl
+      ? `<img src="${logoUrl}" alt="${name}" width="88" height="88" decoding="async">`
+      : '';
     const logo = logoUrl
-      ? `<span class="office-sponsor-logo"><img src="${logoUrl}" alt="${name}" width="${size}" height="${size}" decoding="async"></span>`
+      ? href
+        ? `<a class="office-sponsor-logo is-link" href="${href}" target="_blank" rel="noopener noreferrer" title="Abrir site de ${name}" aria-label="Abrir site de ${name}">${img}</a>`
+        : `<span class="office-sponsor-logo">${img}</span>`
       : `<span class="office-sponsor-logo missing" aria-hidden="true">${String(name).slice(0, 1)}</span>`;
-    return `<div class="office-sponsor-card${master ? ' master' : ''}"><div class="office-sponsor-brand">${logo}<div class="office-sponsor-copy"><b>${name}</b><i class="office-sponsor-divider" aria-hidden="true"></i><strong>${formatBudget(item?.value)}</strong></div></div></div>`;
+    const title = href
+      ? `<a class="office-sponsor-name-link" href="${href}" target="_blank" rel="noopener noreferrer">${name}</a>`
+      : name;
+    return `<div class="office-sponsor-card${master ? ' master' : ''}"><div class="office-sponsor-brand">${logo}<div class="office-sponsor-copy"><b>${title}</b><i class="office-sponsor-divider" aria-hidden="true"></i><strong>${formatBudget(item?.value)}</strong></div></div></div>`;
   };
 
   const renderSponsors = () => {

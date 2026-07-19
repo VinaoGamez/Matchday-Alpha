@@ -75,6 +75,47 @@ export function clearSeasonSave() {
   localStorage.removeItem(SAVE_KEYS.liveMatch);
 }
 
+/** Flag one-shot: impede persistSeason no beforeunload (Novo Jogo / troca de carreira). */
+const SKIP_PERSIST_ONCE_KEY = 'matchday-skip-persist-once';
+
+export function markSkipPersistOnce() {
+  try {
+    sessionStorage.setItem(SKIP_PERSIST_ONCE_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+export function consumeSkipPersistOnce() {
+  try {
+    if (!sessionStorage.getItem(SKIP_PERSIST_ONCE_KEY)) return false;
+    sessionStorage.removeItem(SKIP_PERSIST_ONCE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Limpa carreira + temporada + live (+ treino opcional) para liberar cota
+ * e evitar conflito ao iniciar Novo Jogo.
+ */
+export function clearCareerStorage({ clearTraining = true } = {}) {
+  try {
+    localStorage.removeItem(SAVE_KEYS.career);
+  } catch {
+    /* ignore */
+  }
+  clearSeasonSave();
+  if (clearTraining) {
+    try {
+      localStorage.removeItem(SAVE_KEYS.training);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export function hydrateMessages(season, valid) {
   if (!valid || !Array.isArray(season?.careerMessages)) return [];
   return season.careerMessages.map(message => ({ ...message, read: !!message.read }));

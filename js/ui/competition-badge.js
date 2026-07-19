@@ -61,13 +61,17 @@ export function applyCompetitionBadge(target, game, opts = {}) {
 
 /**
  * Markup HTML do selo (para injeção estática ou dinâmica).
- * @param {{ id?: string, nameId?: string, name?: string, kind?: string }} [opts]
+ * @param {{ id?: string|null, nameId?: string|null, name?: string, kind?: string, extraClass?: string }} [opts]
  */
 export function competitionBadgeMarkup({
   id = 'matchCompetition',
   nameId = 'matchCompetitionName',
   name = 'Brasileirão Série A',
   kind = 'serie-a',
+  extraClass = '',
 } = {}) {
-  return `<span id="${id}" class="match-competition" data-kind="${kind}" aria-label="${name}">${COMPETITION_TROPHY_SVG}<b id="${nameId}" data-competition-name>${name}</b></span>`;
+  const idAttr = id ? ` id="${id}"` : '';
+  const nameIdAttr = nameId ? ` id="${nameId}"` : '';
+  const className = ['match-competition', extraClass].filter(Boolean).join(' ');
+  return `<span${idAttr} class="${className}" data-kind="${kind}" aria-label="${name}">${COMPETITION_TROPHY_SVG}<b${nameIdAttr} data-competition-name>${name}</b></span>`;
 }

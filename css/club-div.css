@@ -1,0 +1,55 @@
+/* Badge de série — chaveamento da Copa */
+.club-label{
+  display:inline-flex;
+  align-items:center;
+  gap:0.35em;
+  min-width:0;
+  max-width:100%;
+  vertical-align:middle;
+}
+
+.club-label .club-link,
+.club-label>.club-link{
+  min-width:0;
+}
+
+.club-div{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+  padding:0.12em 0.42em;
+  border-radius:999px;
+  font-size:0.62em;
+  font-style:normal;
+  font-weight:800;
+  letter-spacing:0.04em;
+  line-height:1.2;
+  text-transform:uppercase;
+  white-space:nowrap;
+}
+
+.club-div-a{
+  background:rgba(56,189,248,0.18);
+  color:#7dd3fc;
+}
+
+.club-div-b{
+  background:rgba(74,222,128,0.16);
+  color:#86efac;
+}
+
+.club-div-c{
+  background:rgba(251,191,36,0.16);
+  color:#fcd34d;
+}
+
+.club-div-d{
+  background:rgba(248,113,113,0.16);
+  color:#fca5a5;
+}
+
+.cup-tree-team-main .club-div{
+  font-size:0.58em;
+  padding:0.1em 0.38em;
+}

@@ -24,7 +24,7 @@ const MODAL_HTML = `
  * Modal de demissão + propostas (estilo Brasfoot).
  */
 export function createManagerSackFeature(deps) {
-  const { $, onAcceptOffer, onRefuseCareer } = deps;
+  const { $, onAcceptOffer, onRefuseCareer, onViewRoster } = deps;
   let handlersBound = false;
   let currentOffers = [];
 
@@ -32,6 +32,14 @@ export function createManagerSackFeature(deps) {
     if (handlersBound) return;
     handlersBound = true;
     document.addEventListener('click', event => {
+      const roster = event.target.closest('[data-sack-roster]');
+      if (roster) {
+        event.preventDefault();
+        event.stopPropagation();
+        const club = roster.getAttribute('data-sack-roster');
+        if (club) onViewRoster?.(club);
+        return;
+      }
       const accept = event.target.closest('[data-sack-accept]');
       if (accept) {
         event.preventDefault();
@@ -103,7 +111,10 @@ export function createManagerSackFeature(deps) {
                 <small>Série ${offer.division} · OVR ${offer.overall || '—'} · ${offer.note || ''}</small>
                 <small class="manager-sack-incumbent">Atual: ${offer.incumbentName || '—'}</small>
               </div>
-              <button type="button" data-sack-accept="${offer.club}">ACEITAR</button>
+              <div class="manager-sack-offer-actions">
+                <button type="button" data-sack-roster="${offer.club}">ELENCO</button>
+                <button type="button" data-sack-accept="${offer.club}">ACEITAR</button>
+              </div>
             </article>`,
           )
           .join('');

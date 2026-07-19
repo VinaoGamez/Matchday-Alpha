@@ -1,4 +1,5 @@
 import { MODULE_VERSIONS } from '../core/constants.js';
+import { SPONSOR_EXTERNAL_LINKS, sponsorExternalUrlBySlug } from '../core/sponsor-links.js';
 
 /** Orçamento inicial por divisão (R$ fictícios). */
 export const INITIAL_BUDGET_BY_DIVISION = {
@@ -1333,6 +1334,7 @@ export function creditHomeGate(club, game, { division = 'A', capacity = null } =
 
 /** Pool único — qualquer nome pode ser Master ou Secundário. */
 export const SPONSOR_POOL = [
+  'Tekno Cursos',
   'Nubanco',
   'Petrobraz',
   'Magazine Luizão',
@@ -1353,8 +1355,26 @@ export const SPONSOR_POOL = [
   'FedExpressão',
 ];
 
+/**
+ * Parceiros reais (monetização) — lista interna.
+ * Sempre entram nas 7 ofertas (Master ou Secundário), sem repetir e sem label ao jogador.
+ */
+export const SPONSOR_REAL_PARTNERS = [
+  'Tekno Cursos',
+];
+
+/** Compat: pesos derivados da lista interna de parceiros reais. */
+export const SPONSOR_PARTNER_WEIGHTS = Object.fromEntries(
+  SPONSOR_REAL_PARTNERS.map(name => [name, 3]),
+);
+
+/** Histórico recente de ofertas (localStorage) para forçar rotação entre partidas. */
+const SPONSOR_OFFER_HISTORY_KEY = 'matchday-sponsor-offer-history';
+const SPONSOR_OFFER_HISTORY_LIMIT = 28;
+
 /** Slug do arquivo em assets/sponsors/icons/{slug}.png */
 export const SPONSOR_LOGO_SLUG = {
+  'Tekno Cursos': 'tekno-cursos',
   Nubanco: 'nubanco',
   Petrobraz: 'petrobraz',
   'Magazine Luizão': 'magazine-luizao',
@@ -1379,6 +1399,13 @@ export function sponsorLogoSlug(name) {
   return SPONSOR_LOGO_SLUG[name] || null;
 }
 
+export { SPONSOR_EXTERNAL_LINKS };
+
+/** URL externa do patrocinador (ou null se não houver link). */
+export function sponsorExternalUrl(name) {
+  return sponsorExternalUrlBySlug(sponsorLogoSlug(name));
+}
+
 /** Valor do contrato por temporada (R$), conforme divisão. Calibrado v1 fluxo. */
 export const SPONSOR_VALUE_BY_DIVISION = {
   A: { master: [6_000_000, 8_500_000], secondary: [1_200_000, 1_700_000] },
@@ -1386,6 +1413,88 @@ export const SPONSOR_VALUE_BY_DIVISION = {
   C: { master: [1_600_000, 2_400_000], secondary: [280_000, 450_000] },
   D: { master: [650_000, 1_100_000], secondary: [120_000, 220_000] },
 };
+
+function isRealSponsor(name) {
+  return SPONSOR_REAL_PARTNERS.includes(name);
+}
+
+function sponsorPickWeight(name) {
+  return isRealSponsor(name) ? 3 : 1;
+}
+
+function realSponsorsInPool() {
+  return SPONSOR_REAL_PARTNERS.filter(name => SPONSOR_POOL.includes(name));
+}
+
+/**
+ * Monta 7 nomes únicos: garante todos os parceiros reais, completa com o pool
+ * e embaralha posições (real pode cair em Master ou Secundário).
+ */
+function pickOfferSponsorNames({
+  count = 7,
+  locked = [],
+  random = Math.random,
+  history = [],
+} = {}) {
+  const rng = typeof random === 'function' ? random : Math.random;
+  const picked = [];
+  const seen = new Set();
+  const pushUnique = name => {
+    if (!name || seen.has(name) || !SPONSOR_POOL.includes(name)) return;
+    if (picked.length >= count) return;
+    seen.add(name);
+    picked.push(name);
+  };
+
+  // 1) Mantém seleções do jogador
+  (Array.isArray(locked) ? locked : []).forEach(pushUnique);
+
+  // 2) Garante parceiros reais (sempre na lista)
+  shuffleCopy(realSponsorsInPool(), rng).forEach(pushUnique);
+
+  // 3) Completa com o restante do pool (histórico só afeta fillers fictícios)
+  const available = SPONSOR_POOL.filter(name => !seen.has(name));
+  const weightOf = name => {
+    if (isRealSponsor(name)) return 1;
+    return recentOfferPenalty(name, history);
+  };
+  const need = Math.max(0, count - picked.length);
+  weightedSampleUnique(shuffleCopy(available, rng), need, rng, weightOf).forEach(pushUnique);
+
+  // Embaralha só os slots livres — locked permanece no prefixo para o caller montar roles.
+  // Aqui retornamos lista completa; quem gera ofertas decide Master/Secundário.
+  return picked.slice(0, count);
+}
+
+function loadSponsorOfferHistory() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SPONSOR_OFFER_HISTORY_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(item => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function pushSponsorOfferHistory(names = []) {
+  const prev = loadSponsorOfferHistory();
+  const next = [...names, ...prev].slice(0, SPONSOR_OFFER_HISTORY_LIMIT);
+  try {
+    localStorage.setItem(SPONSOR_OFFER_HISTORY_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+/** Penaliza marcas que já saíram recentemente nas ofertas. */
+function recentOfferPenalty(name, history) {
+  // Último pacote (7 ofertas): quase bloqueia repetição em Novo Jogo seguido.
+  if (history.slice(0, 7).includes(name)) return 0.015;
+  const count = history.filter(item => item === name).length;
+  if (count <= 0) return 1;
+  if (count === 1) return 0.22;
+  if (count === 2) return 0.08;
+  return 0.03;
+}
 
 function shuffleCopy(list, random = Math.random) {
   const pool = [...list];
@@ -1396,6 +1505,40 @@ function shuffleCopy(list, random = Math.random) {
     pool[swap] = temp;
   }
   return pool;
+}
+
+/** Amostra sem reposição com pesos (parceiros aparecem com mais frequência). */
+function weightedSampleUnique(list, count, random = Math.random, weightOf = () => 1) {
+  const pool = list.map(item => ({ item, weight: Math.max(0, Number(weightOf(item)) || 0) }));
+  const picked = [];
+  while (picked.length < count && pool.length) {
+    const total = pool.reduce((sum, entry) => sum + entry.weight, 0);
+    if (!(total > 0)) break;
+    let ticket = random() * total;
+    let index = pool.length - 1;
+    for (let i = 0; i < pool.length; i += 1) {
+      ticket -= pool[i].weight;
+      if (ticket <= 0) {
+        index = i;
+        break;
+      }
+    }
+    picked.push(pool[index].item);
+    pool.splice(index, 1);
+  }
+  return picked;
+}
+
+/**
+ * Pressão do pacote escolhido (0–1) vs teto da divisão.
+ * Pacotes altos cobram mais da diretoria na meta da temporada.
+ */
+export function sponsorPackagePressure(total, division = 'A') {
+  const ranges = SPONSOR_VALUE_BY_DIVISION[division] || SPONSOR_VALUE_BY_DIVISION.A;
+  const minPack = ranges.master[0] + ranges.secondary[0] * 3;
+  const maxPack = ranges.master[1] + ranges.secondary[1] * 3;
+  const span = Math.max(1, maxPack - minPack);
+  return Math.max(0, Math.min(1, (Number(total) - minPack) / span));
 }
 
 function valueInRange(range, random = Math.random) {
@@ -1528,11 +1671,18 @@ export function generateSponsorOffers({
   random = Math.random,
 } = {}) {
   const ranges = SPONSOR_VALUE_BY_DIVISION[division] || SPONSOR_VALUE_BY_DIVISION.A;
-  const picked = shuffleCopy(SPONSOR_POOL, random).slice(0, 7);
+  const rng = typeof random === 'function' ? random : Math.random;
+  const history = loadSponsorOfferHistory();
+  // Reais garantidos + fillers; shuffle total = Master/Secundário aleatório.
+  const picked = shuffleCopy(
+    pickOfferSponsorNames({ count: 7, locked: [], random: rng, history }),
+    rng,
+  );
+  pushSponsorOfferHistory(picked);
   const master = picked.slice(0, 2).map(name => ({
     name,
     role: 'master',
-    value: valueInRange(ranges.master, random),
+    value: valueInRange(ranges.master, rng),
   }));
   master.sort((a, b) => b.value - a.value);
   if (master.length === 2 && master[0].value === master[1].value) {
@@ -1542,10 +1692,95 @@ export function generateSponsorOffers({
   const secondaries = picked.slice(2, 7).map(name => ({
     name,
     role: 'secondary',
-    value: valueInRange(ranges.secondary, random),
+    value: valueInRange(ranges.secondary, rng),
   }));
   secondaries.sort((a, b) => b.value - a.value);
-  return { master, secondaries, division };
+  return { master, secondaries, division, reshufflesUsed: 0 };
+}
+
+/**
+ * Resorteia só as ofertas não selecionadas (mantém Master/secundários já escolhidos).
+ * Valores novos saem aleatórios na faixa da divisão (podem subir ou cair).
+ */
+export function reshuffleSponsorOffers({
+  offers,
+  keepMaster = null,
+  keepSecondaryNames = [],
+  random = Math.random,
+} = {}) {
+  if (!offers?.master?.length || !Array.isArray(offers.secondaries)) return offers;
+  const division = offers.division || 'A';
+  const ranges = SPONSOR_VALUE_BY_DIVISION[division] || SPONSOR_VALUE_BY_DIVISION.A;
+  const rng = typeof random === 'function' ? random : Math.random;
+  const keepSecs = new Set(
+    (Array.isArray(keepSecondaryNames) ? keepSecondaryNames : []).filter(Boolean),
+  );
+  const keptMaster =
+    keepMaster?.name
+      ? (offers.master.find(item => item.name === keepMaster.name) || {
+          name: keepMaster.name,
+          role: 'master',
+          value: Math.round(Number(keepMaster.value) || 0),
+        })
+      : null;
+  const keptSecondaries = offers.secondaries.filter(item => keepSecs.has(item.name));
+  const locked = new Set([
+    ...(keptMaster?.name ? [keptMaster.name] : []),
+    ...keptSecondaries.map(item => item.name),
+  ]);
+  const needMaster = Math.max(0, 2 - (keptMaster ? 1 : 0));
+  const needSecondary = Math.max(0, 5 - keptSecondaries.length);
+  const need = needMaster + needSecondary;
+  const history = loadSponsorOfferHistory();
+  // Reais que ainda não estão selecionados entram de novo nas ofertas livres.
+  const allNames = pickOfferSponsorNames({
+    count: 7,
+    locked: [...locked],
+    random: rng,
+    history,
+  });
+  const freshNames = shuffleCopy(
+    allNames.filter(name => !locked.has(name)),
+    rng,
+  ).slice(0, need);
+
+  const freshMaster = freshNames.slice(0, needMaster).map(name => ({
+    name,
+    role: 'master',
+    value: valueInRange(ranges.master, rng),
+  }));
+  const freshSecondaries = freshNames.slice(needMaster, needMaster + needSecondary).map(name => ({
+    name,
+    role: 'secondary',
+    value: valueInRange(ranges.secondary, rng),
+  }));
+
+  const master = (keptMaster ? [keptMaster, ...freshMaster] : freshMaster)
+    .filter(item => item?.name)
+    .slice(0, 2)
+    .sort((a, b) => b.value - a.value);
+  if (master.length === 2 && master[0].value === master[1].value) {
+    const bump = Math.max(50_000, Math.round((ranges.master[1] - ranges.master[0]) * 0.12));
+    master[0].value = Math.min(ranges.master[1], master[0].value + bump);
+  }
+  const secondaries = [...keptSecondaries, ...freshSecondaries]
+    .filter(item => item?.name)
+    .slice(0, 5)
+    .sort((a, b) => b.value - a.value);
+
+  if (master.length !== 2 || secondaries.length !== 5) return offers;
+
+  const used = Number(offers.reshufflesUsed) || 0;
+  pushSponsorOfferHistory([
+    ...master.map(item => item.name),
+    ...secondaries.map(item => item.name),
+  ]);
+  return {
+    division,
+    master,
+    secondaries,
+    reshufflesUsed: used + 1,
+  };
 }
 
 /**
@@ -1573,12 +1808,14 @@ export function applySponsorChoice(club, {
   }));
   const total = masterContract.value + secondaryContracts.reduce((sum, item) => sum + item.value, 0);
   const slots = Math.max(1, Number(installments) || 38);
+  const pressure = sponsorPackagePressure(total, division);
   club.sponsors = {
     season,
     division,
     master: masterContract,
     secondaries: secondaryContracts,
     total,
+    pressure,
     credited: false,
     installments: slots,
     paidAmount: 0,
@@ -1878,8 +2115,13 @@ export function createEconomyEngine() {
     TICKET_PRICE_RANGE,
     PITCH_TIERS,
     SPONSOR_POOL,
+    SPONSOR_REAL_PARTNERS,
+    SPONSOR_PARTNER_WEIGHTS,
     SPONSOR_LOGO_SLUG,
     sponsorLogoSlug,
+    SPONSOR_EXTERNAL_LINKS,
+    sponsorExternalUrl,
+    sponsorPackagePressure,
     SPONSOR_VALUE_BY_DIVISION,
     TV_VALUE_BY_DIVISION,
     CLUB_UPGRADES,
@@ -1892,6 +2134,7 @@ export function createEconomyEngine() {
     resolveSerieDPrizePhase,
     resolveCupPrizePhase,
     generateSponsorOffers,
+    reshuffleSponsorOffers,
     applySponsorChoice,
     nameRightsCost,
     purchaseStadiumNameRights,

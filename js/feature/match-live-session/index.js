@@ -46,6 +46,7 @@ import { MODULE_VERSIONS } from '../../core/constants.js';
  * @param {Function} deps.getPreMatchPreparation
  * @param {Function} deps.renderStats
  * @param {Function} deps.setActivePreparationTitle
+ * @param {Function} [deps.onBeginLineupEdit] — snapshot do XI ao abrir pausa (trocas livres até retomar)
  * @param {Function} deps.syncTactics
  * @param {Function} deps.drawBoard
  * @param {Function} deps.renderSubstitutionControls
@@ -94,6 +95,7 @@ export function createMatchLiveSessionFeature(deps) {
     getPreMatchPreparation,
     renderStats,
     setActivePreparationTitle,
+    onBeginLineupEdit,
     syncTactics,
     drawBoard,
     renderSubstitutionControls,
@@ -118,7 +120,41 @@ export function createMatchLiveSessionFeature(deps) {
     });
     const h = calendarLiveSideStats().home, a = calendarLiveSideStats().away, { home: hp, away: ap } = calendarPossessionPair();
     const sideGoals = calendarLiveSideGoals();
-    const scorers = side => sideGoals[side].length ? sideGoals[side].map(goal => `<span>${goal.minute}' ${goal.name}</span>`).join('') : '<span>Nenhum gol</span>';
+    const groupGoalsByScorer = goals => {
+      const order = [];
+      const byKey = new Map();
+      (goals || []).forEach(goal => {
+        const own = goal?.type === 'own';
+        const key = `${own ? 'own:' : ''}${goal?.name || '—'}`;
+        if (!byKey.has(key)) {
+          byKey.set(key, { name: goal?.name || '—', own, stamps: [] });
+          order.push(key);
+        }
+        byKey.get(key).stamps.push({
+          minute: Number(goal.minute) || 0,
+          stoppage: Number(goal.stoppage) || 0,
+        });
+      });
+      return order.map(key => {
+        const entry = byKey.get(key);
+        const minutes = entry.stamps
+          .slice()
+          .sort((a, b) => a.minute - b.minute || a.stoppage - b.stoppage)
+          .map(stamp => {
+            const base = stamp.stoppage > 0 ? (stamp.minute <= 45 ? 45 : 90) : stamp.minute;
+            const label = stamp.stoppage > 0 ? `${base}+${stamp.stoppage}` : String(base);
+            return `${label}'`;
+          })
+          .join(', ');
+        return { name: entry.own ? `${entry.name} (GC)` : entry.name, minutes };
+      });
+    };
+    const scorers = side =>
+      sideGoals[side].length
+        ? groupGoalsByScorer(sideGoals[side])
+            .map(entry => `<span>${entry.name} ${entry.minutes}</span>`)
+            .join('')
+        : '<span>Nenhum gol</span>';
     const rows = [['Posse de bola', `${hp}%`, `${ap}%`], ['Total de Passes', h.passes, a.passes], ['Finalizações', h.shots, a.shots], ['Faltas Cometidas', h.fouls, a.fouls], ['Cartões Amarelos', h.yellow, a.yellow], ['Cartões Vermelhos', h.red, a.red]];
     const injuryReports = medicalReports.map(item => item.text);
     const injurySection = injuryReports.length ? `<section class="final-injuries"><h3>DIAGNÓSTICOS MÉDICOS</h3>${medicalReports.map(item => `<p class="${item.outcome === 'cleared' ? 'cleared' : item.outcome === 'monitoring' ? 'monitoring' : ''}">${item.text}</p>`).join('')}</section>` : '';
@@ -164,6 +200,7 @@ export function createMatchLiveSessionFeature(deps) {
     if (!getMatchFinished() || getRoundCommitted()) return;
     stopMatchClock();
     $('#shootoutPanel')?.classList.add('hidden');
+    $('#penaltyDuelModal')?.classList.add('hidden');
     $('#penaltyChoice')?.classList.add('hidden');
     $('#liveOpponentModal').classList.add('hidden');
     closeFormationSuggestion();
@@ -182,6 +219,7 @@ export function createMatchLiveSessionFeature(deps) {
     if (getMatchFinished()) {
       stopMatchClock();
       $('#pausePanel').classList.add('hidden');
+      $('#penaltyDuelModal')?.classList.add('hidden');
       $('#penaltyChoice').classList.add('hidden');
       if (shootoutState) { renderShootoutTrack(); $('#shootoutPanel').classList.remove('hidden'); }
       else if (liveMatchGame?.penalties) { $('#shootoutTitle').textContent = `Shootout ${liveMatchGame.penalties}`; $('#shootoutPanel').classList.remove('hidden'); }
@@ -190,11 +228,15 @@ export function createMatchLiveSessionFeature(deps) {
       showFinalActions();
       return true;
     }
-    const awaitingDecision = !$('#pausePanel').classList.contains('hidden') || !$('#penaltyChoice').classList.contains('hidden') || shootoutState;
+    const penaltyOpen = !!$('#penaltyDuelModal')
+      ? !$('#penaltyDuelModal').classList.contains('hidden')
+      : !$('#penaltyChoice').classList.contains('hidden');
+    const awaitingDecision = !$('#pausePanel').classList.contains('hidden') || penaltyOpen || shootoutState;
     if (awaitingDecision) {
       stopMatchClock();
       $('#matchActions').classList.add('hidden');
       if (shootoutState) { $('#shootoutPanel').classList.remove('hidden'); renderShootoutTrack(); }
+      if (penaltyOpen) $('#penaltyDuelModal')?.classList.remove('hidden');
       $('#stats').classList.toggle('hidden', preMatchPreparation);
       if (!preMatchPreparation) renderStats();
     } else {
@@ -230,7 +272,17 @@ export function createMatchLiveSessionFeature(deps) {
     stopMatchClock();
     setActivePreparationTitle(title);
     const preMatchPreparation = getPreMatchPreparation();
-    $('#pauseTitle').textContent = title;
+    onBeginLineupEdit?.();
+    const pauseTitle = $('#pauseTitle');
+    if (pauseTitle) {
+      if (preMatchPreparation) {
+        pauseTitle.textContent = '';
+        pauseTitle.classList.add('hidden');
+      } else {
+        pauseTitle.textContent = title;
+        pauseTitle.classList.remove('hidden');
+      }
+    }
     $('#pauseHeading').textContent = preMatchPreparation ? 'Preparação da Partida' : 'Ajuste do Time';
     $('.pause-heading small').textContent = preMatchPreparation ? 'Organize a formação, a tática e a escalação antes do apito inicial.' : title === 'CARTÃO VERMELHO' ? 'Arraste um jogador para a vaga destacada ou troque posições; a nova organização será aplicada ao motor.' : title === 'LESÃO' ? 'O atleta lesionado não participa mais das ações. Substitua-o ou reorganize o time antes de retomar.' : title === 'ALERTA MÉDICO' ? 'O atleta apresenta incômodo físico. Substitua-o para evitar agravamento ou mantenha-o em campo assumindo o risco.' : 'Altere a formação, a tática e os jogadores antes de retomar.';
     $('#resumeMatch').textContent = preMatchPreparation ? 'INICIAR PARTIDA →' : 'RETOMAR PARTIDA →';

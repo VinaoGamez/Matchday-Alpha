@@ -117,6 +117,17 @@ export function createTacticsFeature(deps) {
 
   const starters = () => getSquad().slice(0, 11);
 
+  /** Ordem de leitura por função (defesa → ataque). */
+  const POS_SORT_ORDER = { GOL: 0, ZAG: 1, LAT: 2, VOL: 3, MC: 4, MEI: 5, PE: 6, PD: 7, ATA: 8 };
+  const posSortKey = role => POS_SORT_ORDER[role] ?? 99;
+  const sortPlayersByRole = (players, roleOf = player => player.pos) =>
+    [...players].sort(
+      (a, b) =>
+        posSortKey(roleOf(a)) - posSortKey(roleOf(b)) ||
+        (b.overall || 0) - (a.overall || 0) ||
+        String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'),
+    );
+
   const positionMismatch = (player, expectedRole) => {
     if (!expectedRole || player.pos === expectedRole) return 0;
     return 1;
@@ -160,7 +171,7 @@ export function createTacticsFeature(deps) {
     }
     stack.insertAdjacentHTML(
       'beforeend',
-      '<div class="board-legend" aria-hidden="true"><span><i class="board-legend-dot board-legend-yellow"></i>Amarelo</span><span><i class="board-legend-dot board-legend-injury"></i>Lesão</span><span><i class="board-legend-dot board-legend-risk"></i>Incômodo</span><span><i class="board-legend-dot board-legend-vacant"></i>Expulso</span></div>'
+      '<div class="board-legend" aria-hidden="true"><span><i class="board-legend-card board-legend-yellow"></i>Amarelo</span><span><i class="board-legend-dot board-legend-injury"></i>Lesão</span><span><i class="board-legend-dot board-legend-risk"></i>Incômodo</span><span><i class="board-legend-dot board-legend-vacant"></i>Expulso</span></div>'
     );
   };
 
@@ -219,10 +230,19 @@ export function createTacticsFeature(deps) {
     });
   };
 
+  const setTacticsPitchHighlight = slot => {
+    const pitch = $('#pitchPlayers');
+    if (!pitch) return;
+    pitch.querySelectorAll('.pitch-player').forEach(el => {
+      const match = slot != null && Number(el.dataset.slot) === Number(slot);
+      el.classList.toggle('sub-highlight', match);
+    });
+  };
+
   const renderTacticRoster = () => {
     const squad = getSquad();
     const playerRow = (player, index, starter) =>
-      `<div class="tactic-player-row ${playerUnavailable(player) ? 'unavailable' : 'repositionable'}" data-slot="${index}" draggable="${!playerUnavailable(player)}">${playerNameCell(player.name, player, { prefix: starter ? `${index + 1}. ` : '' })}<span>${player.pos}</span><span>${player.overall}</span><span class="tactic-fatigue"><i><b style="width:${clamp(player.fatigue, 0, 100)}%"></b></i>${Math.round(player.fatigue)}%</span></div>`;
+      `<div class="tactic-player-row ${playerUnavailable(player) ? 'unavailable' : 'repositionable'}" data-slot="${index}" draggable="${!playerUnavailable(player)}" tabindex="0">${playerNameCell(player.name, player, { prefix: starter ? `${index + 1}. ` : '' })}<span>${player.pos}</span><span>${player.overall}</span><span class="tactic-fatigue"><i><b style="width:${clamp(player.fatigue, 0, 100)}%"></b></i>${Math.round(player.fatigue)}%</span></div>`;
     $('#tacticStarters').innerHTML = squad.slice(0, 11).map((player, index) => playerRow(player, index, true)).join('');
     $('#tacticBench').innerHTML = squad.slice(11).map((player, index) => playerRow(player, index + 11, false)).join('');
     $$('.tactic-player-row.repositionable').forEach(row => {
@@ -233,6 +253,21 @@ export function createTacticsFeature(deps) {
       });
       row.addEventListener('dragend', () => row.classList.remove('dragging'));
     });
+    setTacticsPitchHighlight(null);
+  };
+
+  const selectedSubstitutionOutSlot = () => {
+    const raw = $('#substitutionOut')?.value;
+    if (raw === '' || raw == null) return null;
+    const slot = Number(raw);
+    return Number.isFinite(slot) ? slot : null;
+  };
+
+  /** Camisa 1–99; fallback = posição no campo se o save ainda tiver seed antigo. */
+  const boardJerseyNumber = (player, slotIndex) => {
+    const n = Number(player?.number);
+    if (Number.isFinite(n) && n >= 1 && n <= 99) return n;
+    return slotIndex + 1;
   };
 
   const drawBoard = () => {
@@ -242,6 +277,7 @@ export function createTacticsFeature(deps) {
     const formation = getFormation();
     const formations = getFormations();
     const squad = getSquad();
+    const highlightSlot = selectedSubstitutionOutSlot();
     const board = $('#pausePitchPlayers')?.closest('.tactical-board');
     ensureBoardLegend(board);
     $('#pausePitchPlayers').innerHTML = formations[formation]
@@ -253,11 +289,12 @@ export function createTacticsFeature(deps) {
         const displayTop = p[1] === 91 ? 90 : p[1];
         const energy = clamp(squad[i].fatigue, 0, 100);
         const canReposition = !vacant;
+        const highlighted = !vacant && highlightSlot === i;
         const label = vacant ? (activePreparationTitle === 'CARTÃO VERMELHO' ? 'EXPULSO' : 'VAGO') : boardPlayerLabel(squad[i].name);
         const title = vacant
           ? 'Arraste um titular para esta vaga'
           : `${squad[i].name}${state.yellow ? ' · Advertido' : ''}${injured ? ' · Lesionado' : atRisk ? ' · Incômodo físico' : ''} · ${Math.round(energy)}% energia`;
-        return `<div class="board-player ${vacant ? 'vacant vacancy-target' : ''} ${canReposition ? 'repositionable' : ''}" data-slot="${i}" draggable="${canReposition}" title="${title}" style="left:${p[0]}%;top:${displayTop}%"><i style="--energy:${energy}%"><span>${vacant ? '×' : squad[i].number}</span></i>${boardPlayerBadges({ yellow: state.yellow, injured: state.injured, atRisk: state.playThroughRisk })}<small>${label}</small></div>`;
+        return `<div class="board-player ${vacant ? 'vacant vacancy-target' : ''} ${canReposition ? 'repositionable' : ''} ${highlighted ? 'sub-highlight' : ''}" data-slot="${i}" draggable="${canReposition}" title="${title}" style="left:${p[0]}%;top:${displayTop}%"><i style="--energy:${energy}%"><span>${vacant ? '×' : boardJerseyNumber(squad[i], i)}</span></i>${boardPlayerBadges({ yellow: state.yellow, injured: state.injured, atRisk: state.playThroughRisk })}<small>${label}</small></div>`;
       })
       .join('');
     $$('#pauseFormations button').forEach(b => b.classList.toggle('selected', b.textContent === formation));
@@ -272,7 +309,7 @@ export function createTacticsFeature(deps) {
     $('#pitchPlayers').innerHTML = formations[formation]
       .map(
         (p, i) =>
-          `<div class="pitch-player repositionable" data-slot="${i}" draggable="true" style="left:${p[0]}%;top:${p[1] === 91 ? 90 : p[1]}%"><i style="--energy:${clamp(squad[i].fatigue, 0, 100)}%"><span>${squad[i].number}</span></i><small>${squad[i].name}</small></div>`
+          `<div class="pitch-player repositionable" data-slot="${i}" draggable="true" style="left:${p[0]}%;top:${p[1] === 91 ? 90 : p[1]}%"><i style="--energy:${clamp(squad[i].fatigue, 0, 100)}%"><span>${boardJerseyNumber(squad[i], i)}</span></i><small>${squad[i].name}</small></div>`
       )
       .join('');
     $('#formationDescription').textContent = `${formationNotes[formation]} Titulares sugeridos por encaixe, atributos e condição física.`;
@@ -421,66 +458,132 @@ export function createTacticsFeature(deps) {
     const live = getLiveState();
     const squad = getSquad();
     const positionAssignments = getPositionAssignments();
-    const { cards, preMatchPreparation, substitutions, substitutedOut } = live;
+    const { cards, preMatchPreparation, substitutions, substitutedOut, freeSubEdits } = live;
     const outgoing = $('#substitutionOut');
     const incoming = $('#substitutionIn');
     if (!outgoing || !incoming) return;
     const previousOut = outgoing.value;
     const previousIn = incoming.value;
+    const lineupUnlocked = !!(preMatchPreparation || freeSubEdits);
     const onField = starters()
       .map((player, index) => ({ player, index }))
-      .filter(({ index }) => !cards?.home?.[index]?.red);
-    outgoing.innerHTML = onField
-      .map(({ player, index }) => `<option value="${index}">${player.name} · ${player.pos} · OVR ${player.overall}</option>`)
-      .join('');
-    if ([...outgoing.options].some(option => option.value === previousOut)) outgoing.value = previousOut;
-    const expectedRole = positionAssignments[Number(outgoing.value)] || starters()[Number(outgoing.value)]?.pos;
-    const availableBench = squad
-      .slice(11)
-      .filter(player => !substitutedOut?.has(player.name) && !playerUnavailable(player) && (expectedRole !== 'GOL' || player.pos === 'GOL'));
+      .filter(({ index }) => !cards?.home?.[index]?.red)
+      .sort(
+        (a, b) =>
+          posSortKey(positionAssignments[a.index] || a.player.pos) -
+            posSortKey(positionAssignments[b.index] || b.player.pos) ||
+          a.index - b.index,
+      );
+    outgoing.innerHTML =
+      `<option value="">Selecione o titular…</option>` +
+      onField
+        .map(
+          ({ player, index }) =>
+            `<option value="${index}">${player.name} · ${positionAssignments[index] || player.pos} · OVR ${player.overall}</option>`,
+        )
+        .join('');
+    if (previousOut && [...outgoing.options].some(option => option.value === previousOut)) outgoing.value = previousOut;
+    else outgoing.value = '';
+    const outSelected = outgoing.value !== '';
+    const expectedRole = outSelected
+      ? positionAssignments[Number(outgoing.value)] || starters()[Number(outgoing.value)]?.pos
+      : null;
+    // Lista completa de reservas. Quem já saiu de forma definitiva (substitutedOut) continua bloqueado;
+    // durante pré-jogo/pausa as trocas ainda não entram em substitutedOut, então dá para mudar de ideia.
+    const availableBench = sortPlayersByRole(
+      squad.slice(11).filter(player => !substitutedOut?.has(player.name) && !playerUnavailable(player)),
+    );
     incoming.innerHTML = availableBench.length
-      ? availableBench
-          .map(player => `<option value="${player.name}">${player.name} · ${player.pos} · OVR ${player.overall} · ${Math.round(player.fatigue)}% cansaço</option>`)
+      ? `<option value="">Selecione o reserva…</option>` +
+        availableBench
+          .map(
+            player =>
+              `<option value="${player.name}">${player.name} · ${player.pos} · OVR ${player.overall} · ${Math.round(player.fatigue)}% cansaço</option>`,
+          )
           .join('')
       : '<option value="">Sem reservas disponíveis</option>';
-    if ([...incoming.options].some(option => option.value === previousIn)) incoming.value = previousIn;
+    if (previousIn && [...incoming.options].some(option => option.value === previousIn)) incoming.value = previousIn;
+    else if (![...incoming.options].some(option => option.value === previousIn)) incoming.value = '';
+    const inSelected = !!incoming.value;
+    // Pré-jogo: só acumulado da temporada (igual ao Elenco). Em jogo/pausa: + overlay desta partida.
     const liveCardState = index => {
+      if (preMatchPreparation) return null;
       const card = cards?.home?.[index];
-      return card ? { yellow: card.yellow ? 1 : 0, red: !!card.red, injured: !!card.injured, playThroughRisk: !!card.playThroughRisk } : null;
+      if (!card) return null;
+      const overlay = {
+        yellow: card.yellow ? 1 : 0,
+        red: !!card.red,
+        injured: !!card.injured,
+        playThroughRisk: !!card.playThroughRisk,
+      };
+      return overlay.yellow || overlay.red || overlay.injured || overlay.playThroughRisk ? overlay : null;
     };
     $('#substitutionOutList').innerHTML = onField
-      .map(({ player, index }) => substitutionPlayerRow(player, `data-substitution-out="${index}"`, String(index) === outgoing.value, liveCardState(index)))
+      .map(({ player, index }) =>
+        substitutionPlayerRow(
+          player,
+          `data-substitution-out="${index}"`,
+          outSelected && String(index) === outgoing.value,
+          liveCardState(index),
+        ),
+      )
       .join('');
     $('#substitutionInList').innerHTML = availableBench.length
-      ? availableBench.map(player => substitutionPlayerRow(player, `data-substitution-in="${squad.indexOf(player)}"`, player.name === incoming.value)).join('')
+      ? availableBench
+          .map(player =>
+            substitutionPlayerRow(
+              player,
+              `data-substitution-in="${squad.indexOf(player)}"`,
+              inSelected && player.name === incoming.value,
+              null,
+            ),
+          )
+          .join('')
       : '<small class="substitution-empty">Sem reservas disponíveis.</small>';
-    $('#substitutionCounter').textContent = preMatchPreparation ? 'PRÉ-JOGO' : `${substitutions || 0}/5`;
-    $('#makeSubstitution').disabled = (!preMatchPreparation && (substitutions || 0) >= 5) || !onField.length || !availableBench.length;
+    $('#substitutionCounter').textContent = `${substitutions || 0}/5`;
+    const atSubLimit = !lineupUnlocked && (substitutions || 0) >= 5;
+    $('#makeSubstitution').disabled = atSubLimit || !outSelected || !inSelected || !onField.length || !availableBench.length;
     const selectedIncoming = availableBench.find(player => player.name === incoming.value);
-    const fit = selectedIncoming ? positionMismatch(selectedIncoming, expectedRole) : 0;
-    $('#substitutionHint').textContent = preMatchPreparation
-      ? `Ajuste de escalação antes do jogo${fit ? ` · ${selectedIncoming?.pos} adaptado para ${expectedRole}` : ''}. Não conta como substituição.`
-      : (substitutions || 0) >= 5
-        ? 'Limite de cinco substituições atingido.'
-        : fit
-          ? `Entrará na vaga de ${expectedRole}: adaptação ${fit < 1 ? 'compatível' : 'fora de posição'}, com leve impacto coletivo.`
-          : `Vaga de ${expectedRole}: jogador na posição de origem.`;
+    const fit = selectedIncoming && expectedRole ? positionMismatch(selectedIncoming, expectedRole) : 0;
+    if (atSubLimit) {
+      $('#substitutionHint').textContent = 'Limite de cinco substituições atingido.';
+    } else if (!outSelected || !inSelected) {
+      $('#substitutionHint').textContent = lineupUnlocked
+        ? 'Selecione o titular e o reserva para confirmar. Enquanto a partida não for retomada, você pode mudar de ideia.'
+        : 'Selecione o titular e o reserva para confirmar a substituição.';
+    } else if (expectedRole === 'GOL' && selectedIncoming?.pos !== 'GOL') {
+      $('#substitutionHint').textContent = 'A vaga de goleiro só pode ser preenchida por um goleiro.';
+      $('#makeSubstitution').disabled = true;
+    } else if (preMatchPreparation || lineupUnlocked) {
+      $('#substitutionHint').textContent = `Ajuste de escalação${fit ? ` · ${selectedIncoming?.pos} adaptado para ${expectedRole}` : ''}. Não trava o reserva até retomar a partida.`;
+    } else if (fit) {
+      $('#substitutionHint').textContent = `Entrará na vaga de ${expectedRole}: adaptação ${fit < 1 ? 'compatível' : 'fora de posição'}, com leve impacto coletivo.`;
+    } else {
+      $('#substitutionHint').textContent = `Vaga de ${expectedRole}: jogador na posição de origem.`;
+    }
+    if ($('#pausePitchPlayers') && !$('#pausePanel')?.classList.contains('hidden')) drawBoard();
   };
 
   const makeSubstitution = () => {
     const live = getLiveState();
     const squad = getSquad();
     const positionAssignments = getPositionAssignments();
-    const { cards, matchStarted, preMatchPreparation, substitutions, liveDeferredInjuries, liveMinutesPlayed } = live;
+    const { cards, matchStarted, preMatchPreparation, substitutions, liveDeferredInjuries, liveMinutesPlayed, freeSubEdits } =
+      live;
     const userClub = getUserClub();
-    const outIndex = Number($('#substitutionOut').value);
+    const outRaw = $('#substitutionOut').value;
     const incomingName = $('#substitutionIn').value;
-    if (!matchStarted || Number.isNaN(outIndex) || (!preMatchPreparation && substitutions >= 5) || !incomingName || cards.home[outIndex]?.red) return;
+    const outIndex = Number(outRaw);
+    const lineupUnlocked = !!(preMatchPreparation || freeSubEdits);
+    if (!matchStarted || outRaw === '' || Number.isNaN(outIndex) || !incomingName) return;
+    if (!lineupUnlocked && substitutions >= 5) return;
+    if (cards.home[outIndex]?.red) return;
     const incomingIndex = squad.findIndex(player => player.name === incomingName);
     if (incomingIndex < 11 || playerUnavailable(squad[incomingIndex])) return;
     const outgoing = squad[outIndex];
     const incoming = squad[incomingIndex];
     const expectedRole = positionAssignments[outIndex];
+    if (expectedRole === 'GOL' && incoming.pos !== 'GOL') return;
     const improvised = positionMismatch(incoming, expectedRole) > 0;
     const wasInjured = !!cards.home[outIndex]?.injured;
     const wasAtRisk = !!cards.home[outIndex]?.playThroughRisk;
@@ -494,8 +597,12 @@ export function createTacticsFeature(deps) {
     liveMinutesPlayed.home.set(incoming.name, liveMinutesPlayed.home.get(incoming.name) ?? 0);
     [squad[outIndex], squad[incomingIndex]] = [incoming, outgoing];
     cards.home[outIndex] = freshStarterCard();
-    if (preMatchPreparation) {
+    $('#substitutionOut').value = '';
+    $('#substitutionIn').value = '';
+    if (lineupUnlocked) {
+      // Pré-jogo / pausa: troca livre — reserva volta a ficar apto se mudar de ideia.
       renderRoster();
+      renderTacticRoster?.();
       draw();
       drawBoard();
       renderSubstitutionControls();
@@ -508,8 +615,6 @@ export function createTacticsFeature(deps) {
       'substitution',
       'home',
     );
-    $('#substitutionOut').value = '';
-    $('#substitutionIn').value = '';
     renderRoster();
     renderTacticRoster();
     draw();
@@ -548,6 +653,16 @@ export function createTacticsFeature(deps) {
     }
   };
 
+  const highlightFromRosterRow = row => {
+    if (!row) {
+      setTacticsPitchHighlight(null);
+      return;
+    }
+    const slot = Number(row.dataset.slot);
+    if (Number.isFinite(slot) && slot >= 0 && slot < 11) setTacticsPitchHighlight(slot);
+    else setTacticsPitchHighlight(null);
+  };
+
   const bindHandlers = () => {
     onClick('#formations', event => formationGridClick(event, { liveDuringMatch: true }));
     onClick('#pauseFormations', event => formationGridClick(event, { withBoard: true }));
@@ -562,11 +677,40 @@ export function createTacticsFeature(deps) {
       })
     );
     $$('.tactic-suggestion-btn').forEach(button => button.addEventListener('click', applyTacticSuggestion));
+    // Destaque na prancheta ao passar/focar no elenco (titulares).
+    const rosterRoots = ['#tacticStarters', '#tacticBench']
+      .map(sel => $(sel))
+      .filter(Boolean);
+    rosterRoots.forEach(root => {
+      root.addEventListener('mouseover', event => {
+        const row = event.target.closest('.tactic-player-row[data-slot]');
+        if (!row || !root.contains(row)) return;
+        highlightFromRosterRow(row);
+      });
+      root.addEventListener('mouseout', event => {
+        const row = event.target.closest('.tactic-player-row[data-slot]');
+        if (!row || !root.contains(row)) return;
+        if (row.contains(event.relatedTarget)) return;
+        setTacticsPitchHighlight(null);
+      });
+      root.addEventListener('focusin', event => {
+        const row = event.target.closest('.tactic-player-row[data-slot]');
+        if (!row || !root.contains(row)) return;
+        highlightFromRosterRow(row);
+      });
+      root.addEventListener('focusout', event => {
+        const row = event.target.closest('.tactic-player-row[data-slot]');
+        if (!row || !root.contains(row)) return;
+        if (row.contains(event.relatedTarget)) return;
+        setTacticsPitchHighlight(null);
+      });
+    });
     onClick('#makeSubstitution', makeSubstitution);
     onClick('#substitutionOutList', event => {
       const row = event.target.closest('[data-substitution-out]');
       if (!row) return;
-      $('#substitutionOut').value = row.dataset.substitutionOut;
+      const next = row.dataset.substitutionOut;
+      $('#substitutionOut').value = $('#substitutionOut').value === next ? '' : next;
       renderSubstitutionControls();
     });
     onClick('#substitutionInList', event => {
@@ -574,7 +718,7 @@ export function createTacticsFeature(deps) {
       if (!row) return;
       const player = getSquad()[Number(row.dataset.substitutionIn)];
       if (!player) return;
-      $('#substitutionIn').value = player.name;
+      $('#substitutionIn').value = $('#substitutionIn').value === player.name ? '' : player.name;
       renderSubstitutionControls();
     });
     on('#substitutionOut', 'change', renderSubstitutionControls);

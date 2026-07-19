@@ -243,7 +243,7 @@ body {
   right: clamp(14px, 3vw, 28px);
   bottom: 18px;
   z-index: 3;
-  width: min(420px, calc(100vw - 28px));
+  width: min(380px, calc(100vw - 28px));
   padding: 10px 12px 12px;
   border: 1px solid #2abee933;
   border-radius: 8px;
@@ -277,17 +277,34 @@ body {
 }
 
 .home-sponsor-slot {
-  flex: 0 0 calc((100% - 30px) / 4);
+  flex: 0 0 auto;
+  aspect-ratio: 1 / 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 64px;
-  padding: 0;
+  width: 72px;
+  height: 72px;
+  padding: 8px;
   border-radius: 8px;
   background: #050c14;
   border: 1px solid #3a6d7e;
   box-sizing: border-box;
   overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+}
+
+a.home-sponsor-slot {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+a.home-sponsor-slot:hover,
+a.home-sponsor-slot:focus-visible {
+  border-color: #63d9ff;
+  background: #0a1822;
+  outline: none;
+  /* Sem translate/shadow externo — evita vazar da caixa do carrossel */
 }
 
 .home-sponsor-slot img {
@@ -296,6 +313,7 @@ body {
   height: 100%;
   object-fit: contain;
   object-position: center;
+  background: #050c14;
 }
 
 .home-footer {
@@ -343,5 +361,4 @@ body {
   .home-pillars { grid-template-columns: 1fr; }
   .home-btn { width: 100%; }
   .feature-card { min-height: 0; }
-  .home-sponsor-slot { height: 56px; }
 }

@@ -1,8 +1,9 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { formatKnockoutFixtureScore, isKnockoutShootoutCompetition as isKnockoutGame } from '../../engine/knockout-shootout.js';
-import { applyCompetitionBadge, resolveCompetitionBadge } from '../../ui/competition-badge.js';
+import { applyCompetitionBadge, competitionBadgeMarkup, resolveCompetitionBadge } from '../../ui/competition-badge.js';
 
 const DASHBOARD_TABLE_ROWS = 5;
+const CLUB_UPCOMING_ROWS = 5;
 
 /**
  * Dashboard — próximo jogo, mini-tabela, líderes e resultados recentes.
@@ -28,7 +29,6 @@ export function createDashboardFeature(deps) {
     nextPendingUserEntry,
     pendingUserSchedule,
     fixtureDetails,
-    fixtureCompetitionLabel,
     displayedClubPosition,
     sameCalendarDay,
     daysUntilNextFixtureFromToday,
@@ -351,7 +351,7 @@ export function createDashboardFeature(deps) {
   };
 
   const refreshUserFixtures = () => {
-    pendingUserSchedule().slice(0, 3).map(entry => entry.game);
+    pendingUserSchedule().slice(0, CLUB_UPCOMING_ROWS).map(entry => entry.game);
   };
 
   const renderUserMatchPresentation = () => {
@@ -395,7 +395,7 @@ export function createDashboardFeature(deps) {
     if (inspectBtn) inspectBtn.classList.toggle('hidden', idle || fullyComplete || !display);
     if (calendarBtn) calendarBtn.classList.toggle('hidden', idle || fullyComplete);
 
-    const userUpcomingGames = pendingUserSchedule().slice(0, 3).map(entry => entry.game);
+    const userUpcomingGames = pendingUserSchedule().slice(0, CLUB_UPCOMING_ROWS).map(entry => entry.game);
 
     if (idle) {
       $('#nextMatchRound').textContent = `SEM JOGOS · RODADA NACIONAL ${currentRound}`;
@@ -484,11 +484,18 @@ export function createDashboardFeature(deps) {
             const details = fixtureDetails(game);
             const isCup = game.competition === 'COPA DO BRASIL';
             const isKo = isKnockoutShootoutCompetition(game);
-            const label = fixtureCompetitionLabel(game);
-            return `<div class="club-upcoming-row ${isCup || isKo ? 'cup-row' : ''}"><span>${label}</span><span><b class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</b> <i>×</i> <b class="club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</b></span><span>${details.display} · ${details.time}</span><span class="${atHome ? 'home' : 'away'}">${atHome ? 'CASA' : 'FORA'}</span></div>`;
+            const badge = resolveCompetitionBadge(game, { userDivision });
+            const badgeHtml = competitionBadgeMarkup({
+              id: null,
+              nameId: null,
+              name: badge.name,
+              kind: badge.kind,
+              extraClass: 'club-upcoming-badge',
+            });
+            return `<div class="club-upcoming-row ${isCup || isKo ? 'cup-row' : ''}"><span class="club-upcoming-fixture"><span class="club-upcoming-matchup"><b class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</b> <i>×</i> <b class="club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</b></span>${badgeHtml}</span><span>${details.display} · ${details.time}</span><span class="${atHome ? 'home' : 'away'}">${atHome ? 'CASA' : 'FORA'}</span></div>`;
           })
           .join('')
-      : `<div class="club-upcoming-row idle-row"><span>—</span><span><b>${idle ? 'Nenhum jogo restante do clube' : fullyComplete ? 'Temporada encerrada' : 'Agenda em atualização'}</b></span><span>${idle ? `Nacional na rodada ${currentRound}` : '—'}</span><span class="away">—</span></div>`;
+      : `<div class="club-upcoming-row idle-row"><span class="club-upcoming-fixture"><b>${idle ? 'Nenhum jogo restante do clube' : fullyComplete ? 'Temporada encerrada' : 'Agenda em atualização'}</b></span><span>${idle ? `Nacional na rodada ${currentRound}` : '—'}</span><span class="away">—</span></div>`;
   };
 
   const renderLeaders = () => {

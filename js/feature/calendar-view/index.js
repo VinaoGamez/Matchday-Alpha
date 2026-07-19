@@ -161,7 +161,7 @@ export function createCalendarViewFeature(deps) {
         return entries
           .map(
             goal =>
-              `<span>${goal.minute ? `${goal.minute}' · ` : ''}${goal.name}${goal.type === 'penalty' ? ' (pênalti)' : goal.type === 'freeKick' ? ' (falta)' : goal.type === 'corner' ? ' (cabeça)' : ''}</span>`
+              `<span>${goal.minute != null ? `${goal.stoppage ? `${goal.minute <= 45 ? 45 : 90}+${goal.stoppage}` : goal.minute}' · ` : ''}${goal.name}${goal.type === 'own' ? ' (gol contra)' : goal.type === 'penalty' ? ' (pênalti)' : goal.type === 'freeKick' ? ' (falta)' : goal.type === 'corner' ? ' (cabeça)' : ''}</span>`
           )
           .join('');
       }

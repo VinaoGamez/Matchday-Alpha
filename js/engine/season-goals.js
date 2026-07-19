@@ -152,6 +152,7 @@ export function pickSeasonGoal({ division = 'A', overall = 70, seed = 1 } = {}) 
 
 /**
  * Avalia meta no fim da temporada.
+ * `sponsorPressure` (0–1): pacote de patrocínio alto amplifica a reação da diretoria.
  * @returns {{ status, boardDelta, feeling, label, goalId }}
  */
 export function evaluateSeasonGoal(goal, ctx = {}) {
@@ -162,6 +163,7 @@ export function evaluateSeasonGoal(goal, ctx = {}) {
   const position = Number(ctx.position) || 99;
   const promoted = !!ctx.promoted;
   const phase = ctx.serieDPhase || 'group';
+  const pressure = Math.max(0, Math.min(1, Number(ctx.sponsorPressure) || 0));
   let status = 'missed';
 
   if (type === 'position') {
@@ -185,13 +187,27 @@ export function evaluateSeasonGoal(goal, ctx = {}) {
     else status = 'missed';
   }
 
+  // Pacote alto: sucesso rende mais apoio; falha cobra mais da diretoria.
+  const scale = 1 + pressure * 0.85;
+  const baseDelta = BOARD_DELTA[status] ?? 0;
+  const boardDelta = Math.round(baseDelta * scale);
+  let feeling = FEELING[status] || FEELING.missed;
+  if (pressure >= 0.55) {
+    if (status === 'exceeded' || status === 'met') {
+      feeling = `${feeling} O pacote de patrocínio elevado reforçou o crédito junto à diretoria.`;
+    } else if (status === 'near' || status === 'missed') {
+      feeling = `${feeling} Com um pacote comercial alto, a cobrança pela meta ficou mais dura.`;
+    }
+  }
+
   return {
     status,
-    boardDelta: BOARD_DELTA[status] ?? 0,
-    feeling: FEELING[status] || FEELING.missed,
+    boardDelta,
+    feeling,
     label: goal.label,
     goalId: goal.id,
     tier: goal.tier,
+    sponsorPressure: pressure,
   };
 }
 

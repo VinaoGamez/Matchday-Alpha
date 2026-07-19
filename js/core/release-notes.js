@@ -1,6 +1,21 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-22',
+    date: '2026-07-18',
+    publishedAt: '2026-07-18T22:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Motor de partida',
+        items: [
+          'Gol contra volta a ocorrer no AO VIVO e na simulação da IA (marcado como GC / gol contra).',
+          'Acréscimos no fim de cada tempo: relógio 45+N / 90+N, anunciados pelo árbitro conforme faltas, cartões e substituições.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-21',
     date: '2026-07-18',
     publishedAt: '2026-07-18T21:00:00-03:00',

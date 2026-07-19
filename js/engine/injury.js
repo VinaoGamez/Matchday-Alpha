@@ -23,7 +23,17 @@ export function createInjuryEngine(deps) {
   };
   const preventionWorkloadEase=club=>clamp(1-(club?.preventionProgram??0)*.18,.64,1);
   const effectiveWorkloadRisk=(player,club)=>{const base=workloadRisk(player.workload);return 1+(base-1)*preventionWorkloadEase(club);};
-  const injuryAllowsTreatmentChoice=injury=>injury?.grade===2;
+  // Modal cirurgia/conservador só quando o grau marca treatmentChoice (casos reais no futebol).
+  const catalogTreatmentChoice=(type,grade)=>{
+    const definition=injuryCatalog.find(item=>item.type===type);
+    const entry=definition?.grades?.find(item=>item.grade===grade);
+    return !!entry?.treatmentChoice;
+  };
+  const injuryAllowsTreatmentChoice=injury=>{
+    if(!injury)return false;
+    if(injury.treatmentChoice!=null)return !!injury.treatmentChoice;
+    return catalogTreatmentChoice(injury.type,injury.grade);
+  };
   const medicalDepartmentLabel=quality=>quality>=82?'DEPARTAMENTO ELITE':quality>=68?'ESTRUTURA SÓLIDA':quality>=52?'PADRÃO':'ESTRUTURA LIMITADA';
   const medicalRecoveryModifier=club=>clamp(1.07-(clubMedicalQuality(club)-50)/720,.9,1.06);
   const medicalPreventionModifier=(club,mechanism)=>{
@@ -38,8 +48,12 @@ export function createInjuryEngine(deps) {
   };
   const resolveInjuryTreatment=(definition,gradeEntry,club,grade)=>{
     const preferred=gradeEntry.treatment||'conservative';
+    // Contusão, hematoma, estiramentos e entorses: só conservador/fisioterapia.
     if(preferred!=='surgery')return {treatment:'conservative',surgery:false,physiotherapy:true,daysFactor:1};
+    // Com escolha do manager: baseline neutro até a decisão (evita cirurgia pré-marcada).
+    if(gradeEntry.treatmentChoice)return {treatment:'conservative',surgery:false,physiotherapy:true,daysFactor:1};
     const quality=clubMedicalQuality(club);
+    // LCA / fraturas: cirurgia quase padrão no futebol profissional.
     if(grade>=3)return {treatment:'surgery',surgery:true,physiotherapy:true,daysFactor:clamp(.9-(quality-50)/900,.84,.94)};
     if(quality>=70&&grade===2&&gameRandom()<.32)return {treatment:'surgery',surgery:true,physiotherapy:true,daysFactor:.9};
     if(quality<48&&gameRandom()<.24)return {treatment:'conservative',surgery:false,physiotherapy:true,daysFactor:1.08,examPending:true};
@@ -57,19 +71,25 @@ export function createInjuryEngine(deps) {
     fall:{contusion:35,ankle:25,knee:20,fracture:15,muscle:5},
     unknown:injuryCategoryWeights
   };
+  // treatmentChoice: decisão real no futebol (artroscopia/reconstrução vs reabilitação).
+  // Contusões, hematomas e estiramentos musculares NÃO oferecem cirurgia.
   const injuryCatalog=[
     {type:'mild_contusion',category:'contusion',name:'Contusão leve',bodyPart:'thigh',sideable:true,mechanisms:['tackle','aerialDuel','block','fall'],typeWeight:4,matchHint:'forte contusão após uma dividida',grades:[{grade:1,severity:'Leve',days:[1,7],recurrenceRisk:.04,treatment:'conservative',weight:1}]},
     {type:'muscle_hematoma',category:'contusion',name:'Hematoma muscular',bodyPart:'thigh',sideable:true,mechanisms:['tackle','aerialDuel','block','fall'],typeWeight:2.2,matchHint:'hematoma após contato forte',grades:[{grade:1,severity:'Leve',days:[3,10],recurrenceRisk:.06,treatment:'conservative',weight:.62},{grade:2,severity:'Mediana',days:[10,21],recurrenceRisk:.1,treatment:'conservative',weight:.38}]},
     {type:'hamstring_strain',category:'muscle',name:'Estiramento de isquiotibiais',bodyPart:'hamstring',sideable:true,mechanisms:['sprint','directionChange','shot'],typeWeight:4.5,matchHint:'desconforto na parte posterior da coxa após uma arrancada',grades:[{grade:1,severity:'Leve',days:[7,14],recurrenceRisk:.12,treatment:'conservative',weight:.5},{grade:2,severity:'Mediana',days:[15,35],recurrenceRisk:.18,treatment:'conservative',weight:.35},{grade:3,severity:'Grave',days:[45,90],recurrenceRisk:.24,treatment:'conservative',weight:.15}]},
-    {type:'hamstring_rupture',category:'muscle',name:'Ruptura de isquiotibiais',bodyPart:'hamstring',sideable:true,mechanisms:['sprint','shot'],typeWeight:.25,matchHint:'ruptura muscular na posterior da coxa',grades:[{grade:3,severity:'Grave',days:[90,150],recurrenceRisk:.28,treatment:'surgery',weight:1}]},
+    // Ruptura intramuscular: reabilitação; avulsão proximal livre é rara — escolha só nesse perfil grave.
+    {type:'hamstring_rupture',category:'muscle',name:'Ruptura de isquiotibiais',bodyPart:'hamstring',sideable:true,mechanisms:['sprint','shot'],typeWeight:.25,matchHint:'ruptura muscular na posterior da coxa',grades:[{grade:3,severity:'Grave',days:[90,150],recurrenceRisk:.28,treatment:'surgery',treatmentChoice:true,weight:1}]},
     {type:'quadriceps_strain',category:'muscle',name:'Lesão de quadríceps',bodyPart:'quadriceps',sideable:true,mechanisms:['sprint','shot','directionChange'],typeWeight:3,matchHint:'desconforto no quadríceps após esforço máximo',grades:[{grade:1,severity:'Leve',days:[7,14],recurrenceRisk:.1,treatment:'conservative',weight:.52},{grade:2,severity:'Mediana',days:[15,30],recurrenceRisk:.16,treatment:'conservative',weight:.33},{grade:3,severity:'Grave',days:[40,75],recurrenceRisk:.22,treatment:'conservative',weight:.15}]},
     {type:'adductor_strain',category:'muscle',name:'Lesão de adutor',bodyPart:'adductor',sideable:true,mechanisms:['directionChange','sprint','shot'],typeWeight:2.6,matchHint:'desconforto na virilha após mudança de direção',grades:[{grade:1,severity:'Leve',days:[7,14],recurrenceRisk:.11,treatment:'conservative',weight:.55},{grade:2,severity:'Mediana',days:[15,28],recurrenceRisk:.17,treatment:'conservative',weight:.35},{grade:3,severity:'Grave',days:[35,60],recurrenceRisk:.23,treatment:'conservative',weight:.1}]},
     {type:'calf_strain',category:'muscle',name:'Lesão de panturrilha',bodyPart:'calf',sideable:true,mechanisms:['sprint','directionChange'],typeWeight:2.8,matchHint:'desconforto na panturrilha após aceleração',grades:[{grade:1,severity:'Leve',days:[5,12],recurrenceRisk:.1,treatment:'conservative',weight:.58},{grade:2,severity:'Mediana',days:[12,28],recurrenceRisk:.15,treatment:'conservative',weight:.32},{grade:3,severity:'Grave',days:[30,55],recurrenceRisk:.2,treatment:'conservative',weight:.1}]},
     {type:'ankle_sprain_mild',category:'ankle',name:'Entorse leve de tornozelo',bodyPart:'ankle',sideable:true,mechanisms:['tackle','directionChange','aerialDuel','fall'],typeWeight:3.8,matchHint:'problema no tornozelo em uma disputa pela bola',grades:[{grade:1,severity:'Leve',days:[5,12],recurrenceRisk:.08,treatment:'conservative',weight:1}]},
     {type:'ankle_sprain_moderate',category:'ankle',name:'Entorse moderada de tornozelo',bodyPart:'ankle',sideable:true,mechanisms:['tackle','directionChange','aerialDuel','fall'],typeWeight:2.4,matchHint:'entorse no tornozelo após aterrissagem',grades:[{grade:2,severity:'Mediana',days:[12,28],recurrenceRisk:.14,treatment:'conservative',weight:1}]},
-    {type:'ankle_ligament_rupture',category:'ankle',name:'Ruptura ligamentar do tornozelo',bodyPart:'ankle',sideable:true,mechanisms:['tackle','directionChange','fall'],typeWeight:.35,matchHint:'lesão grave no tornozelo',grades:[{grade:3,severity:'Grave',days:[45,90],recurrenceRisk:.2,treatment:'surgery',weight:1}]},
+    // Grau 3 lateral: muitos clubes optam por imobilização/reabilitação; cirurgia se instabilidade.
+    {type:'ankle_ligament_rupture',category:'ankle',name:'Ruptura ligamentar do tornozelo',bodyPart:'ankle',sideable:true,mechanisms:['tackle','directionChange','fall'],typeWeight:.35,matchHint:'lesão grave no tornozelo',grades:[{grade:3,severity:'Grave',days:[45,90],recurrenceRisk:.2,treatment:'surgery',treatmentChoice:true,weight:1}]},
     {type:'knee_ligament_sprain',category:'knee',name:'Distensão do ligamento do joelho',bodyPart:'knee',sideable:true,mechanisms:['directionChange','tackle','aerialDuel'],typeWeight:2.2,matchHint:'incidente no joelho após contato',grades:[{grade:1,severity:'Leve',days:[10,21],recurrenceRisk:.1,treatment:'conservative',weight:.45},{grade:2,severity:'Mediana',days:[22,45],recurrenceRisk:.16,treatment:'conservative',weight:.55}]},
-    {type:'meniscus_injury',category:'knee',name:'Lesão meniscal',bodyPart:'knee',sideable:true,mechanisms:['directionChange','tackle','aerialDuel'],typeWeight:.9,matchHint:'lesão no joelho após rotação',grades:[{grade:2,severity:'Mediana',days:[30,60],recurrenceRisk:.18,treatment:'surgery',weight:.55},{grade:3,severity:'Grave',days:[60,150],recurrenceRisk:.22,treatment:'surgery',weight:.45}]},
+    // Menisco: artroscopia vs conservador é decisão clínica comum.
+    {type:'meniscus_injury',category:'knee',name:'Lesão meniscal',bodyPart:'knee',sideable:true,mechanisms:['directionChange','tackle','aerialDuel'],typeWeight:.9,matchHint:'lesão no joelho após rotação',grades:[{grade:2,severity:'Mediana',days:[30,60],recurrenceRisk:.18,treatment:'surgery',treatmentChoice:true,weight:.55},{grade:3,severity:'Grave',days:[60,150],recurrenceRisk:.22,treatment:'surgery',treatmentChoice:true,weight:.45}]},
+    // LCA em atletas de pivô: reconstrução é o padrão — sem modal.
     {type:'acl_rupture',category:'knee',name:'Ruptura do Ligamento Cruzado Anterior',bodyPart:'knee',sideable:true,mechanisms:['directionChange','tackle'],typeWeight:.12,matchHint:'joelho após girar com o pé apoiado no gramado',grades:[{grade:3,severity:'Grave',days:[180,330],recurrenceRisk:.18,treatment:'surgery',weight:1}]},
     {type:'foot_fracture',category:'fracture',name:'Fratura no pé',bodyPart:'foot',sideable:true,mechanisms:['tackle','block','fall','aerialDuel'],typeWeight:.8,matchHint:'trauma grave no pé',grades:[{grade:3,severity:'Grave',days:[45,120],recurrenceRisk:.12,treatment:'surgery',weight:1}]},
     {type:'leg_fracture',category:'fracture',name:'Fratura na perna',bodyPart:'leg',sideable:true,mechanisms:['tackle','aerialDuel','fall'],typeWeight:.5,matchHint:'fratura após choque violento',grades:[{grade:3,severity:'Grave',days:[60,210],recurrenceRisk:.1,treatment:'surgery',weight:1}]}
@@ -264,7 +284,7 @@ export function createInjuryEngine(deps) {
     const minimumDays=Math.max(1,Math.round(days*.82)),maximumDays=Math.max(minimumDays,Math.round(days*1.18));
     const recurrenceBase=gradeEntry.recurrenceRisk??.08;
     const recurrenceRisk=Number((recurrenceBase*previousInjuryModifier(player,definition.bodyPart,definition.type)*(context?.club?medicalRehabSupport(context.club).recurrenceFactor:1)).toFixed(3));
-    return {id:`injury-${Date.now()}-${int(0,999999)}`,category:definition.category,type:definition.type,name:definition.name,bodyPart:definition.bodyPart,side,mechanism:context?.eventType||'unknown',severity:gradeEntry.severity||injurySeverityLabel(gradeEntry.grade),grade:gradeEntry.grade,daysRemaining:days,totalDays:days,estimatedReturn:{minimumDays,maximumDays},treatment:treatmentPlan.treatment||gradeEntry.treatment||'conservative',surgery:!!treatmentPlan.surgery,physiotherapy:treatmentPlan.physiotherapy!==false,examPending:!!treatmentPlan.examPending,recurrenceRisk,performancePenalty:tier==='playThrough'&&gradeEntry.grade===1?.02:gradeEntry.grade===3?.08:gradeEntry.grade===2?.04:0,occurredDuring:context?.occurredDuring||'match',eventType:context?.eventType||'unknown',minute:context?.minute??null,startedRound:round,rehabilitationStage:tier==='confirmed'?'acute':'monitoring',medicallyCleared:false,returnToPlay:null,matchHint:definition.matchHint,matchStatus:tier,substitutionRequired:tier==='confirmed',playedThrough:tier==='playThrough',diagnosisPending:tier!=='confirmed',legacy:false};
+    return {id:`injury-${Date.now()}-${int(0,999999)}`,category:definition.category,type:definition.type,name:definition.name,bodyPart:definition.bodyPart,side,mechanism:context?.eventType||'unknown',severity:gradeEntry.severity||injurySeverityLabel(gradeEntry.grade),grade:gradeEntry.grade,daysRemaining:days,totalDays:days,estimatedReturn:{minimumDays,maximumDays},treatment:treatmentPlan.treatment||gradeEntry.treatment||'conservative',surgery:!!treatmentPlan.surgery,physiotherapy:treatmentPlan.physiotherapy!==false,examPending:!!treatmentPlan.examPending,treatmentChoice:!!gradeEntry.treatmentChoice,recurrenceRisk,performancePenalty:tier==='playThrough'&&gradeEntry.grade===1?.02:gradeEntry.grade===3?.08:gradeEntry.grade===2?.04:0,occurredDuring:context?.occurredDuring||'match',eventType:context?.eventType||'unknown',minute:context?.minute??null,startedRound:round,rehabilitationStage:tier==='confirmed'?'acute':'monitoring',medicallyCleared:false,returnToPlay:null,matchHint:definition.matchHint,matchStatus:tier,substitutionRequired:tier==='confirmed',playedThrough:tier==='playThrough',diagnosisPending:tier!=='confirmed',legacy:false};
   };
   const classifyIncidentTier=(definition,gradeEntry,context)=>{
     const grade=gradeEntry.grade,intensity=context.intensity??.55;

@@ -1,4 +1,18 @@
 import { MODULE_VERSIONS } from '../core/constants.js';
+import { getSponsors, sponsorLogoSlug } from './economy.js';
+import { rollStoppageMinutes } from './match-clock.js';
+
+const SPONSOR_LOGO_URLS = Object.fromEntries(
+  Object.entries(
+    import.meta.glob('../../assets/sponsors/icons/*.png', {
+      eager: true,
+      import: 'default',
+    }),
+  ).map(([path, url]) => {
+    const file = path.split('/').pop() || '';
+    return [file.replace(/\.png$/i, ''), url];
+  }),
+);
 
 /**
  * Orquestração da partida ao vivo — desgaste por minuto, ciclo tick/advance,
@@ -89,6 +103,7 @@ export function createLiveMatchOrchestration(deps) {
     knockoutCompetitionLabel,
     getKnockoutTieGames,
     shot,
+    planPenaltyOutcome,
     takeFreeKick,
     penaltyTaker,
     buildAttack,
@@ -98,7 +113,76 @@ export function createLiveMatchOrchestration(deps) {
     updateLiveMatchClock,
     getAwaySubstitutions,
     incrementAwaySubstitutions,
+    getStoppageFirst,
+    setStoppageFirst,
+    getStoppageSecond,
+    setStoppageSecond,
+    getStoppageElapsed,
+    setStoppageElapsed,
+    getStoppageActive,
+    setStoppageActive,
+    getSubstitutions,
   } = deps;
+
+  const stoppageContext = half => {
+    const stats = getStats();
+    const homeSubs = Number(getSubstitutions?.() || 0);
+    const awaySubs = Number(getAwaySubstitutions?.() || 0);
+    return {
+      fouls: (stats?.home?.fouls || 0) + (stats?.away?.fouls || 0),
+      yellow: (stats?.home?.yellow || 0) + (stats?.away?.yellow || 0),
+      red: (stats?.home?.red || 0) + (stats?.away?.red || 0),
+      subs: homeSubs + awaySubs,
+      half,
+      random: Math.random,
+    };
+  };
+
+  /** Congela o relógio no fim da etapa (45+N ou 90+N) sem seguir avançando. */
+  const freezeStoppageDisplay = (half) => {
+    const allowance =
+      half === 'second'
+        ? Math.max(Number(getStoppageSecond?.() || 0), Number(getStoppageElapsed?.() || 0))
+        : Math.max(Number(getStoppageFirst?.() || 0), Number(getStoppageElapsed?.() || 0));
+    if (half === 'second') {
+      if (allowance > 0) setStoppageSecond?.(allowance);
+      setMinute(90);
+    } else {
+      if (allowance > 0) setStoppageFirst?.(allowance);
+      setMinute(45);
+    }
+    setStoppageElapsed?.(allowance);
+    setStoppageActive?.(null);
+  };
+
+  const finishRegulation = () => {
+    freezeStoppageDisplay('second');
+    if (cupLiveMatchNeedsShootout()) {
+      stopMatchClock();
+      log('Fim de jogo no tempo regulamentar.', '');
+      $('#matchStatus').textContent = 'Empate — a disputa seguirá nos pênaltis.';
+      updateLiveMatchClock();
+      startPenaltyShootout();
+      return;
+    }
+    setMatchFinished(true);
+    log('Fim de jogo.');
+    $('#matchStatus').textContent = 'Partida encerrada.';
+    stopMatchClock();
+    updateLiveMatchClock();
+    simulateRoundResults();
+    renderFinalSummary();
+    showFinalActions();
+  };
+
+  const openFirstHalfInterval = () => {
+    freezeStoppageDisplay('first');
+    setHalftimeShown(true);
+    log('Intervalo de jogo.');
+    $('#matchStatus').textContent = 'Intervalo: faça os ajustes que considerar necessários.';
+    updateLiveMatchClock();
+    openPreparation('INTERVALO');
+  };
 
   // --- Lesões ao vivo (evento, play-through, rehab) --------------------------
 
@@ -378,19 +462,201 @@ export function createLiveMatchOrchestration(deps) {
     return eligible[Math.random() < .82 ? 0 : Math.min(1, eligible.length - 1)] || eligible[0];
   };
 
-  const executeShootoutKick = (kickingClub, taker) => {
+  let penaltyDuelTimer = null;
+
+  const setPenaltyDuelNarration = text => {
+    const el = $('#penaltyDuelNarration');
+    if (el) el.textContent = text;
+  };
+
+  const clearPenaltyDuelKick = () => {
+    const stage = $('#penaltyDuelStage');
+    const pitch = stage?.querySelector('.penalty-duel-pitch');
+    stage?.classList.remove('is-resolving', 'is-result', 'outcome-goal', 'outcome-save', 'outcome-wide');
+    if (pitch) {
+      pitch.removeAttribute('data-kick');
+      pitch.classList.remove('is-kicking');
+    }
+  };
+
+  const resetPenaltyDuelStage = (narration = 'Escolha o cobrador para iniciar a cobrança.') => {
+    if (penaltyDuelTimer) { clearTimeout(penaltyDuelTimer); penaltyDuelTimer = null; }
+    const stage = $('#penaltyDuelStage');
+    clearPenaltyDuelKick();
+    stage?.classList.add('is-idle');
+    setPenaltyDuelNarration(narration);
+    $('#penaltyTakers')?.querySelectorAll('button').forEach(btn => {
+      btn.disabled = false;
+      btn.classList.remove('is-selected');
+    });
+  };
+
+  const closePenaltyDuel = () => {
+    if (penaltyDuelTimer) { clearTimeout(penaltyDuelTimer); penaltyDuelTimer = null; }
+    $('#penaltyDuelModal')?.classList.add('hidden');
+    $('#penaltyChoice')?.classList.add('hidden');
+    resetPenaltyDuelStage();
+  };
+
+  const sponsorLedCell = (name, { master = false } = {}) => {
+    const slug = sponsorLogoSlug(name);
+    const url = slug ? SPONSOR_LOGO_URLS[slug] : null;
+    const label = String(name || '—');
+    const short =
+      label.length > 12
+        ? label
+            .split(/\s+/)
+            .slice(0, 2)
+            .join(' ')
+            .slice(0, 12)
+        : label;
+    const logo = url
+      ? `<span class="penalty-duel-led-logo"><img src="${url}" alt="" loading="lazy"></span>`
+      : `<span class="penalty-duel-led-logo"><span class="penalty-duel-led-fallback">${label
+          .split(' ')
+          .map(part => part[0])
+          .join('')
+          .slice(0, 3)
+          .toUpperCase()}</span></span>`;
+    return `<div class="penalty-duel-led ${master ? 'is-master' : ''}" title="${label}">${logo}<span class="penalty-duel-led-text">${short}</span></div>`;
+  };
+
+  /** Mini placas LED com master + secundários do clube do usuário. */
+  const renderPenaltySponsorBoards = () => {
+    const root = $('#penaltyDuelBoards');
+    if (!root) return;
+    const club = getClubs()?.[getUserClub()];
+    const sponsors = getSponsors(club);
+    const names = [];
+    if (sponsors?.master?.name) names.push({ name: sponsors.master.name, master: true });
+    (sponsors?.secondaries || []).forEach(item => {
+      if (item?.name) names.push({ name: item.name, master: false });
+    });
+    if (!names.length) {
+      root.innerHTML = '';
+      root.classList.add('is-empty');
+      return;
+    }
+    root.classList.remove('is-empty');
+    // Duplica a faixa para o scroll contínuo estilo placar eletrônico.
+    const cells = names.map(item => sponsorLedCell(item.name, { master: item.master })).join('');
+    root.innerHTML = `<div class="penalty-duel-boards-rail is-scrolling" aria-hidden="true">${cells}${cells}</div>`;
+  };
+
+  const openPenaltyDuel = (title = 'Disputa de pênalti', idleText) => {
+    const titleEl = $('#penaltyDuelTitle');
+    if (titleEl) titleEl.textContent = title;
+    resetPenaltyDuelStage(idleText || 'O juiz aponta a marca da cal. Escolha o cobrador.');
+    renderPenaltySponsorBoards();
+    $('#penaltyChoice')?.classList.remove('hidden');
+    $('#penaltyDuelModal')?.classList.remove('hidden');
+  };
+
+  const isPenaltyDuelOpen = () => {
+    const modal = $('#penaltyDuelModal');
+    if (modal) return !modal.classList.contains('hidden');
+    return !!$('#penaltyChoice') && !$('#penaltyChoice').classList.contains('hidden');
+  };
+
+  const cornerNarration = corner => {
+    if (corner === 'left') return 'Aponta o canto esquerdo…';
+    if (corner === 'right') return 'Olha o canto direito…';
+    if (corner === 'over') return 'Sobe a bola demais…';
+    return 'Bate no meio do gol…';
+  };
+
+  const resultNarration = (plan, takerName) => {
+    const { outcome, corner, goalkeeper } = plan;
+    if (outcome === 'goal') {
+      if (corner === 'left') return `GOOOL! ${takerName} enterra no ângulo esquerdo!`;
+      if (corner === 'right') return `GOOOL! ${takerName} crava no ângulo direito!`;
+      return `GOOOL! ${takerName} converte no meio do gol!`;
+    }
+    if (outcome === 'save') {
+      if (corner === 'left') return `${goalkeeper} voa no canto esquerdo e defende!`;
+      if (corner === 'right') return `${goalkeeper} estica no canto direito e pega!`;
+      return `${goalkeeper} fica no meio e faz a defesa!`;
+    }
+    if (corner === 'over') return `Por cima da trave! ${takerName} manda para fora.`;
+    if (corner === 'left') return `Raspou a trave esquerda e foi para fora!`;
+    return `Passou rente à trave direita e foi para fora!`;
+  };
+
+  /**
+   * Anima a cobrança com o plano já definido (outcome/canto) e só então chama onDone(plan).
+   * @param {string} takerName
+   * @param {{ outcome:string, corner:string, kickKey:string, goalkeeper?:string }} plan
+   * @param {Function} onDone
+   */
+  const runPenaltyDuelResolve = (takerName, plan, onDone) => {
+    if (penaltyDuelTimer || !takerName || !plan?.outcome) return false;
+    const stage = $('#penaltyDuelStage');
+    const pitch = stage?.querySelector('.penalty-duel-pitch');
+    const buttons = [...($('#penaltyTakers')?.querySelectorAll('button') || [])];
+    buttons.forEach(btn => {
+      btn.disabled = true;
+      btn.classList.toggle('is-selected', btn.dataset.taker === takerName);
+    });
+    clearPenaltyDuelKick();
+    stage?.classList.remove('is-idle');
+    stage?.classList.add('is-resolving');
+    const steps = [
+      { text: `${takerName} coloca a bola na marca…`, ms: 750 },
+      { text: cornerNarration(plan.corner), ms: 820 },
+      { text: 'Ele corre e chuta!', ms: 480, kick: true },
+      { text: resultNarration(plan, takerName), ms: 1250, result: true },
+    ];
+    let index = 0;
+    const play = () => {
+      const step = steps[index];
+      setPenaltyDuelNarration(step.text);
+      if (step.kick && pitch) {
+        pitch.setAttribute('data-kick', plan.kickKey || `${plan.outcome}-${plan.corner}`);
+        pitch.classList.add('is-kicking');
+        stage.classList.add(`outcome-${plan.outcome}`);
+      }
+      if (step.result) {
+        stage.classList.add('is-result');
+        stage.classList.remove('is-resolving');
+      }
+      index += 1;
+      if (index < steps.length) {
+        penaltyDuelTimer = setTimeout(play, step.ms);
+        return;
+      }
+      penaltyDuelTimer = setTimeout(() => {
+        penaltyDuelTimer = null;
+        onDone?.(plan);
+      }, step.ms);
+    };
+    play();
+    return true;
+  };
+
+  const executeShootoutKick = (kickingClub, taker, plan = null) => {
     const shootoutState = getShootoutState();
     if (!shootoutState || !taker) return;
     const userClub = getUserClub();
     const isUser = kickingClub === userClub, side = isUser ? 'home' : 'away', current = isUser ? profile() : opponentForMatch(), other = isUser ? opponentForMatch() : profile();
     shootoutState.usedNames[kickingClub] = shootoutState.usedNames[kickingClub] || [];
     shootoutState.usedNames[kickingClub].push(taker.name);
-    const scored = shot(side, { ...current, attack: current.attack + 9 }, other, { penalty: true, shootout: true, taker: taker.name, penaltySkill: taker.penaltyTaking, logFn: logShootout }) || false;
+    const resolved = plan || planPenaltyOutcome?.(side, { ...current, attack: current.attack + 9 }, other, {
+      taker: taker.name,
+      penaltySkill: taker.penaltyTaking,
+    });
+    const scored = shot(side, { ...current, attack: current.attack + 9 }, other, {
+      penalty: true,
+      shootout: true,
+      taker: taker.name,
+      penaltySkill: taker.penaltyTaking,
+      forcedOutcome: resolved?.outcome,
+      logFn: logShootout,
+    }) || false;
     shootoutState.results[kickingClub] = shootoutState.results[kickingClub] || [];
     shootoutState.results[kickingClub].push(scored);
     shootoutState.kickIndex++;
     renderShootoutTrack();
-    $('#penaltyChoice').classList.add('hidden');
+    closePenaltyDuel();
     const winner = evaluateShootoutWinner();
     if (winner) return completePenaltyShootout(winner);
     scheduleNextShootoutKick();
@@ -400,7 +666,6 @@ export function createLiveMatchOrchestration(deps) {
     const shootoutState = getShootoutState(), userClub = getUserClub();
     stopMatchClock(); setPendingPenalty({ mode: 'shootout', kickingClub }); $('#matchActions').classList.add('hidden');
     const section = $('#penaltyChoice'), keeperClub = shootoutState.clubs.find(name => name !== kickingClub), keeperLineup = shootoutLineup(keeperClub), keeper = keeperLineup.find(player => player.pos === 'GOL') || keeperLineup[0];
-    $('#matchModal .score').after(section);
     let heading = section.querySelector('.penalty-choice-heading');
     if (!heading) { heading = document.createElement('div'); heading.className = 'penalty-choice-heading'; section.prepend(heading); }
     const kickNo = shootoutAttemptsCount(kickingClub) + 1;
@@ -409,7 +674,7 @@ export function createLiveMatchOrchestration(deps) {
     const takers = shootoutLineup(kickingClub).map((player, index) => ({ player, index })).filter(({ player, index }) => player.pos !== 'GOL' && !cardState[index]?.red && !used.has(player.name)).map(({ player }) => player).sort((a, b) => b.penaltyTaking - a.penaltyTaking || b.overall - a.overall).slice(0, 5);
     const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (player.penaltyTaking > 85 ? .035 : 0), .56, .94) * 100);
     $('#penaltyTakers').innerHTML = takers.length ? takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR OPÇÃO</i>' : player.penaltyTaking > 85 ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('') : '<p class="shootout-empty">Sem cobradores disponíveis.</p>';
-    section.classList.remove('hidden');
+    openPenaltyDuel(`Shootout · Cobrança ${kickNo}`, `Cobrança ${kickNo}. Escolha o batedor com calma — cada chute decide.`);
     $('#matchStatus').textContent = `Shootout: ${kickingClub} define o cobrador da ${kickNo}ª cobrança.`;
   };
 
@@ -434,7 +699,7 @@ export function createLiveMatchOrchestration(deps) {
     log('Disputa de pênaltis encerrada.', 'penalty');
     renderShootoutTrack();
     $('#matchStatus').textContent = `Shootout: ${winner} venceu ${liveMatchGame.shootoutPenalties}.`;
-    $('#penaltyChoice').classList.add('hidden');
+    closePenaltyDuel();
     setShootoutState(null);
     setMatchFinished(true);
     simulateRoundResults();
@@ -458,18 +723,17 @@ export function createLiveMatchOrchestration(deps) {
   };
 
   const startPenaltyChoice = (current, other) => {
-    const userClub = getUserClub(), matchClub = getMatchClub(), cards = getCards();
+    const matchClub = getMatchClub(), cards = getCards();
     setPendingPenalty({ current, other }); stopMatchClock(); $('#matchActions').classList.add('hidden');
     const section = $('#penaltyChoice'), keeper = matchClub.roster.slice(0, 11).find((player, index) => player.pos === 'GOL' && !cards.away[index]?.red) || matchClub.roster[0];
-    // A decisão fica no topo da partida, imediatamente abaixo do placar.
-    $('#matchModal .score').after(section);
     let heading = section.querySelector('.penalty-choice-heading');
     if (!heading) { heading = document.createElement('div'); heading.className = 'penalty-choice-heading'; section.prepend(heading); }
     heading.innerHTML = `<div><strong>Escolha o cobrador</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
     const takers = getActiveStarters().filter(player => player.pos !== 'GOL').sort((a, b) => b.penaltyTaking - a.penaltyTaking || b.overall - a.overall).slice(0, 3);
     const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (player.penaltyTaking > 85 ? .035 : 0), .56, .94) * 100);
     $('#penaltyTakers').innerHTML = takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR BATEDOR</i>' : player.penaltyTaking > 85 ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('');
-    section.classList.remove('hidden'); $('#matchStatus').textContent = 'Pênalti: escolha o cobrador destacado ou compare as opções.';
+    openPenaltyDuel('Pênalti!', 'O juiz aponta a marca da cal. Escolha o cobrador.');
+    $('#matchStatus').textContent = 'Pênalti: escolha o cobrador na janela da disputa.';
   };
 
   // --- Avanço de minuto --------------------------------------------------------
@@ -477,26 +741,82 @@ export function createLiveMatchOrchestration(deps) {
   const advance = () => {
     const stats = getStats(), cards = getCards(), userClub = getUserClub(), matchClub = getMatchClub();
     const minute0 = getMinute();
-    const firstHalf = minute0 < 45;
-    // Mais posses relevantes por partida: aumenta disputas, faltas e volume
-    // ofensivo sem converter artificialmente uma finalização em interrupção.
-    const elapsed = Math.floor(rnd(1, 3));
-    let minute = minute0 + elapsed;
-    setMinute(minute);
-    resetLiveClockSeconds();
-    updateLiveMatchClock();
-    if (minute >= 90) {
-      minute = 90; setMinute(90);
-      if (cupLiveMatchNeedsShootout()) {
-        stopMatchClock();
-        log('Fim de jogo no tempo regulamentar.', '');
-        $('#matchStatus').textContent = 'Empate — a disputa seguirá nos pênaltis.';
-        startPenaltyShootout();
+    const elapsed = Math.max(1, Math.floor(rnd(1, 3)));
+    let minute = minute0;
+    const stoppageActive = getStoppageActive?.() || null;
+
+    // Acréscimos: relógio fica em 45'/90', display 45+N / 90+N.
+    if (stoppageActive === 'first' && !getHalftimeShown()) {
+      const allowance = Math.max(1, Number(getStoppageFirst?.() || 1));
+      const cur = Number(getStoppageElapsed?.() || 0);
+      if (cur >= allowance) {
+        openFirstHalfInterval();
         return;
       }
-      setMatchFinished(true); log('Fim de jogo.'); $('#matchStatus').textContent = 'Partida encerrada.'; stopMatchClock(); updateLiveMatchClock(); simulateRoundResults(); renderFinalSummary(); showFinalActions(); return;
+      setStoppageElapsed?.(cur + 1);
+      setMinute(45);
+      resetLiveClockSeconds();
+      updateLiveMatchClock();
+      minute = 45;
+    } else if (stoppageActive === 'second') {
+      const allowance = Math.max(1, Number(getStoppageSecond?.() || 1));
+      const cur = Number(getStoppageElapsed?.() || 0);
+      if (cur >= allowance) {
+        finishRegulation();
+        return;
+      }
+      setStoppageElapsed?.(cur + 1);
+      setMinute(90);
+      resetLiveClockSeconds();
+      updateLiveMatchClock();
+      minute = 90;
+    } else {
+      minute = minute0 + elapsed;
+      // Entra nos acréscimos do 1º tempo.
+      if (!getHalftimeShown() && minute0 < 45 && minute >= 45) {
+        setMinute(45);
+        const allowance = rollStoppageMinutes(stoppageContext('first'));
+        setStoppageFirst?.(allowance);
+        setStoppageSecond?.(Number(getStoppageSecond?.() || 0));
+        setStoppageElapsed?.(1);
+        setStoppageActive?.('first');
+        resetLiveClockSeconds();
+        updateLiveMatchClock();
+        log(
+          `Árbitro indica ${allowance} minuto${allowance > 1 ? 's' : ''} de acréscimo no 1º tempo.`,
+          'stoppage',
+        );
+        $('#matchStatus').textContent = `Acréscimos: ${allowance}' no 1º tempo.`;
+        minute = 45;
+      } else if (getHalftimeShown() && minute0 < 90 && minute >= 90) {
+        setMinute(90);
+        const allowance = rollStoppageMinutes(stoppageContext('second'));
+        setStoppageSecond?.(allowance);
+        setStoppageElapsed?.(1);
+        setStoppageActive?.('second');
+        resetLiveClockSeconds();
+        updateLiveMatchClock();
+        log(
+          `Árbitro indica ${allowance} minuto${allowance > 1 ? 's' : ''} de acréscimo no 2º tempo.`,
+          'stoppage',
+        );
+        $('#matchStatus').textContent = `Acréscimos: ${allowance}' no 2º tempo.`;
+        minute = 90;
+      } else if (!getHalftimeShown() && minute >= 45) {
+        setMinute(45);
+        openFirstHalfInterval();
+        return;
+      } else if (getHalftimeShown() && minute >= 90) {
+        setMinute(90);
+        finishRegulation();
+        return;
+      } else {
+        setMinute(minute);
+        resetLiveClockSeconds();
+        updateLiveMatchClock();
+      }
     }
-    if (firstHalf && minute >= 45 && !getHalftimeShown()) { minute = 45; setMinute(45); setHalftimeShown(true); log('Intervalo de jogo.'); $('#matchStatus').textContent = 'Intervalo: faça os ajustes que considerar necessários.'; openPreparation('INTERVALO'); return; }
+
     const homeBase = profile(), awayBase = opponentForMatch();
     const homeLive = liveOverall('home', homeBase), awayLive = liveOverall('away', awayBase);
     // A média efetiva ajusta as ações em escala moderada: favorece o melhor
@@ -589,5 +909,9 @@ export function createLiveMatchOrchestration(deps) {
     completePenaltyShootout,
     startPenaltyShootout,
     startPenaltyChoice,
+    openPenaltyDuel,
+    closePenaltyDuel,
+    isPenaltyDuelOpen,
+    runPenaltyDuelResolve,
   };
 }

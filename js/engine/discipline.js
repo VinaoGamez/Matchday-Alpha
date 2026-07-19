@@ -35,6 +35,20 @@ export function normalizePlayerDiscipline(source, { defaultLeagueKey = 'LEAGUE:A
       },
     ];
   }
+  // Saves/legado com 3+ amarelos sem suspensão: consome o acúmulo.
+  Object.keys(yellowByCompetition).forEach(key => {
+    let count = Math.max(0, Number(yellowByCompetition[key]) || 0);
+    while (count >= YELLOW_SUSPENSION_LIMIT) {
+      count -= YELLOW_SUSPENSION_LIMIT;
+      suspensions.push({
+        competitionKey: key,
+        gamesRemaining: 1,
+        issuedRound: null,
+        reason: 'yellow-accumulation',
+      });
+    }
+    yellowByCompetition[key] = count;
+  });
   return {
     yellowByCompetition,
     suspensions,
@@ -148,9 +162,39 @@ export function applyDisciplineCard(player, card, { competitionKey, round, isUse
   const compLabel = competitionLabel(competitionKey);
   const lines = [];
 
+  const addYellowCount = amount => {
+    const add = Math.max(0, Number(amount) || 0);
+    if (!add) return;
+    const previous = getYellowAccumulation(discipline, competitionKey);
+    discipline.yellowByCompetition[competitionKey] = previous + add;
+    let current = discipline.yellowByCompetition[competitionKey];
+    if (isUserClub) {
+      lines.push(
+        `${player.name} recebeu cartão amarelo${matchCtx} (${Math.min(current, YELLOW_SUSPENSION_LIMIT)}/${YELLOW_SUSPENSION_LIMIT} no ${compLabel}).`,
+      );
+    }
+    while (current >= YELLOW_SUSPENSION_LIMIT) {
+      current -= YELLOW_SUSPENSION_LIMIT;
+      discipline.yellowByCompetition[competitionKey] = current;
+      addSuspension(discipline, {
+        competitionKey,
+        games: 1,
+        round,
+        reason: 'yellow-accumulation',
+      });
+      if (isUserClub) {
+        lines.push(
+          `${player.name} está suspenso por 1 jogo no ${compLabel} (${suspensionReasonLabel('yellow-accumulation', 1)}).`,
+        );
+      }
+    }
+  };
+
   if (card.dismissal) {
     const games = suspensionGamesForCard(card);
     const kind = dismissalKind(card.dismissal);
+    // 2º amarelo → vermelho: o 1º amarelo da partida ainda conta no acúmulo.
+    if (kind === 'second-yellow') addYellowCount(1);
     discipline.redCards += 1;
     const reason =
       kind === 'second-yellow'
@@ -168,28 +212,7 @@ export function applyDisciplineCard(player, card, { competitionKey, round, isUse
     return lines;
   }
 
-  if (card.yellow) {
-    const previous = getYellowAccumulation(discipline, competitionKey);
-    discipline.yellowByCompetition[competitionKey] = previous + Number(card.yellow);
-    const current = discipline.yellowByCompetition[competitionKey];
-    if (isUserClub) {
-      lines.push(`${player.name} recebeu cartão amarelo${matchCtx} (${current}/${YELLOW_SUSPENSION_LIMIT} no ${compLabel}).`);
-    }
-    if (current >= YELLOW_SUSPENSION_LIMIT) {
-      discipline.yellowByCompetition[competitionKey] = current - YELLOW_SUSPENSION_LIMIT;
-      addSuspension(discipline, {
-        competitionKey,
-        games: 1,
-        round,
-        reason: 'yellow-accumulation',
-      });
-      if (isUserClub) {
-        lines.push(
-          `${player.name} está suspenso por 1 jogo no ${compLabel} (${suspensionReasonLabel('yellow-accumulation', 1)}).`,
-        );
-      }
-    }
-  }
+  if (card.yellow) addYellowCount(card.yellow);
   return lines;
 }
 

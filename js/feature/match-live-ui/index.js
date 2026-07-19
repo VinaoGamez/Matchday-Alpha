@@ -1,6 +1,7 @@
 import { MEMORY_LIMITS } from '../../core/save.js';
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { applyCompetitionBadge } from '../../ui/competition-badge.js';
+import { formatLiveClockParts, formatMatchMinuteLabel } from '../../engine/match-clock.js';
 import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
 
 /**
@@ -45,6 +46,10 @@ export function createMatchLiveUiFeature(deps) {
     clamp,
     fieldMarkup,
     getMinute,
+    getStoppageElapsed,
+    getStoppageActive,
+    getStoppageFirst,
+    getStoppageSecond,
     getMatchStarted,
     getMatchFinished,
     getPreMatchPreparation,
@@ -80,6 +85,7 @@ export function createMatchLiveUiFeature(deps) {
     'yellow',
     'red',
     'penalty',
+    'penalty-miss',
     'injury',
     'injury-substitution',
     'substitution',
@@ -88,7 +94,7 @@ export function createMatchLiveUiFeature(deps) {
     'engine-warning',
   ]);
   const TIMELINE_STRUCTURAL =
-    /intervalo|fim de jogo|disputa de p[eê]naltis|bola est[aá] rolando|tempo regulamentar|encerrada/i;
+    /intervalo|fim de jogo|disputa de p[eê]naltis|bola est[aá] rolando|tempo regulamentar|encerrada|acr[eé]scimo|in[ií]cio do 2/i;
 
   const isImportantTimelineType = (type) => {
     if (!type) return false;
@@ -150,9 +156,33 @@ export function createMatchLiveUiFeature(deps) {
     if (getMatchFinished()) return getShootoutState() ? 'DISPUTA DE PÊNALTIS' : 'FIM DE JOGO';
     if (getShootoutState()) return 'DISPUTA DE PÊNALTIS';
     const minute = getMinute();
+    const stoppage = getStoppageActive?.();
+    if (stoppage === 'first') return '1º TEMPO · ACRÉSCIMOS';
+    if (stoppage === 'second') return '2º TEMPO · ACRÉSCIMOS';
     if (getHalftimeShown() && minute <= 45) return 'INTERVALO';
     if (minute > 45) return '2º TEMPO';
     return '1º TEMPO';
+  };
+
+  /**
+   * Acréscimo visível no relógio:
+   * - ativo: progresso da etapa
+   * - intervalo: congela 45(+1º tempo)
+   * - fim: congela 90(+2º tempo)
+   * - 2º tempo em andamento: 0 (recomeça limpo aos 45')
+   */
+  const displayStoppageMinutes = () => {
+    const active = getStoppageActive?.();
+    if (active === 'first' || active === 'second') {
+      return Math.max(0, Number(getStoppageElapsed?.() || 0));
+    }
+    if (getMatchFinished()) {
+      return Math.max(0, Number(getStoppageSecond?.() || getStoppageElapsed?.() || 0));
+    }
+    if (getHalftimeShown() && getMinute() <= 45) {
+      return Math.max(0, Number(getStoppageFirst?.() || getStoppageElapsed?.() || 0));
+    }
+    return 0;
   };
 
   const updateClock = () => {
@@ -163,9 +193,17 @@ export function createMatchLiveUiFeature(deps) {
     if (!show) return;
     const timeEl = clock.querySelector('.live-match-clock-time'),
       phaseEl = clock.querySelector('.live-match-clock-phase');
-    const mm = String(Math.min(90, Math.max(0, getMinute()))).padStart(2, '0'),
-      ss = String(liveClockSeconds).padStart(2, '0');
-    if (timeEl) timeEl.textContent = `${mm}:${ss}`;
+    const stoppageElapsed = displayStoppageMinutes();
+    const atInterval = getHalftimeShown() && !getMatchFinished() && getMinute() <= 45;
+    const minute = getMatchFinished() ? 90 : atInterval ? 45 : getMinute();
+    if (timeEl) {
+      const parts = formatLiveClockParts(minute, stoppageElapsed, liveClockSeconds);
+      const stopHtml = parts.stoppage
+        ? `<span class="live-match-clock-stoppage">(${parts.stoppage})</span>`
+        : '';
+      // Timer normal + acréscimo depois, na mesma linha: 45:00(+5)
+      timeEl.innerHTML = `${parts.main}:${parts.seconds}${stopHtml}`;
+    }
     if (phaseEl) phaseEl.textContent = clockPhase();
   };
 
@@ -229,15 +267,45 @@ export function createMatchLiveUiFeature(deps) {
     return parts[parts.length - 1];
   };
 
+  /** Agrupa gols do mesmo jogador: "Pereira 8', 79'" / "Silva (GC) 45+2'". */
+  const groupGoalsByScorer = goals => {
+    const order = [];
+    const byKey = new Map();
+    (goals || []).forEach(goal => {
+      const own = goal?.type === 'own';
+      const key = `${own ? 'own:' : ''}${goal?.name || '—'}`;
+      if (!byKey.has(key)) {
+        byKey.set(key, { name: goal?.name || '—', own, stamps: [] });
+        order.push(key);
+      }
+      byKey.get(key).stamps.push({
+        minute: Number(goal.minute) || 0,
+        stoppage: Number(goal.stoppage) || 0,
+      });
+    });
+    return order.map(key => {
+      const entry = byKey.get(key);
+      const minutes = entry.stamps
+        .slice()
+        .sort((a, b) => a.minute - b.minute || a.stoppage - b.stoppage)
+        .map(stamp => `${formatMatchMinuteLabel(stamp.minute, stamp.stoppage)}'`)
+        .join(', ');
+      return {
+        name: entry.own ? `${shortScorerName(entry.name)} (GC)` : shortScorerName(entry.name),
+        minutes,
+      };
+    });
+  };
+
   const renderScorers = () => {
     const homeEl = $('#liveHomeScorers');
     const awayEl = $('#liveAwayScorers');
     if (!homeEl || !awayEl) return;
     const sideGoals = (typeof getGoals === 'function' ? getGoals() : null) || { home: [], away: [] };
-    const line = goal =>
-      `<span><em>${goal.minute}'</em> ${shortScorerName(goal.name)}</span>`;
-    homeEl.innerHTML = (sideGoals.home || []).map(line).join('');
-    awayEl.innerHTML = (sideGoals.away || []).map(line).join('');
+    const line = entry =>
+      `<span>${entry.name} <em>${entry.minutes}</em></span>`;
+    homeEl.innerHTML = groupGoalsByScorer(sideGoals.home).map(line).join('');
+    awayEl.innerHTML = groupGoalsByScorer(sideGoals.away).map(line).join('');
   };
 
   /** Comprime amplitude p/ picos não colarem no teto; mantém hierarquia visual. */
@@ -342,20 +410,17 @@ export function createMatchLiveUiFeature(deps) {
       });
       return clamp(Number(side === 'home' ? best.home : best.away) || 0.45, 0.2, 1);
     };
-    // SVG usa preserveAspectRatio=none — compensar escala p/ a bola ficar redonda na tela.
+    // SVG usa preserveAspectRatio=none — ícones em px de tela via scale(1/sx,1/sy).
     const screenW = svg.clientWidth || W;
     const screenH = svg.clientHeight || 112;
-    const scaleX = screenW / W;
-    const scaleY = screenH / H;
-    const ballPx = 20;
-    const ballW = ballPx / Math.max(0.001, scaleX);
-    const ballH = ballPx / Math.max(0.001, scaleY);
+    const scaleX = Math.max(0.001, screenW / W);
+    const scaleY = Math.max(0.001, screenH / H);
     const goalEvents = [
       ...(sideGoals.home || []).map(goal => ({ ...goal, side: 'home', kind: 'goal' })),
       ...(sideGoals.away || []).map(goal => ({ ...goal, side: 'away', kind: 'goal' })),
     ];
     const incidentEvents = (typeof getVolumeIncidents === 'function' ? getVolumeIncidents() || [] : [])
-      .filter(item => ['yellow', 'red', 'injury'].includes(item?.type))
+      .filter(item => ['yellow', 'red', 'injury', 'penalty-miss'].includes(item?.type))
       .map(item => ({
         minute: Number(item.minute) || 0,
         side: item.side === 'away' ? 'away' : 'home',
@@ -367,30 +432,43 @@ export function createMatchLiveUiFeature(deps) {
     );
     const stackKey = (side, minute) => `${side}:${Math.round(Number(minute) || 0)}`;
     const stackCount = new Map();
-    const markerIcon = (kind, x, y, scaleX, scaleY) => {
+    const kindLabel = kind =>
+      ({
+        goal: 'Gol',
+        yellow: 'Amarelo',
+        red: 'Vermelho',
+        injury: 'Lesão',
+        'penalty-miss': 'Pênalti perdido',
+      })[kind] || kind;
+    const markerIcon = (kind, x, y) => {
+      const t = `translate(${x.toFixed(2)} ${y.toFixed(2)}) scale(${(1 / scaleX).toFixed(4)} ${(1 / scaleY).toFixed(4)})`;
       if (kind === 'goal') {
-        return `<image href="${goalBallUrl}" xlink:href="${goalBallUrl}" x="${(x - ballW / 2).toFixed(2)}" y="${(y - ballH / 2).toFixed(2)}" width="${ballW.toFixed(2)}" height="${ballH.toFixed(2)}" preserveAspectRatio="none"/>`;
+        return `<g transform="${t}"><image href="${goalBallUrl}" xlink:href="${goalBallUrl}" x="-10" y="-10" width="20" height="20" preserveAspectRatio="xMidYMid meet"/></g>`;
+      }
+      if (kind === 'penalty-miss') {
+        return `<g transform="${t}">
+          <image href="${goalBallUrl}" xlink:href="${goalBallUrl}" x="-10" y="-10" width="20" height="20" preserveAspectRatio="xMidYMid meet"/>
+          <line x1="-7.2" y1="-7.2" x2="7.2" y2="7.2" stroke="#fff" stroke-width="4.2" stroke-linecap="round"/>
+          <line x1="7.2" y1="-7.2" x2="-7.2" y2="7.2" stroke="#fff" stroke-width="4.2" stroke-linecap="round"/>
+          <line x1="-7.2" y1="-7.2" x2="7.2" y2="7.2" stroke="#e31b1b" stroke-width="2.6" stroke-linecap="round"/>
+          <line x1="7.2" y1="-7.2" x2="-7.2" y2="7.2" stroke="#e31b1b" stroke-width="2.6" stroke-linecap="round"/>
+        </g>`;
       }
       if (kind === 'yellow' || kind === 'red') {
-        const w = 8 / scaleX;
-        const h = 11 / scaleY;
         const fill = kind === 'yellow' ? '#ffcc33' : '#e31b1b';
         const stroke = kind === 'yellow' ? '#a67c00' : '#8b1010';
-        return `<rect x="${(x - w / 2).toFixed(2)}" y="${(y - h / 2).toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" rx="${(1.2 / scaleX).toFixed(2)}" fill="${fill}" stroke="${stroke}" stroke-width="${(0.8 / Math.max(scaleX, scaleY)).toFixed(2)}"/>`;
+        return `<g transform="${t}"><rect x="-4" y="-5.5" width="8" height="11" rx="1.2" fill="${fill}" stroke="${stroke}" stroke-width="0.9"/></g>`;
       }
-      // Lesão: cruz em círculo
-      const r = 7 / Math.max(scaleX, scaleY);
-      const arm = 4.2 / Math.max(scaleX, scaleY);
-      const t = 1.6 / Math.max(scaleX, scaleY);
-      return `<g>
-        <circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${r.toFixed(2)}" fill="#3a1519" stroke="#ff6370" stroke-width="${(1.2 / Math.max(scaleX, scaleY)).toFixed(2)}"/>
-        <rect x="${(x - arm / 2).toFixed(2)}" y="${(y - t / 2).toFixed(2)}" width="${arm.toFixed(2)}" height="${t.toFixed(2)}" fill="#ff6370" rx="0.4"/>
-        <rect x="${(x - t / 2).toFixed(2)}" y="${(y - arm / 2).toFixed(2)}" width="${t.toFixed(2)}" height="${arm.toFixed(2)}" fill="#ff6370" rx="0.4"/>
+      // Lesão: cruz branca em círculo vermelho (legível mesmo no gráfico esticado)
+      return `<g transform="${t}">
+        <circle r="9" fill="#d32f2f" stroke="#ffffff" stroke-width="1.8"/>
+        <rect x="-5.5" y="-1.6" width="11" height="3.2" rx="0.7" fill="#ffffff"/>
+        <rect x="-1.6" y="-5.5" width="3.2" height="11" rx="0.7" fill="#ffffff"/>
       </g>`;
     };
     const markerBand = kind => {
-      if (kind === 'goal') return 0.88;
-      if (kind === 'injury') return 0.58;
+      if (kind === 'goal' || kind === 'penalty-miss') return 0.88;
+      if (kind === 'injury') return 0.62;
       return 0.38;
     };
     const markers = allMarkers
@@ -402,16 +480,16 @@ export function createMatchLiveUiFeature(deps) {
         stackCount.set(key, stack + 1);
         const band = markerBand(event.kind);
         const baseY = volumePeakY(midY, event.side === 'home', Math.max(amp, band * 0.7), maxAmp * band);
-        const stackShift = stack * (7 / scaleY) * (event.side === 'home' ? -1 : 1);
-        const y = clamp(baseY + stackShift, padY + 4, H - padY - 4);
+        const stackShift = stack * (8 / scaleY) * (event.side === 'home' ? -1 : 1);
+        const y = clamp(baseY + stackShift, padY + 6, H - padY - 6);
         const tipY = event.side === 'home' ? y + 3 : y - 3;
         const title = event.name
-          ? `${event.minute}' · ${event.kind === 'goal' ? 'Gol' : event.kind === 'yellow' ? 'Amarelo' : event.kind === 'red' ? 'Vermelho' : 'Lesão'} · ${event.name}`
-          : `${event.minute}'`;
+          ? `${event.minute}' · ${kindLabel(event.kind)} · ${event.name}`
+          : `${event.minute}' · ${kindLabel(event.kind)}`;
         return `<g class="live-volume-marker live-volume-${event.kind}" data-side="${event.side}" data-kind="${event.kind}">
           <title>${title}</title>
           <line x1="${x.toFixed(1)}" y1="${midY}" x2="${x.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="#edf8f5" stroke-width="1" opacity="0.35"/>
-          ${markerIcon(event.kind, x, y, scaleX, scaleY)}
+          ${markerIcon(event.kind, x, y)}
         </g>`;
       })
       .join('');
@@ -458,9 +536,13 @@ export function createMatchLiveUiFeature(deps) {
     const badge = teamBadgeHtml(calendarSide);
     const sideClass = calendarSide ? ` tl-side-${calendarSide}` : '';
     const typeClass = type ? ` ${type}` : '';
+    const minuteLabel = formatMatchMinuteLabel(
+      getMinute(),
+      getStoppageActive?.() ? Number(getStoppageElapsed?.() || 0) : 0,
+    ); // timeline só marca +N enquanto o acréscimo está rolando
     timeline.insertAdjacentHTML(
       'beforeend',
-      `<p class="tl-event${typeClass}${sideClass}">${badge}<span class="tl-min">${getMinute()}'</span><span class="tl-body">${text}</span></p>`,
+      `<p class="tl-event${typeClass}${sideClass}">${badge}<span class="tl-min">${minuteLabel}'</span><span class="tl-body">${text}</span></p>`,
     );
     while (timeline.children.length > MEMORY_LIMITS.liveTimeline) timeline.removeChild(timeline.firstChild);
     timeline.scrollTop = timeline.scrollHeight;
@@ -483,12 +565,16 @@ export function createMatchLiveUiFeature(deps) {
     const cards = getCards();
     const playerRow = (player, index, isStarter) => {
       const card = isStarter ? cards.away[index] : null;
-      const liveState = {
-        yellow: card?.yellow ? 1 : 0,
-        red: !!card?.red,
-        injured: !!card?.injured,
-        playThroughRisk: !!card?.playThroughRisk,
-      };
+      const overlay = card
+        ? {
+            yellow: card.yellow ? 1 : 0,
+            red: !!card.red,
+            injured: !!card.injured,
+            playThroughRisk: !!card.playThroughRisk,
+          }
+        : null;
+      const liveState =
+        overlay && (overlay.yellow || overlay.red || overlay.injured || overlay.playThroughRisk) ? overlay : null;
       return `<div class="live-opponent-player">${playerNameCell(player.name, player, { prefix: isStarter ? `${index + 1}. ` : '', liveState })}<span>${player.pos}</span><span>${player.overall}</span>${fatigueCell(player)}</div>`;
     };
     $('#liveOpponentRoster').innerHTML = `<h3>TITULARES</h3>${headers}${club.roster
