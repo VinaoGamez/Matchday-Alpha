@@ -1,6 +1,6 @@
 /**
  * Calibração de prêmios de fim de temporada / Copa / Série D.
- * Meta: campanha boa (G8) ≈ 35–55% do orçamento inicial; título+Copa sem dobrar o caixa.
+ * Meta: campanha boa (G8) ≈ 25–40% do orçamento inicial; título/Copa como pico sem inflar multi-ano.
  * Uso: node scripts/economy-prize-sim.mjs
  */
 import {
@@ -26,8 +26,8 @@ const scenarios = [
     champion: null,
     cupPhase: 0,
     promoted: false,
-    targetMin: 0.35,
-    targetMax: 0.55,
+    targetMin: 0.25,
+    targetMax: 0.4,
   },
   {
     label: 'A · 12º (meio)',
@@ -37,8 +37,8 @@ const scenarios = [
     champion: null,
     cupPhase: 0,
     promoted: false,
-    targetMin: 0.22,
-    targetMax: 0.4,
+    targetMin: 0.18,
+    targetMax: 0.32,
   },
   {
     label: 'A · campeão (sem Copa)',
@@ -49,8 +49,8 @@ const scenarios = [
     userClub: 'User',
     cupPhase: 0,
     promoted: false,
-    targetMin: 0.7,
-    targetMax: 1.05,
+    targetMin: 0.65,
+    targetMax: 0.95,
   },
   {
     label: 'A · 8º + Copa campeão',
@@ -60,8 +60,8 @@ const scenarios = [
     champion: null,
     cupPhase: 'champion',
     promoted: false,
-    targetMin: 0.5,
-    targetMax: 0.85,
+    targetMin: 0.4,
+    targetMax: 0.7,
   },
   {
     label: 'B · 4º',
@@ -71,8 +71,8 @@ const scenarios = [
     champion: null,
     cupPhase: 0,
     promoted: false,
-    targetMin: 0.35,
-    targetMax: 0.55,
+    targetMin: 0.25,
+    targetMax: 0.42,
   },
   {
     label: 'C · campeão + acesso',
@@ -83,8 +83,8 @@ const scenarios = [
     userClub: 'User',
     cupPhase: 0,
     promoted: true,
-    targetMin: 0.85,
-    targetMax: 1.25,
+    targetMin: 0.7,
+    targetMax: 1.1,
   },
   {
     label: 'D · grupos',
@@ -96,7 +96,7 @@ const scenarios = [
     cupPhase: 0,
     promoted: false,
     targetMin: 0.1,
-    targetMax: 0.25,
+    targetMax: 0.22,
   },
   {
     label: 'D · campeão + acesso',
@@ -108,8 +108,8 @@ const scenarios = [
     userClub: 'User',
     cupPhase: 0,
     promoted: true,
-    targetMin: 0.9,
-    targetMax: 1.35,
+    targetMin: 0.75,
+    targetMax: 1.2,
   },
   {
     label: 'D · campeão + Copa + acesso',
@@ -121,9 +121,9 @@ const scenarios = [
     userClub: 'User',
     cupPhase: 'champion',
     promoted: true,
-    // Tríplice rara: pode passar de 2× o caixa inicial — ainda abaixo do ~3.8× antigo.
-    targetMin: 1.4,
-    targetMax: 2.25,
+    // Tríplice rara: pico alto, mas abaixo do ~3.8× antigo.
+    targetMin: 1.2,
+    targetMax: 2.0,
   },
   {
     label: 'Copa só · oitavas (A)',
@@ -133,8 +133,8 @@ const scenarios = [
     champion: null,
     cupPhase: 6,
     promoted: false,
-    targetMin: 0.25,
-    targetMax: 0.45,
+    targetMin: 0.2,
+    targetMax: 0.38,
   },
 ];
 

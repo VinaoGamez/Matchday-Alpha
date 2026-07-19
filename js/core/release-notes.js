@@ -1,6 +1,26 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-23',
+    date: '2026-07-18',
+    publishedAt: '2026-07-18T23:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Economia',
+        items: [
+          'Prêmios de liga/Copa e receitas de TV/patrocínio/ingresso recalibrados — campanha boa paga bem sem inflar o caixa multi-ano.',
+        ],
+      },
+      {
+        label: 'AO VIVO',
+        items: [
+          'Volume de Jogo acompanha os acréscimos: linha e marcadores em 45+N / 90+N não colam mais no 90\'.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-22',
     date: '2026-07-18',
     publishedAt: '2026-07-18T22:30:00-03:00',

@@ -1,7 +1,12 @@
 import { MEMORY_LIMITS } from '../../core/save.js';
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { applyCompetitionBadge } from '../../ui/competition-badge.js';
-import { formatLiveClockParts, formatMatchMinuteLabel } from '../../engine/match-clock.js';
+import {
+  formatLiveClockParts,
+  formatMatchMinuteLabel,
+  toChartMinute,
+  chartSpan,
+} from '../../engine/match-clock.js';
 import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
 
 /**
@@ -361,48 +366,74 @@ export function createMatchLiveUiFeature(deps) {
     const midY = H / 2;
     const padY = 10;
     const maxAmp = midY - padY;
-    const playMin = clamp(getMatchFinished() ? 90 : getMinute() || 0, 0, 90);
-    const toX = minute => clamp((Number(minute) || 0) / 90, 0, 1) * W;
+    const s1 = Math.max(0, Number(getStoppageFirst?.() || 0));
+    const s2 = Math.max(0, Number(getStoppageSecond?.() || 0));
+    const activeStoppage = getStoppageActive?.();
+    const clockStoppage = activeStoppage
+      ? Math.max(0, Number(getStoppageElapsed?.() || 0))
+      : getMatchFinished()
+        ? s2
+        : getHalftimeShown() && getMinute() <= 45
+          ? s1
+          : 0;
+    const span = Math.max(90, chartSpan(s1, s2));
+    const chartOf = (minute, stoppage = 0) =>
+      toChartMinute({ minute, stoppage, stoppageFirst: s1 });
+    const playChart = chartOf(getMatchFinished() ? 90 : getMinute() || 0, clockStoppage);
+    const toX = chartMin => clamp((Number(chartMin) || 0) / span, 0, 1) * W;
+    const sampleChart = sample =>
+      chartOf(sample?.minute, sample?.stoppage || 0);
     const pointsHome = [];
     const pointsAway = [];
     if (!samples.length) {
-      pointsHome.push({ x: 0, v: 0.08 }, { x: toX(playMin), v: 0.08 });
-      pointsAway.push({ x: 0, v: 0.08 }, { x: toX(playMin), v: 0.08 });
+      pointsHome.push({ x: 0, v: 0.08 }, { x: toX(playChart), v: 0.08 });
+      pointsAway.push({ x: 0, v: 0.08 }, { x: toX(playChart), v: 0.08 });
     } else {
       // Âncora em 0' para o fluxo começar na origem.
-      if (samples[0].minute > 0) {
+      if (sampleChart(samples[0]) > 0) {
         pointsHome.push({ x: 0, v: 0.06 });
         pointsAway.push({ x: 0, v: 0.06 });
       }
       samples.forEach(sample => {
-        if (Number(sample.minute) > playMin + 0.01) return;
-        const x = toX(sample.minute);
+        const c = sampleChart(sample);
+        if (c > playChart + 0.01) return;
+        const x = toX(c);
         pointsHome.push({ x, v: clamp(Number(sample.home) || 0.05, 0.04, 1) });
         pointsAway.push({ x, v: clamp(Number(sample.away) || 0.05, 0.04, 1) });
       });
-      // Fecha no minuto atual (não estica flat até 90').
+      // Fecha no minuto atual (não estica flat até o fim).
       const lastHome = pointsHome[pointsHome.length - 1];
       const lastAway = pointsAway[pointsAway.length - 1];
-      const playX = toX(playMin);
+      const playX = toX(playChart);
       if (lastHome && playX > lastHome.x + 0.5) {
         pointsHome.push({ x: playX, v: Math.max(0.05, lastHome.v * 0.55) });
         pointsAway.push({ x: playX, v: Math.max(0.05, lastAway.v * 0.55) });
       }
     }
-    const gridMarks = [0, 15, 30, 45, 60, 75, 90];
-    const grid = gridMarks
+    // Marcas fixas do 1º em 0–45; 2º deslocado por S1; INT/FT no fim de cada etapa.
+    const gridMarks = [0, 15, 30, 45, chartOf(60), chartOf(75), chartOf(90)];
+    const intChart = chartOf(45, s1);
+    const ftChart = chartOf(90, s2);
+    const grid = [...new Set([...gridMarks, intChart, ftChart])]
+      .sort((a, b) => a - b)
       .map(m => {
         const x = toX(m).toFixed(1);
-        return `<line x1="${x}" y1="${padY}" x2="${x}" y2="${H - padY}" stroke="#1e4a5c" stroke-width="1" opacity="${m === 45 ? 0.85 : 0.35}"/>`;
+        const strong = m === intChart || m === ftChart;
+        return `<line x1="${x}" y1="${padY}" x2="${x}" y2="${H - padY}" stroke="#1e4a5c" stroke-width="1" opacity="${strong ? 0.85 : 0.35}"/>`;
       })
       .join('');
+    const axis = root.querySelector('.live-volume-axis');
+    if (axis) {
+      const endLabel = s2 > 0 ? `90+${s2}` : '90';
+      axis.innerHTML = `<span>0'</span><span>15'</span><span>30'</span><span>INT</span><span>60'</span><span>75'</span><span>${endLabel}</span>`;
+    }
     const sideGoals = (typeof getGoals === 'function' ? getGoals() : null) || { home: [], away: [] };
-    const volumeAt = (minute, side) => {
+    const volumeAt = (chartMin, side) => {
       if (!samples.length) return 0.45;
       let best = samples[0];
-      let bestDist = Math.abs((best.minute || 0) - minute);
+      let bestDist = Math.abs(sampleChart(best) - chartMin);
       samples.forEach(sample => {
-        const dist = Math.abs((sample.minute || 0) - minute);
+        const dist = Math.abs(sampleChart(sample) - chartMin);
         if (dist < bestDist) {
           best = sample;
           bestDist = dist;
@@ -423,14 +454,16 @@ export function createMatchLiveUiFeature(deps) {
       .filter(item => ['yellow', 'red', 'injury', 'penalty-miss'].includes(item?.type))
       .map(item => ({
         minute: Number(item.minute) || 0,
+        stoppage: Number(item.stoppage) || 0,
         side: item.side === 'away' ? 'away' : 'home',
         kind: item.type,
         name: item.name || '',
       }));
+    const eventChart = event => chartOf(event.minute, event.stoppage || 0);
     const allMarkers = [...goalEvents, ...incidentEvents].sort(
-      (a, b) => (Number(a.minute) || 0) - (Number(b.minute) || 0),
+      (a, b) => eventChart(a) - eventChart(b),
     );
-    const stackKey = (side, minute) => `${side}:${Math.round(Number(minute) || 0)}`;
+    const stackKey = (side, chartMin) => `${side}:${Math.round(Number(chartMin) || 0)}`;
     const stackCount = new Map();
     const kindLabel = kind =>
       ({
@@ -473,9 +506,10 @@ export function createMatchLiveUiFeature(deps) {
     };
     const markers = allMarkers
       .map(event => {
-        const x = toX(event.minute);
-        const amp = volumeAt(Number(event.minute) || 0, event.side);
-        const key = stackKey(event.side, event.minute);
+        const cMin = eventChart(event);
+        const x = toX(cMin);
+        const amp = volumeAt(cMin, event.side);
+        const key = stackKey(event.side, cMin);
         const stack = stackCount.get(key) || 0;
         stackCount.set(key, stack + 1);
         const band = markerBand(event.kind);
@@ -483,9 +517,10 @@ export function createMatchLiveUiFeature(deps) {
         const stackShift = stack * (8 / scaleY) * (event.side === 'home' ? -1 : 1);
         const y = clamp(baseY + stackShift, padY + 6, H - padY - 6);
         const tipY = event.side === 'home' ? y + 3 : y - 3;
+        const minLabel = formatMatchMinuteLabel(event.minute, event.stoppage || 0);
         const title = event.name
-          ? `${event.minute}' · ${kindLabel(event.kind)} · ${event.name}`
-          : `${event.minute}' · ${kindLabel(event.kind)}`;
+          ? `${minLabel}' · ${kindLabel(event.kind)} · ${event.name}`
+          : `${minLabel}' · ${kindLabel(event.kind)}`;
         return `<g class="live-volume-marker live-volume-${event.kind}" data-side="${event.side}" data-kind="${event.kind}">
           <title>${title}</title>
           <line x1="${x.toFixed(1)}" y1="${midY}" x2="${x.toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="#edf8f5" stroke-width="1" opacity="0.35"/>
@@ -493,7 +528,7 @@ export function createMatchLiveUiFeature(deps) {
         </g>`;
       })
       .join('');
-    const playX = toX(playMin).toFixed(1);
+    const playX = toX(playChart).toFixed(1);
     const homePath = buildAreaPath(pointsHome, midY, true, maxAmp, padY);
     const awayPath = buildAreaPath(pointsAway, midY, false, maxAmp, padY);
     svg.innerHTML = `

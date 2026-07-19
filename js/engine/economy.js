@@ -19,19 +19,20 @@ export const STADIUM_CAPACITY_BY_DIVISION = {
 
 /** Faixas de preço de ingresso (R$). Calibrado para não inundar o caixa. */
 export const TICKET_PRICE_RANGE = {
-  national: { min: 20, max: 120, step: 5, default: 32 },
-  cups: { min: 30, max: 180, step: 5, default: 48 },
+  national: { min: 20, max: 120, step: 5, default: 28 },
+  cups: { min: 30, max: 180, step: 5, default: 45 },
 };
 
 /**
  * Premiação de fim de temporada — calibrada vs INITIAL_BUDGET:
- * campanha boa (G8) ≈ 35–55% do caixa inicial; título/Copa como bônus sem dobrar o orçamento.
+ * campanha boa (G8) ≈ 25–40% do caixa inicial; título/Copa como pico sem inflar o multi-ano.
+ * (Ops de rodada já geram superávit — prêmio de meio de tabela não pode empilhar demais.)
  */
 export const PARTICIPATION_PRIZE = { A: 1_500_000, B: 1_100_000, C: 700_000, D: 500_000 };
 /** Pool de classificação para A/B/C (liga corrida). Série D usa SERIE_D_PHASE_*. */
-export const POSITION_POOL = { A: 7_800_000, B: 5_200_000, C: 3_250_000, D: 1_800_000 };
-export const TITLE_BONUS = { A: 8_000_000, B: 5_500_000, C: 3_300_000, D: 2_200_000 };
-export const PROMOTION_BONUS = 1_800_000;
+export const POSITION_POOL = { A: 5_500_000, B: 3_700_000, C: 2_300_000, D: 1_600_000 };
+export const TITLE_BONUS = { A: 7_000_000, B: 5_000_000, C: 3_000_000, D: 2_000_000 };
+export const PROMOTION_BONUS = 1_200_000;
 
 /** Premiação Série D por fase mais avançada (% do POSITION_POOL.D). */
 export const SERIE_D_PHASE_POOL = POSITION_POOL.D;
@@ -48,7 +49,7 @@ export const SERIE_D_PHASE_SHARE = {
 };
 
 /** Premiação Copa do Brasil por fase mais avançada (% do pool). */
-export const CUP_PHASE_POOL = 4_500_000;
+export const CUP_PHASE_POOL = 3_600_000;
 export const CUP_PHASE_SHARE = {
   1: { pct: 0.06, label: 'Copa do Brasil · 1ª fase' },
   2: { pct: 0.12, label: 'Copa do Brasil · 2ª fase' },
@@ -1406,12 +1407,12 @@ export function sponsorExternalUrl(name) {
   return sponsorExternalUrlBySlug(sponsorLogoSlug(name));
 }
 
-/** Valor do contrato por temporada (R$), conforme divisão. Calibrado v1 fluxo. */
+/** Valor do contrato por temporada (R$), conforme divisão. Calibrado v2 (menos superávit). */
 export const SPONSOR_VALUE_BY_DIVISION = {
-  A: { master: [6_000_000, 8_500_000], secondary: [1_200_000, 1_700_000] },
-  B: { master: [3_200_000, 4_800_000], secondary: [550_000, 850_000] },
-  C: { master: [1_600_000, 2_400_000], secondary: [280_000, 450_000] },
-  D: { master: [650_000, 1_100_000], secondary: [120_000, 220_000] },
+  A: { master: [5_100_000, 7_200_000], secondary: [1_000_000, 1_450_000] },
+  B: { master: [2_700_000, 4_100_000], secondary: [470_000, 720_000] },
+  C: { master: [1_350_000, 2_050_000], secondary: [240_000, 380_000] },
+  D: { master: [550_000, 950_000], secondary: [100_000, 190_000] },
 };
 
 function isRealSponsor(name) {
@@ -1939,10 +1940,10 @@ export function getSponsors(club) {
  * Calibrado para cobrir parte da folha sem deixar o clube rico demais.
  */
 export const TV_VALUE_BY_DIVISION = {
-  A: [5_500_000, 7_500_000],
-  B: [2_800_000, 4_200_000],
-  C: [1_400_000, 2_200_000],
-  D: [550_000, 950_000],
+  A: [5_000_000, 6_800_000],
+  B: [2_500_000, 3_800_000],
+  C: [1_250_000, 2_000_000],
+  D: [500_000, 850_000],
 };
 
 function tvRightsAreValid(tvRights, season) {

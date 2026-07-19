@@ -64,3 +64,31 @@ export function formatLiveClockTime(minute, stoppageElapsed = 0, seconds = 0) {
   if (parts.stoppage) return `${parts.main}:${parts.seconds}(${parts.stoppage})`;
   return `${parts.main}:${parts.seconds}`;
 }
+
+/**
+ * Minuto contínuo do gráfico Volume (inclui acréscimos).
+ * 0–45 → 1º tempo; 45–45+S1 → acréscimo 1º; 45+S1–90+S1 → 2º; depois +S2.
+ */
+export function toChartMinute({
+  minute = 0,
+  stoppage = 0,
+  stoppageFirst = 0,
+} = {}) {
+  const m = Math.max(0, Math.floor(Number(minute) || 0));
+  const s = Math.max(0, Math.floor(Number(stoppage) || 0));
+  const s1 = Math.max(0, Math.floor(Number(stoppageFirst) || 0));
+  if (m < 45) return m;
+  // 45' + acréscimo 1º; no início do 2º (stoppage zerado) continua em 45+S1.
+  if (m === 45) return 45 + (s > 0 ? s : s1);
+  if (m < 90) return m + s1;
+  return 90 + s1 + s;
+}
+
+/** Comprimento total do eixo Volume (90 + acréscimos anunciados). */
+export function chartSpan(stoppageFirst = 0, stoppageSecond = 0) {
+  return (
+    90 +
+    Math.max(0, Math.floor(Number(stoppageFirst) || 0)) +
+    Math.max(0, Math.floor(Number(stoppageSecond) || 0))
+  );
+}

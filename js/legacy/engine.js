@@ -2369,8 +2369,10 @@ export async function bootEngine({ bus } = {}) {
   const pushLiveVolumeIncident=(engineSide,type,meta={})=>{
     if(engineSide!=='home'&&engineSide!=='away')return;
     if(!['yellow','red','injury','penalty-miss'].includes(type))return;
+    const stoppageMin=stoppageActive?Math.max(0,Number(stoppageElapsed)||0):0;
     liveVolumeIncidents.push({
       minute:Math.min(90,Math.max(0,Number(minute)||0)),
+      stoppage:stoppageMin||undefined,
       side:engineSide,
       type,
       name:meta.name||null,
@@ -2465,14 +2467,15 @@ export async function bootEngine({ bus } = {}) {
     liveVolumePrev=cur;
     if(!userAtHomeInLiveMatch())[homeAmp,awayAmp]=[awayAmp,homeAmp];
     const sampleMinute=Math.min(90,Math.max(0,minute));
+    const sampleStoppage=stoppageActive?Math.max(0,Number(stoppageElapsed)||0):0;
     const last=liveVolumeSamples[liveVolumeSamples.length-1];
-    if(last&&last.minute===sampleMinute){
+    if(last&&last.minute===sampleMinute&&(Number(last.stoppage)||0)===sampleStoppage){
       // Mantém o pico ofensivo do minuto; só baixa se ambos os lados esfriaram.
       last.home=Math.max(homeAmp,last.home*.55);
       last.away=Math.max(awayAmp,last.away*.55);
       return;
     }
-    liveVolumeSamples.push({minute:sampleMinute,home:homeAmp,away:awayAmp});
+    liveVolumeSamples.push({minute:sampleMinute,stoppage:sampleStoppage||undefined,home:homeAmp,away:awayAmp});
   };
   const ensureTacticalConfrontationSlots=()=>{
     if(!$('#tacticalConfrontationPause')&&$('#pausePanel')){
