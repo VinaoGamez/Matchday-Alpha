@@ -41,8 +41,8 @@
   <link rel="stylesheet" href="css/tester-hub.css?v=20260717-fase-d">
   <link rel="stylesheet" href="css/tactics-ui.css?v=20260718-css-feat">
   <link rel="stylesheet" href="css/tactical-confrontation.css?v=20260718-css-feat">
-  <link rel="stylesheet" href="css/economy-office.css?v=20260718-sponsor-links">
-  <link rel="stylesheet" href="css/season-summary.css?v=20260718-css-feat">
+  <link rel="stylesheet" href="css/economy-office.css?v=20260719-goal-gauge">
+  <link rel="stylesheet" href="css/season-summary.css?v=20260719-goal-gauge">
   <link rel="stylesheet" href="css/manager-sack.css?v=20260718-sack-ui">
   <link rel="stylesheet" href="css/sponsor-picker.css?v=20260718-picker-stable">
   <link rel="stylesheet" href="css/player-status.css?v=20260718-cards-fix">
@@ -103,9 +103,12 @@
             </div>
             <div class="office-budget-col office-season-goal-col">
               <label>META DE TEMPORADA</label>
-              <div class="office-budget-body">
-                <div id="officeSeasonGoal" class="office-season-goal-value">—</div>
-                <p id="officeSeasonGoalMeta" class="office-budget-meta">A diretoria define a expectativa da campanha.</p>
+              <div class="office-season-goal-row">
+                <div class="office-budget-body office-season-goal-copy">
+                  <div id="officeSeasonGoal" class="office-season-goal-value">—</div>
+                  <p id="officeSeasonGoalMeta" class="office-budget-meta">A diretoria define a expectativa da campanha.</p>
+                </div>
+                <div id="officeSeasonGoalGauge" class="office-season-goal-gauge" aria-hidden="true"></div>
               </div>
             </div>
           </div>

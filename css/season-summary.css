@@ -191,6 +191,31 @@
   background:#edf8f5;
   box-shadow:0 0 0 1px #397487;
 }
+.season-goal-gauge--compact{
+  width:86px;
+  gap:4px;
+}
+.season-goal-gauge--compact .season-goal-gauge-ring{
+  width:72px;
+  height:72px;
+}
+.season-goal-gauge--compact .season-goal-gauge-score strong{
+  font-size:16px;
+}
+.season-goal-gauge--compact .season-goal-gauge-score span{
+  font-size:7px;
+  letter-spacing:.4px;
+}
+.season-goal-gauge-legend--inline{
+  gap:4px 8px;
+}
+.season-goal-gauge-legend--inline span{
+  font-size:7px;
+}
+.season-goal-gauge--compact .season-goal-gauge-track,
+.season-goal-gauge--compact .season-goal-gauge-progress{
+  stroke-width:8;
+}
 @media(max-width:560px){
   .season-goal-result{
     grid-template-columns:1fr;

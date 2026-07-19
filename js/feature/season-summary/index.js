@@ -1,4 +1,5 @@
 ﻿import { MODULE_VERSIONS } from '../../core/constants.js';
+import { seasonGoalGauge } from './goal-gauge.js';
 
 const LEAGUE_ORDER = [
   { key: 'A', label: 'Série A', accent: '#63d9ff', trophy: '#ffd24a' },
@@ -47,42 +48,6 @@ const assistMedalIcon = () =>
     <circle cx="9" cy="14" r="1.5" fill="#b6ff38"/>
     <text x="14" y="22" text-anchor="middle" fill="#9ae8ff" font-size="4.5" font-weight="800" font-family="DM Sans,sans-serif">AST</text>
   </svg>`;
-
-/** Medidor visual: desempenho entregue vs meta pedida pela diretoria. */
-const GOAL_GAUGE = {
-  exceeded: { score: 100, short: 'Superou', hint: 'Acima do pedido', color: '#b6ff38' },
-  met: { score: 78, short: 'Cumpriu', hint: 'No combinado', color: '#63d9ff' },
-  near: { score: 48, short: 'Quase', hint: 'Perto da meta', color: '#ffc94f' },
-  missed: { score: 22, short: 'Abaixo', hint: 'Abaixo do pedido', color: '#ff8c94' },
-};
-
-const seasonGoalGauge = (status = 'met') => {
-  const key = GOAL_GAUGE[status] ? status : 'met';
-  const { score, short, hint, color } = GOAL_GAUGE[key];
-  const radius = 34;
-  const circumference = 2 * Math.PI * radius;
-  const progress = Math.max(0, Math.min(100, score)) / 100;
-  const dash = (circumference * progress).toFixed(2);
-  const gap = (circumference - circumference * progress).toFixed(2);
-  // Meta da diretoria = 100% do pedido (marcador no topo do anel).
-  return `<aside class="season-goal-gauge goal-${key}" style="--gauge-color:${color};--gauge-score:${score}" aria-label="Desempenho frente à meta: ${hint}">
-    <div class="season-goal-gauge-ring">
-      <svg viewBox="0 0 88 88" aria-hidden="true" focusable="false">
-        <circle class="season-goal-gauge-track" cx="44" cy="44" r="${radius}"/>
-        <circle class="season-goal-gauge-progress" cx="44" cy="44" r="${radius}" stroke-dasharray="${dash} ${gap}"/>
-        <circle class="season-goal-gauge-target" cx="${44 + radius}" cy="44" r="3.2"/>
-      </svg>
-      <div class="season-goal-gauge-score">
-        <strong>${score}%</strong>
-        <span>${short}</span>
-      </div>
-    </div>
-    <div class="season-goal-gauge-legend">
-      <span><i class="delivered" aria-hidden="true"></i>Entregue</span>
-      <span><i class="requested" aria-hidden="true"></i>Pedido</span>
-    </div>
-  </aside>`;
-};
 
 const MODAL_HTML = `
 <div id="seasonTransitionModal" class="modal hidden">

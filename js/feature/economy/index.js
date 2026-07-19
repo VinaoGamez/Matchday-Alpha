@@ -1,5 +1,7 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { sponsorExternalUrl, sponsorLogoSlug } from '../../engine/economy.js';
+import { seasonGoalLiveProgress } from '../../engine/season-goals.js';
+import { seasonGoalGauge } from '../season-summary/goal-gauge.js';
 
 const SPONSOR_LOGO_URLS = Object.fromEntries(
   Object.entries(
@@ -53,6 +55,7 @@ export function createEconomyFeature(deps) {
     getUserDivision,
     getCareerSeason,
     getSeasonGoal,
+    getSeasonGoalLiveContext,
     getBoardBriefContext,
     onBudgetChanged,
     pushMessage,
@@ -136,11 +139,16 @@ export function createEconomyFeature(deps) {
     }
     const goalEl = $('#officeSeasonGoal');
     const goalMetaEl = $('#officeSeasonGoalMeta');
+    const goalGaugeEl = $('#officeSeasonGoalGauge');
     const goal = getSeasonGoal?.() || null;
     if (goalEl) {
       if (!goal?.label) {
         goalEl.textContent = '—';
         if (goalMetaEl) goalMetaEl.textContent = 'A diretoria define a expectativa da campanha.';
+        if (goalGaugeEl) {
+          goalGaugeEl.innerHTML = '';
+          goalGaugeEl.setAttribute('aria-hidden', 'true');
+        }
       } else {
         goalEl.textContent = goal.label;
         if (goalMetaEl) {
@@ -151,6 +159,17 @@ export function createEconomyFeature(deps) {
                 ? 'Expectativa ambiciosa'
                 : 'Expectativa equilibrada';
           goalMetaEl.textContent = `Série ${goal.division || getUserDivision?.() || club.division || 'A'} · ${tierLabel}`;
+        }
+        if (goalGaugeEl) {
+          try {
+            const ctx = getSeasonGoalLiveContext?.(club) || {};
+            const progress = seasonGoalLiveProgress(goal, ctx);
+            goalGaugeEl.innerHTML = seasonGoalGauge(progress, { compact: true });
+            goalGaugeEl.removeAttribute('aria-hidden');
+          } catch {
+            goalGaugeEl.innerHTML = '';
+            goalGaugeEl.setAttribute('aria-hidden', 'true');
+          }
         }
       }
     }

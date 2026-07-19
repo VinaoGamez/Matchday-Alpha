@@ -1,6 +1,21 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-27',
+    date: '2026-07-19',
+    publishedAt: '2026-07-19T15:15:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Escritório',
+        items: [
+          'META DE TEMPORADA ganha anel de desempenho ao lado do texto (mesmo visual do balanço de fim de temporada).',
+          'O % é uma projeção do momento: posição/fase, ritmo de pontos e últimos resultados — vermelho abaixo, amarelo no ritmo, verde no alvo.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-26',
     date: '2026-07-19',
     publishedAt: '2026-07-19T14:50:00-03:00',

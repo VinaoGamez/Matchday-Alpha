@@ -1899,6 +1899,64 @@ export async function bootEngine({ bus } = {}) {
     getUserDivision:()=>userDivision,
     getCareerSeason:()=>careerSeason,
     getSeasonGoal:()=>ensureSeasonGoal(),
+    getSeasonGoalLiveContext:()=>{
+      const knockout=nationalCompetitions.D?.knockout||{};
+      const serieDPhase=userDivision==='D'?resolveSerieDPrizePhase(userClub,knockout):null;
+      const promotedList=Array.isArray(knockout.promoted)?knockout.promoted:[];
+      const promoted=userDivision==='D'&&promotedList.includes(userClub);
+      let position=null,clubsCount=null,points=0,played=0,wins=0,draws=0,losses=0;
+      if(userDivision==='D'){
+        const rows=seriesDGroupRows(userSerieDGroupIndex);
+        const index=rows.findIndex(row=>row.club===userClub);
+        if(index>=0){
+          const row=rows[index];
+          position=index+1;
+          clubsCount=rows.length;
+          points=row.points||0;
+          played=row.played||0;
+          wins=row.wins||0;
+          draws=row.draws||0;
+          losses=row.losses||0;
+        }
+      }else{
+        const standing=userStandingSnapshot();
+        const standings=nationalCompetitions[userDivision]?.standings||[];
+        const row=standings.find(item=>item.club===userClub);
+        position=standing?.position||clubs[userClub]?.position||null;
+        clubsCount=standing?.clubsCount||standings.length||20;
+        if(row){
+          points=row.points||0;
+          played=row.played||0;
+          wins=row.wins||0;
+          draws=row.draws||0;
+          losses=row.losses||0;
+        }
+      }
+      const form=[];
+      for(let index=seasonRoundHistory.length-1;index>=0&&form.length<8;index--){
+        const games=seasonRoundHistory[index]?.games||[];
+        const game=games.find(item=>involvesClub(item,userClub));
+        if(!game||game.homeGoals==null||game.awayGoals==null)continue;
+        const userHome=game.home===userClub;
+        const userGoals=userHome?game.homeGoals:game.awayGoals;
+        const oppGoals=userHome?game.awayGoals:game.homeGoals;
+        form.unshift(userGoals>oppGoals?'W':userGoals<oppGoals?'L':'D');
+      }
+      return {
+        position,
+        clubsCount,
+        points,
+        played,
+        wins,
+        draws,
+        losses,
+        form,
+        serieDPhase:serieDPhase||'group',
+        promoted,
+        seasonRounds:userDivision==='D'?SERIE_D_GROUP_ROUNDS:38,
+        division:userDivision,
+      };
+    },
     getBoardBriefContext:club=>{
       const target=club||clubs[userClub];
       if(!target)return null;

@@ -211,11 +211,189 @@ export function evaluateSeasonGoal(goal, ctx = {}) {
   };
 }
 
+/** Cores do Escritório: vermelho / amarelo / verde (projeção momentânea). */
+const LIVE_GAUGE = {
+  exceeded: { short: 'Acima', hint: 'Acima do ritmo da meta', color: '#b6ff38' },
+  met: { short: 'No alvo', hint: 'Projeção de cumprir a meta', color: '#6dff8a' },
+  near: { short: 'No ritmo', hint: 'No caminho da meta', color: '#ffc94f' },
+  missed: { short: 'Abaixo', hint: 'Muito abaixo do esperado', color: '#ff6b7a' },
+};
+
+const clampScore = n => Math.max(0, Math.min(100, Math.round(n)));
+
+/** Ajuste por retrospecto recente (W/D/L). */
+function formAdjustment(form) {
+  if (!Array.isArray(form) || !form.length) return 0;
+  const recent = form.slice(-5);
+  let pts = 0;
+  for (const result of recent) {
+    if (result === 'W') pts += 3;
+    else if (result === 'D') pts += 1;
+  }
+  const ratio = pts / (recent.length * 3);
+  // ~1,35 pts/jogo = neutro; boa sequência sobe, crise desce.
+  return (ratio - 0.45) * 32;
+}
+
+/** PPG de referência grosseiro para terminar na faixa da meta. */
+function targetPpgForPosition(maxPos, clubsCount = 20) {
+  const n = Math.max(4, Number(clubsCount) || 20);
+  const max = Math.max(1, Number(maxPos) || Math.ceil(n / 2));
+  const t = (max - 1) / Math.max(1, n - 1);
+  return 2.35 - t * 1.35;
+}
+
+function seasonProgressRatio(ctx) {
+  const played = Number(ctx.played) || 0;
+  const total = Math.max(1, Number(ctx.seasonRounds) || 38);
+  return Math.max(0, Math.min(1, played / total));
+}
+
+/**
+ * Projeção 0–100: fase/posição atual + ritmo de pontos + forma recente.
+ * Não é o veredicto final da temporada — só o momento.
+ */
+function projectLiveScore(goal, ctx = {}) {
+  const type = goal?.evaluate?.type;
+  const formAdj = formAdjustment(ctx.form);
+  const played = Number(ctx.played) || 0;
+  const points = Number.isFinite(Number(ctx.points))
+    ? Number(ctx.points)
+    : (Number(ctx.wins) || 0) * 3 + (Number(ctx.draws) || 0);
+  const ppg = played > 0 ? points / played : 0;
+  const progress = seasonProgressRatio(ctx);
+  const position = Number(ctx.position) || 99;
+  const phase = ctx.serieDPhase || 'group';
+  const promoted = !!ctx.promoted;
+
+  if (type === 'position') {
+    const max = Number(goal.evaluate.max) || 20;
+    const nearMax = Number(goal.evaluate.nearMax) || max + 2;
+    const clubsCount = Number(ctx.clubsCount) || 20;
+    const topBand = Math.max(1, Math.ceil(max / 2));
+    let structural;
+    if (position <= topBand) {
+      const t = topBand <= 1 ? 1 : (topBand - position) / (topBand - 1);
+      structural = 88 + t * 12;
+    } else if (position <= max) {
+      structural = 70 + ((max - position) / Math.max(1, max - topBand)) * 16;
+    } else if (position <= nearMax) {
+      structural = 44 + ((nearMax - position) / Math.max(1, nearMax - max)) * 22;
+    } else {
+      structural = Math.max(8, 40 - (position - nearMax) * 5);
+    }
+    const needPpg = targetPpgForPosition(max, clubsCount);
+    const paceScore = played >= 2 ? clampScore((ppg / Math.max(0.35, needPpg)) * 72) : 50;
+    // Início: ritmo + forma pesam mais; fim: tabela manda.
+    const score = structural * (0.3 + 0.55 * progress) + paceScore * (0.55 - 0.35 * progress) + formAdj * (0.85 - 0.35 * progress);
+    // Já na meta com jogos: puxa para verde.
+    if (position <= max && played >= 3) return clampScore(Math.max(score, 72 + formAdj * 0.25));
+    return clampScore(score);
+  }
+
+  if (type === 'serieD_phase') {
+    const got = phaseRank(phase);
+    const need = phaseRank(goal.evaluate.min);
+    const near = phaseRank(goal.evaluate.nearMin ?? goal.evaluate.min);
+    let structural;
+    if (got >= need + 2) structural = 90 + Math.min(10, (got - need - 2) * 4);
+    else if (got >= need) structural = 76 + Math.min(12, (got - need) * 6);
+    else if (near < need && got >= near) {
+      structural = 48 + ((got - near) / Math.max(1, need - near)) * 24;
+    } else if (got === 0) {
+      // Ainda nos grupos: tabela do grupo como proxy do caminho.
+      const groupSize = Number(ctx.clubsCount) || 8;
+      const qualify = Math.min(4, Math.max(2, Math.floor(groupSize / 2)));
+      if (position <= 2) structural = 58;
+      else if (position <= qualify) structural = 50;
+      else if (position === qualify + 1) structural = 36;
+      else structural = Math.max(12, 30 - (position - qualify - 1) * 5);
+      if (played < 3 && position > qualify) structural = Math.max(structural, 38);
+    } else {
+      structural = Math.max(10, 34 - (near - got) * 8);
+    }
+    return clampScore(structural + formAdj * (got >= need ? 0.35 : 0.9));
+  }
+
+  if (type === 'promoted') {
+    if (promoted && phase === 'champion') return 100;
+    if (promoted) return clampScore(86 + formAdj * 0.2);
+    const got = phaseRank(phase);
+    let structural;
+    if (got >= phaseRank('final')) structural = 80;
+    else if (got >= phaseRank('semi') || got >= phaseRank('playoff')) structural = 72;
+    else if (got >= phaseRank('quarter')) structural = 64;
+    else if (got >= phaseRank('round16')) structural = 56;
+    else if (got >= phaseRank('third')) structural = 50;
+    else if (got >= phaseRank('second')) structural = 46;
+    else {
+      const groupSize = Number(ctx.clubsCount) || 8;
+      const qualify = 4;
+      if (position <= 2) structural = 60;
+      else if (position <= qualify) structural = 52;
+      else if (position === qualify + 1) structural = 38;
+      else structural = Math.max(14, 32 - (position - qualify - 1) * 5);
+      // Poucos jogos: não pintar de vermelho só por tabela ainda solta.
+      if (played > 0 && played < 4) structural = Math.max(structural, 42 + formAdj * 0.3);
+      const needPpg = 1.55;
+      if (played >= 3) {
+        const pace = clampScore((ppg / needPpg) * 58);
+        structural = structural * 0.55 + pace * 0.45;
+      }
+    }
+    const nearNeed = phaseRank(goal.evaluate.nearPhase || 'semi');
+    if (got >= nearNeed && !promoted) structural = Math.max(structural, 68);
+    return clampScore(structural + formAdj * (got >= phaseRank('second') ? 0.45 : 0.95));
+  }
+
+  return clampScore(40 + formAdj);
+}
+
+function projectionStatus(score, goal, ctx) {
+  const type = goal?.evaluate?.type;
+  const promoted = !!ctx.promoted;
+  const position = Number(ctx.position) || 99;
+  if (type === 'promoted' && promoted) return ctx.serieDPhase === 'champion' ? 'exceeded' : 'met';
+  if (type === 'position' && position <= (Number(goal.evaluate?.max) || 20) && (Number(ctx.played) || 0) >= 8 && score >= 70) {
+    return position <= Math.ceil((Number(goal.evaluate.max) || 20) / 2) ? 'exceeded' : 'met';
+  }
+  if (type === 'serieD_phase') {
+    const got = phaseRank(ctx.serieDPhase || 'group');
+    const need = phaseRank(goal.evaluate?.min);
+    if (got >= need + 2) return 'exceeded';
+    if (got >= need) return 'met';
+  }
+  if (score >= 86) return 'exceeded';
+  if (score >= 68) return 'met';
+  if (score >= 40) return 'near';
+  return 'missed';
+}
+
+/**
+ * Progresso ao vivo da meta (Escritório).
+ * Projeção momentânea: fase/posição + ritmo + retrospecto — cores vermelho/amarelo/verde.
+ */
+export function seasonGoalLiveProgress(goal, ctx = {}) {
+  const score = projectLiveScore(goal, ctx);
+  const status = projectionStatus(score, goal, ctx);
+  const meta = LIVE_GAUGE[status] || LIVE_GAUGE.missed;
+  return {
+    status,
+    score,
+    short: meta.short,
+    hint: meta.hint,
+    color: meta.color,
+    label: goal?.label || '—',
+    goalId: goal?.id || null,
+  };
+}
+
 export function createSeasonGoalsEngine() {
   return {
     moduleVersion: MODULE_VERSIONS.seasonGoals ?? 1,
     pickSeasonGoal,
     evaluateSeasonGoal,
+    seasonGoalLiveProgress,
     SEASON_GOAL_CATALOG,
     BOARD_DELTA,
   };

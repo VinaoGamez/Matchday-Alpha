@@ -7,6 +7,10 @@
 .office-budget-col{display:flex;flex-direction:column;min-width:0}
 .office-budget-col>label{margin-bottom:10px}
 .office-season-goal-col{padding-left:24px;border-left:1px solid #1e4a5c}
+.office-season-goal-row{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;flex:1}
+.office-season-goal-copy{flex:1;min-width:0}
+.office-season-goal-gauge{flex:0 0 auto;display:grid;place-items:center;min-width:0}
+.office-season-goal-gauge:empty{display:none}
 .office-season-goal-value{margin:0 0 6px;color:#edf8f5;font:700 22px Barlow Condensed,sans-serif;letter-spacing:.15px;line-height:1.15}
 .office-sponsors-meta{margin:0 0 12px;color:#7fa8b0;font-size:10px;line-height:1.4}
 .office-sponsors-list{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
@@ -140,4 +144,4 @@ a.office-sponsor-logo.is-link:hover,a.office-sponsor-logo.is-link:focus-visible{
 .office-entry-card small{font-size:10px;color:#9fcfd8}
 .office-entry-card .office-icon{color:#63d9ff}
 @media(max-width:900px){.office-view .office-layout,.stadium-view .office-stadium-layout{grid-template-columns:1fr}.office-budget-header{grid-template-columns:1fr}.office-season-goal-col{padding-left:0;border-left:none;padding-top:12px;border-top:1px solid #1e4a5c}.office-status-strip,.office-cashflow-projection{grid-template-columns:1fr}.office-stats{grid-template-columns:1fr 1fr}.stadium-summary-stats{grid-template-columns:1fr 1fr}.office-sponsors-list{grid-template-columns:1fr 1fr}.office-sponsor-card.master{grid-column:1 / -1}}
-@media(max-width:560px){.office-sponsors-list{grid-template-columns:1fr}}
+@media(max-width:560px){.office-sponsors-list{grid-template-columns:1fr}.office-season-goal-row{flex-wrap:wrap;align-items:flex-start}.office-season-goal-gauge{margin-left:auto}}
