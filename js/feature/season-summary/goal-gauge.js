@@ -12,6 +12,7 @@ export const GOAL_GAUGE = {
  */
 export function seasonGoalGauge(input = 'met', options = {}) {
   const compact = !!options.compact;
+  const hideLegend = !!options.hideLegend;
   let status = 'met';
   let score;
   let short;
@@ -37,12 +38,14 @@ export function seasonGoalGauge(input = 'met', options = {}) {
   const dash = (circumference * progress).toFixed(2);
   const gap = (circumference - circumference * progress).toFixed(2);
   const compactClass = compact ? ' season-goal-gauge--compact' : '';
-  const legend = compact
-    ? `<div class="season-goal-gauge-legend season-goal-gauge-legend--inline">
+  const legend = hideLegend
+    ? ''
+    : compact
+      ? `<div class="season-goal-gauge-legend season-goal-gauge-legend--inline">
       <span><i class="delivered" aria-hidden="true"></i>Entregue</span>
       <span><i class="requested" aria-hidden="true"></i>Pedido</span>
     </div>`
-    : `<div class="season-goal-gauge-legend">
+      : `<div class="season-goal-gauge-legend">
       <span><i class="delivered" aria-hidden="true"></i>Entregue</span>
       <span><i class="requested" aria-hidden="true"></i>Pedido</span>
     </div>`;

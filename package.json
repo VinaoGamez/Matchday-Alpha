@@ -14,6 +14,9 @@
     "test:ao-vivo-2d": "node modules/ao-vivo-2d/scripts/run-tests.mjs lab",
     "test:ao-vivo-2d:frozen": "node modules/ao-vivo-2d/scripts/run-tests.mjs frozen",
     "test:knockout-shootout": "node scripts/knockout-shootout-tests.mjs",
+    "test:season-goal-live": "node scripts/season-goal-live-tests.mjs",
+    "test:player-history": "node scripts/player-history-tests.mjs",
+    "test:own-goal-report": "node scripts/own-goal-report-tests.mjs",
     "deploy:testers": "npm run build && npx wrangler pages deploy dist --project-name matchday-football-alpha --branch main"
   },
   "devDependencies": {

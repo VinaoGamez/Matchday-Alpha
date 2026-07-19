@@ -1,6 +1,36 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-28',
+    date: '2026-07-19',
+    publishedAt: '2026-07-19T17:35:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Relatório / NOTAS',
+        items: [
+          'Gol contra deixa de aparecer no time adversário quando há homônimos — bola vermelha só no autor do GC.',
+          'Ícones de gol, assistência, cartões e substituições ficam amarrados ao lado correto da ficha.',
+        ],
+      },
+      {
+        label: 'Campeonatos',
+        items: [
+          'Botão REGRAS com o regulamento da competição aberta.',
+          'Série C segue o calendário CBF (tamanho e zonas de acesso/rebaixamento sem inflar o grupo).',
+        ],
+      },
+      {
+        label: 'Mensagens / Análise',
+        items: [
+          'Mensagens antigas (14 dias) saem do contador, exceto as que pedem ação.',
+          'Aviso médico urgente com destaque vermelho na navegação.',
+          'Análise do clube: escudo, chips de estilo e coluna MÉDIA do histórico.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-27',
     date: '2026-07-19',
     publishedAt: '2026-07-19T15:15:00-03:00',

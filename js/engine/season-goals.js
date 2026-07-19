@@ -249,6 +249,96 @@ function seasonProgressRatio(ctx) {
   return Math.max(0, Math.min(1, played / total));
 }
 
+const normalizeStandingRow = row => ({
+  club: row?.club || row?.name || '',
+  points: Number(row?.points) || 0,
+  played: Number(row?.played) || 0,
+  wins: Number(row?.wins) || 0,
+  goalDiff: Number(row?.goalDiff) || 0,
+});
+
+/**
+ * Matemática de pontos corridos para meta de posição (ex.: top 8).
+ * - guaranteed: mesmo perdendo tudo, no máximo (max-1) clubes conseguem terminar à frente
+ * - impossible: mesmo ganhando tudo, já há `max` clubes impossíveis de alcançar
+ *
+ * Empate em pontos no teto/piso: conservador — o rival pode passar no desempate.
+ */
+export function positionGoalMath(goal, ctx = {}) {
+  const max = Number(goal?.evaluate?.max) || 0;
+  if (!max || goal?.evaluate?.type !== 'position') {
+    return { guaranteed: false, impossible: false, canFinishAhead: null, lockedAhead: null };
+  }
+  const seasonRounds = Math.max(1, Number(ctx.seasonRounds) || 38);
+  const userClub = ctx.club || ctx.userClub || null;
+  let rows = Array.isArray(ctx.standings) ? ctx.standings.map(normalizeStandingRow).filter(row => row.club) : [];
+
+  if (!rows.length && userClub) {
+    rows = [
+      normalizeStandingRow({
+        club: userClub,
+        points: ctx.points,
+        played: ctx.played,
+        wins: ctx.wins,
+        goalDiff: ctx.goalDiff,
+      }),
+    ];
+  }
+
+  const user =
+    (userClub && rows.find(row => row.club === userClub)) ||
+    normalizeStandingRow({
+      club: userClub || 'USER',
+      points: ctx.points,
+      played: ctx.played,
+      wins: ctx.wins,
+      goalDiff: ctx.goalDiff,
+    });
+
+  if (!rows.some(row => row.club === user.club)) rows = [...rows, user];
+
+  const userRemaining = Math.max(0, seasonRounds - user.played);
+  const userMinPoints = user.points; // perde o restante
+  const userMaxPoints = user.points + 3 * userRemaining; // vence o restante
+
+  let canFinishAhead = 0;
+  let lockedAhead = 0;
+
+  rows.forEach(other => {
+    if (other.club === user.club) return;
+    const otherRemaining = Math.max(0, seasonRounds - other.played);
+    const otherMaxPoints = other.points + 3 * otherRemaining;
+    const otherMinPoints = other.points;
+
+    // Pior caso do usuário: rival ainda pode ficar à frente (inclui empate em pts).
+    if (otherMaxPoints >= userMinPoints) canFinishAhead += 1;
+    // Melhor caso do usuário: rival já está inalcançável.
+    if (otherMinPoints > userMaxPoints) lockedAhead += 1;
+  });
+
+  const seasonDone = userRemaining === 0 && rows.every(row => Math.max(0, seasonRounds - row.played) === 0);
+  if (seasonDone) {
+    const position = Number(ctx.position) || 99;
+    return {
+      guaranteed: position <= max,
+      impossible: position > max,
+      canFinishAhead,
+      lockedAhead,
+      userMinPoints,
+      userMaxPoints,
+    };
+  }
+
+  return {
+    guaranteed: canFinishAhead < max,
+    impossible: lockedAhead >= max,
+    canFinishAhead,
+    lockedAhead,
+    userMinPoints,
+    userMaxPoints,
+  };
+}
+
 /**
  * Projeção 0–100: fase/posição atual + ritmo de pontos + forma recente.
  * Não é o veredicto final da temporada — só o momento.
@@ -267,6 +357,14 @@ function projectLiveScore(goal, ctx = {}) {
   const promoted = !!ctx.promoted;
 
   if (type === 'position') {
+    const math = positionGoalMath(goal, ctx);
+    if (math.guaranteed) return 100;
+    if (math.impossible) {
+      // Matematicamente fora da meta — ainda mostra um resto baixo pelo “quase”.
+      const nearMax = Number(goal.evaluate.nearMax) || (Number(goal.evaluate.max) || 20) + 2;
+      if (position <= nearMax) return clampScore(28 + formAdj * 0.2);
+      return clampScore(Math.max(6, 22 - (position - nearMax) * 3));
+    }
     const max = Number(goal.evaluate.max) || 20;
     const nearMax = Number(goal.evaluate.nearMax) || max + 2;
     const clubsCount = Number(ctx.clubsCount) || 20;
@@ -286,9 +384,9 @@ function projectLiveScore(goal, ctx = {}) {
     const paceScore = played >= 2 ? clampScore((ppg / Math.max(0.35, needPpg)) * 72) : 50;
     // Início: ritmo + forma pesam mais; fim: tabela manda.
     const score = structural * (0.3 + 0.55 * progress) + paceScore * (0.55 - 0.35 * progress) + formAdj * (0.85 - 0.35 * progress);
-    // Já na meta com jogos: puxa para verde.
-    if (position <= max && played >= 3) return clampScore(Math.max(score, 72 + formAdj * 0.25));
-    return clampScore(score);
+    // Já na meta com jogos: puxa para verde (sem fechar 100% sem matemática).
+    if (position <= max && played >= 3) return clampScore(Math.min(96, Math.max(score, 72 + formAdj * 0.25)));
+    return clampScore(Math.min(96, score));
   }
 
   if (type === 'serieD_phase') {
@@ -316,13 +414,15 @@ function projectLiveScore(goal, ctx = {}) {
   }
 
   if (type === 'promoted') {
-    if (promoted && phase === 'champion') return 100;
-    if (promoted) return clampScore(86 + formAdj * 0.2);
+    // Meta = acesso. Semi/final/campeão (e lista promoted) já garantem Série C → 100%.
+    // Repescagem (playoff) ainda depende de vencer — não conta como cumprida.
+    if (serieDAccessGuaranteed(ctx)) return 100;
     const got = phaseRank(phase);
     let structural;
-    if (got >= phaseRank('final')) structural = 80;
-    else if (got >= phaseRank('semi') || got >= phaseRank('playoff')) structural = 72;
-    else if (got >= phaseRank('quarter')) structural = 64;
+    if (phase === 'playoff' || got >= phaseRank('playoff')) {
+      // Na repescagem: perto, mas a meta só fecha com a classificação.
+      structural = 74;
+    } else if (got >= phaseRank('quarter')) structural = 64;
     else if (got >= phaseRank('round16')) structural = 56;
     else if (got >= phaseRank('third')) structural = 50;
     else if (got >= phaseRank('second')) structural = 46;
@@ -341,21 +441,35 @@ function projectLiveScore(goal, ctx = {}) {
         structural = structural * 0.55 + pace * 0.45;
       }
     }
-    const nearNeed = phaseRank(goal.evaluate.nearPhase || 'semi');
-    if (got >= nearNeed && !promoted) structural = Math.max(structural, 68);
-    return clampScore(structural + formAdj * (got >= phaseRank('second') ? 0.45 : 0.95));
+    return clampScore(Math.min(92, structural + formAdj * (got >= phaseRank('second') ? 0.45 : 0.95)));
   }
 
   return clampScore(40 + formAdj);
 }
 
+/** Acesso à Série C já assegurado (não inclui repescagem em disputa). */
+function serieDAccessGuaranteed(ctx = {}) {
+  if (ctx.promoted) return true;
+  const phase = ctx.serieDPhase || 'group';
+  return phase === 'semi' || phase === 'final' || phase === 'champion';
+}
+
 function projectionStatus(score, goal, ctx) {
   const type = goal?.evaluate?.type;
-  const promoted = !!ctx.promoted;
   const position = Number(ctx.position) || 99;
-  if (type === 'promoted' && promoted) return ctx.serieDPhase === 'champion' ? 'exceeded' : 'met';
-  if (type === 'position' && position <= (Number(goal.evaluate?.max) || 20) && (Number(ctx.played) || 0) >= 8 && score >= 70) {
-    return position <= Math.ceil((Number(goal.evaluate.max) || 20) / 2) ? 'exceeded' : 'met';
+  if (type === 'promoted' && serieDAccessGuaranteed(ctx)) {
+    return ctx.serieDPhase === 'champion' ? 'exceeded' : 'met';
+  }
+  if (type === 'position') {
+    const math = positionGoalMath(goal, ctx);
+    const max = Number(goal.evaluate?.max) || 20;
+    if (math.guaranteed) {
+      return position <= Math.ceil(max / 2) ? 'exceeded' : 'met';
+    }
+    if (math.impossible) return 'missed';
+    if (position <= max && (Number(ctx.played) || 0) >= 8 && score >= 70) {
+      return position <= Math.ceil(max / 2) ? 'exceeded' : 'met';
+    }
   }
   if (type === 'serieD_phase') {
     const got = phaseRank(ctx.serieDPhase || 'group');
@@ -377,14 +491,31 @@ export function seasonGoalLiveProgress(goal, ctx = {}) {
   const score = projectLiveScore(goal, ctx);
   const status = projectionStatus(score, goal, ctx);
   const meta = LIVE_GAUGE[status] || LIVE_GAUGE.missed;
+  const accessDone = goal?.evaluate?.type === 'promoted' && serieDAccessGuaranteed(ctx);
+  const positionMath = goal?.evaluate?.type === 'position' ? positionGoalMath(goal, ctx) : null;
+  const positionDone = !!positionMath?.guaranteed;
+  const positionDead = !!positionMath?.impossible;
+  let short = meta.short;
+  let hint = meta.hint;
+  if (accessDone) {
+    short = ctx.serieDPhase === 'champion' ? 'Acima' : 'Cumpriu';
+    hint = 'Acesso à Série C garantido';
+  } else if (positionDone) {
+    short = status === 'exceeded' ? 'Acima' : 'Cumpriu';
+    hint = 'Posição matematicamente garantida';
+  } else if (positionDead) {
+    short = 'Abaixo';
+    hint = 'Matematicamente fora da meta';
+  }
   return {
     status,
     score,
-    short: meta.short,
-    hint: meta.hint,
+    short,
+    hint,
     color: meta.color,
     label: goal?.label || '—',
     goalId: goal?.id || null,
+    math: positionMath || undefined,
   };
 }
 
@@ -394,6 +525,7 @@ export function createSeasonGoalsEngine() {
     pickSeasonGoal,
     evaluateSeasonGoal,
     seasonGoalLiveProgress,
+    positionGoalMath,
     SEASON_GOAL_CATALOG,
     BOARD_DELTA,
   };

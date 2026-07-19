@@ -46,3 +46,28 @@ export const clubLabelHtml = (clubName, ctx, options = {}) => {
     : ` class="${className}"`;
   return `<span class="club-label">${`<${tag}${attrs}>${name}</${tag}>`}${badge}</span>`;
 };
+
+/** Iniciais padrão do escudo (até 2 letras). */
+export const defaultClubCrestInitials = name =>
+  String(name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(part => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || '—';
+
+/**
+ * Padrão visual: escudo + nome do clube.
+ * @param {string} clubName
+ * @param {{ initialsFn?: (name:string)=>string, className?: string }} [options]
+ */
+export const clubCrestTitleHtml = (clubName, options = {}) => {
+  const name = String(clubName || '');
+  if (!name) return '';
+  const initialsFn =
+    typeof options.initialsFn === 'function' ? options.initialsFn : defaultClubCrestInitials;
+  const className = ['club-crest-title', options.className].filter(Boolean).join(' ');
+  const initials = initialsFn(name) || defaultClubCrestInitials(name);
+  return `<span class="${className}"><i class="crest" aria-hidden="true">${initials}</i><b>${name}</b></span>`;
+};

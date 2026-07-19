@@ -53,6 +53,85 @@ String: `'fast'` | `'standard'` | `'detailed'`
 
 Removido ao criar nova carreira. Não usar.
 
+### `matchday-player-history` (v1)
+
+Histórico de desempenho por jogador (todos os clubes). **Não** é apagado por `clearSeasonSave` — sobrevive ao avanço de temporada. Nova carreira (`clearCareerStorage`) limpa a chave.
+
+Identidade estável para o futuro mercado:
+
+```text
+playerKey = slug(name) + '#' + age
+```
+
+Ex.: `jose-silva#28`. Transferências futuras atualizam `club` sem perder `players[playerKey].seasons`.
+
+```typescript
+interface PlayerHistorySave {
+  version: 1
+  season: number | null          // temporada corrente do buffer
+  players: Record<string, {
+    name: string
+    club: string                 // último clube conhecido
+    seasons: Record<string, {    // chave = ano
+      apps: number
+      starts: number
+      minutes: number
+      goals: number
+      assists: number
+      yellow: number
+      red: number
+      passesEst: number          // rateio do total do time (não é passe “real”)
+      ratingSum: number
+      ratingCount: number
+      avgRating?: number | null  // congelada no finalizeSeason (média 1.0–10.0, passo 0.5)
+    }>
+  }>
+  matchLogs: Array<{             // só temporada corrente; cap ≈ jogos do calendário (ligas+copa)
+    id: string
+    season: number
+    round: number | null
+    competition: string
+    leg?: string | null
+    date?: string | null
+    home: string
+    away: string
+    homeGoals: number
+    awayGoals: number
+    players: Array<{
+      key: string
+      name: string
+      club: string
+      pos: string
+      minutes: number
+      started: boolean
+      goals: number
+      assists: number
+      yellow: boolean
+      red: boolean
+      passesEst: number
+      rating: number | null      // 1.0–10.0, passo 0.5
+    }>
+  }>
+  seasonArchives: Array<{        // últimas ~12 temporadas (balanço slim)
+    season: number
+    userClub: string | null
+    userDivision: string | null
+    seasonGoal?: object | null
+    seasonGoalResult?: object | null
+    champions?: Record<string, string> | null
+    movements?: Array<{ title: string, type: string, clubs: string[] }>
+    leaders?: object | null
+  }>
+}
+```
+
+Política de memória:
+- `matchLogs` guarda detalhe jogo a jogo **apenas da temporada corrente**, com cap = nº de jogos do calendário (A/B/C/D + Copa).
+- No `finalizeSeason`, os logs são apagados; fica o rollup em `players.*.seasons` (inclui `avgRating`).
+- Quota: se estourar localStorage, cortar `matchLogs` primeiro; `players.*.seasons` e `seasonArchives` têm prioridade.
+
+Módulos: `js/engine/player-match-stats.js` (ficha + nota), `js/engine/player-history.js` (arquivo / rollup / prune).
+
 ---
 
 ## Entidade: Club
@@ -206,7 +285,8 @@ interface CalendarEvent {
 |--------|-------|
 | `persistCareer` | `matchday-new-game` |
 | `persistSeason` | `matchday-season` |
-| `hydrateSaves` | Lê ambos + training + pace |
+| `playerHistory.persist` | `matchday-player-history` |
+| `hydrateSaves` | Lê career + season + training + pace (histórico tem load próprio) |
 
 **Serialização de datas:** `Date` → ISO string no save → `new Date()` no hydrate.
 
@@ -228,8 +308,10 @@ No DevTools do navegador:
 // Exportar
 copy(localStorage.getItem('matchday-new-game'))
 copy(localStorage.getItem('matchday-season'))
+copy(localStorage.getItem('matchday-player-history'))
 
 // Importar
 localStorage.setItem('matchday-new-game', '...')
 localStorage.setItem('matchday-season', '...')
+localStorage.setItem('matchday-player-history', '...')
 ```

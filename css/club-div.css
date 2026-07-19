@@ -53,3 +53,29 @@
   font-size:0.58em;
   padding:0.1em 0.38em;
 }
+
+/* Padrão: escudo + nome do clube */
+.club-crest-title{
+  display:inline-flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+  max-width:100%;
+  text-align:left;
+}
+
+.club-crest-title>.crest{
+  flex:0 0 auto;
+  width:44px;
+  height:44px;
+  font-size:14px;
+  font-style:normal;
+  font-weight:800;
+}
+
+.club-crest-title>b{
+  min-width:0;
+  font:700 30px 'Barlow Condensed',sans-serif;
+  line-height:1.05;
+  color:inherit;
+}

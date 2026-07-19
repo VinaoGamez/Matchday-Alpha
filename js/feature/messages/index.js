@@ -1,6 +1,8 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 
 const MESSAGE_LIMIT = 200;
+/** Mensagens não lidas com esta idade (dias de calendário) são marcadas como lidas. */
+export const MESSAGE_STALE_DAYS = 14;
 
 /** Categorias que não entram na caixa de entrada geral. */
 export const EXCLUDED_INBOX_CATEGORIES = new Set(['match', 'calendar']);
@@ -12,9 +14,28 @@ const CATEGORY_LABELS = {
   calendar: 'Calendário',
   club: 'Clube',
   competition: 'Competição',
+  transfer: 'Transferência',
 };
 
 const isInboxMessage = message => !EXCLUDED_INBOX_CATEGORIES.has(message?.category);
+
+const MS_PER_DAY = 86400000;
+
+/** Mensagem que ainda exige decisão do usuário (não auto-arquivar). */
+export const isActionRequiredMessage = message =>
+  !!message && !!message.meta?.requiresAction && !message.meta?.actionResolved;
+
+/** Ação médica pendente — badge vermelho + abertura automática. */
+export const isMedicalActionRequired = message =>
+  isActionRequiredMessage(message) &&
+  (message.category === 'medical' || message.type === 'treatment-pending');
+
+const messageAgeDays = (message, careerDate) => {
+  if (!message?.at || !careerDate) return 0;
+  const at = new Date(message.at);
+  if (Number.isNaN(at.getTime())) return 0;
+  return (careerDate.getTime() - at.getTime()) / MS_PER_DAY;
+};
 
 const formatMessageTime = at =>
   new Date(at)
@@ -44,18 +65,28 @@ const bodyToHtml = body =>
  * @param {Function} deps.getHasCareer
  * @param {Function} deps.getCurrentRound
  * @param {Function} [deps.getCareerDateIso]
+ * @param {Function} [deps.getCareerDate]
  * @param {Array} [deps.initialMessages]
  * @param {Function} [deps.onPersist]
  * @param {Function} [deps.onPush]
+ * @param {Function} [deps.onMedicalActionRequired]
  */
 export function createMessagesFeature(deps) {
-  const { $, $$, onClick, getHasCareer, getCurrentRound, onPush } = deps;
+  const { $, $$, onClick, getHasCareer, getCurrentRound, onPush, onMedicalActionRequired } = deps;
   const getCareerDateIso = typeof deps.getCareerDateIso === 'function' ? deps.getCareerDateIso : null;
+  const getCareerDate =
+    typeof deps.getCareerDate === 'function'
+      ? deps.getCareerDate
+      : () => (getCareerDateIso ? new Date(getCareerDateIso()) : new Date());
 
   let careerMessages = Array.isArray(deps.initialMessages)
     ? deps.initialMessages
         .filter(isInboxMessage)
-        .map(message => ({ ...message, read: !!message.read }))
+        .map(message => ({
+          ...message,
+          read: !!message.read,
+          meta: message.meta ? { ...message.meta } : null,
+        }))
     : [];
   let messageCounter = careerMessages.length;
   let messageFilter = 'all';
@@ -68,6 +99,8 @@ export function createMessagesFeature(deps) {
 
   const getMessages = () => careerMessages;
 
+  const getMedicalActionMessages = () => careerMessages.filter(isMedicalActionRequired);
+
   const unreadCount = () => careerMessages.filter(message => !message.read).length;
 
   const filteredMessages = () => {
@@ -79,17 +112,34 @@ export function createMessagesFeature(deps) {
   };
 
   const updateMessageBadge = () => {
+    const medicalAction = getMedicalActionMessages();
     const unread = unreadCount();
     const badge = $('#messagesBadge');
     const label = $('#messagesUnreadLabel');
+    const urgent = medicalAction.length > 0;
+    const badgeCount = urgent ? medicalAction.length : unread;
+
     if (badge) {
-      badge.textContent = unread;
-      badge.classList.toggle('hidden', !unread);
+      badge.textContent = String(badgeCount);
+      badge.classList.toggle('hidden', badgeCount === 0);
+      badge.classList.toggle('nav-badge--urgent', urgent);
+      badge.title = urgent
+        ? 'Ação médica pendente'
+        : badgeCount
+          ? `${badgeCount} mensagem${badgeCount === 1 ? '' : 'ns'} não lida${badgeCount === 1 ? '' : 's'}`
+          : '';
     }
     if (label) {
-      label.textContent = unread
-        ? `${unread} não lida${unread === 1 ? '' : 's'}`
-        : 'Todas lidas';
+      if (urgent) {
+        label.textContent =
+          medicalAction.length === 1
+            ? '1 ação médica pendente'
+            : `${medicalAction.length} ações médicas pendentes`;
+      } else {
+        label.textContent = unread
+          ? `${unread} não lida${unread === 1 ? '' : 's'}`
+          : 'Todas lidas';
+      }
     }
   };
 
@@ -106,12 +156,28 @@ export function createMessagesFeature(deps) {
     readerIndex = -1;
   };
 
+  const refreshMessageViews = () => {
+    updateMessageBadge();
+    renderMessages();
+    renderDashboardMessagesFeed();
+  };
+
+  const markMessageRead = id => {
+    const message = careerMessages.find(item => item.id === id);
+    if (!message || message.read) return;
+    message.read = true;
+    refreshMessageViews();
+    persistSeason();
+  };
+
   const openMessageReader = id => {
     const items = filteredMessages();
     const index = items.findIndex(message => message.id === id);
-    if (index < 0) return;
+    if (index < 0) return false;
     readerIndex = index;
     const message = items[index];
+    // Mensagem médica com ação permanece "pendente" no badge até a decisão;
+    // ainda assim marcamos como lida na caixa para não inflar o contador verde.
     markMessageRead(message.id);
 
     const meta = $('#messageReaderMeta');
@@ -127,7 +193,9 @@ export function createMessagesFeature(deps) {
     if (body) body.innerHTML = bodyToHtml(message.body);
 
     updateReaderNav();
+    updateMessageBadge();
     $('#messageReaderModal')?.classList.remove('hidden');
+    return true;
   };
 
   const stepMessageReader = step => {
@@ -143,10 +211,10 @@ export function createMessagesFeature(deps) {
     const items = filteredMessages();
     list.innerHTML = items.length
       ? items
-          .map(
-            message =>
-              `<article class="message-item ${message.read ? 'read' : 'unread'} message-${message.category}" data-message-id="${message.id}"><div class="message-item-main"><small>${CATEGORY_LABELS[message.category] || message.category.toUpperCase()} · RODADA ${message.round}</small><strong>${escapeHtml(message.title)}</strong></div><time>${formatMessageTime(message.at)}</time></article>`,
-          )
+          .map(message => {
+            const urgent = isMedicalActionRequired(message);
+            return `<article class="message-item ${message.read ? 'read' : 'unread'} message-${message.category}${urgent ? ' message-action-required' : ''}" data-message-id="${message.id}"><div class="message-item-main"><small>${CATEGORY_LABELS[message.category] || message.category.toUpperCase()} · RODADA ${message.round}${urgent ? ' · AÇÃO' : ''}</small><strong>${escapeHtml(message.title)}</strong></div><time>${formatMessageTime(message.at)}</time></article>`;
+          })
           .join('')
       : `<div class="messages-empty">Nenhuma ocorrência registrada${messageFilter === 'all' ? ' ainda' : ` na categoria ${CATEGORY_LABELS[messageFilter] || messageFilter}`}.</div>`;
     updateMessageBadge();
@@ -158,38 +226,81 @@ export function createMessagesFeature(deps) {
     const recent = careerMessages.filter(isInboxMessage).slice(0, 3);
     feed.innerHTML = recent.length
       ? recent
-          .map(
-            message =>
-              `<div class="dashboard-message-row ${message.read ? 'read' : 'unread'}" data-message-id="${message.id}"><small>${CATEGORY_LABELS[message.category] || message.category}</small><strong>${escapeHtml(message.title)}</strong></div>`,
-          )
+          .map(message => {
+            const urgent = isMedicalActionRequired(message);
+            return `<div class="dashboard-message-row ${message.read ? 'read' : 'unread'}${urgent ? ' message-action-required' : ''}" data-message-id="${message.id}"><small>${CATEGORY_LABELS[message.category] || message.category}${urgent ? ' · AÇÃO' : ''}</small><strong>${escapeHtml(message.title)}</strong></div>`;
+          })
           .join('')
       : '<div class="dashboard-message-empty">As ocorrências da temporada aparecerão aqui.</div>';
-  };
-
-  const markMessageRead = id => {
-    const message = careerMessages.find(item => item.id === id);
-    if (!message || message.read) return;
-    message.read = true;
-    updateMessageBadge();
-    renderMessages();
-    renderDashboardMessagesFeed();
-    persistSeason();
   };
 
   const markAllMessagesRead = () => {
     let changed = false;
     careerMessages.forEach(message => {
-      if (!message.read) {
+      if (!message.read && !isActionRequiredMessage(message)) {
         message.read = true;
         changed = true;
       }
     });
     if (changed) {
-      updateMessageBadge();
-      renderMessages();
-      renderDashboardMessagesFeed();
+      refreshMessageViews();
       persistSeason();
     }
+  };
+
+  /**
+   * Marca como lidas mensagens com mais de 2 semanas no calendário da carreira,
+   * exceto as que ainda exigem ação do usuário.
+   * @returns {number} quantidade marcada
+   */
+  const autoMarkStaleMessages = () => {
+    const careerDate = getCareerDate();
+    if (!(careerDate instanceof Date) || Number.isNaN(careerDate.getTime())) return 0;
+    let changed = 0;
+    careerMessages.forEach(message => {
+      if (message.read || isActionRequiredMessage(message)) return;
+      if (messageAgeDays(message, careerDate) < MESSAGE_STALE_DAYS) return;
+      message.read = true;
+      changed += 1;
+    });
+    if (changed) {
+      refreshMessageViews();
+      persistSeason();
+    }
+    return changed;
+  };
+
+  /** Conclui pendência de ação (ex.: tratamento médico definido). */
+  const resolveActionRequiredMessages = (match = {}) => {
+    let changed = 0;
+    careerMessages.forEach(message => {
+      if (!isActionRequiredMessage(message)) return;
+      if (match.category && message.category !== match.category) return;
+      if (match.type && message.type !== match.type) return;
+      if (!message.meta) message.meta = {};
+      message.meta.requiresAction = false;
+      message.meta.actionResolved = true;
+      message.read = true;
+      changed += 1;
+    });
+    if (changed) {
+      refreshMessageViews();
+      persistSeason();
+    }
+    return changed;
+  };
+
+  /** Abre o leitor na primeira mensagem médica com ação pendente. */
+  const openMedicalActionMessage = () => {
+    const pending = getMedicalActionMessages()[0];
+    if (!pending) return false;
+    if (messageFilter !== 'all' && messageFilter !== 'medical') {
+      messageFilter = 'all';
+      $$('#messageFilters [data-message-filter]').forEach(item =>
+        item.classList.toggle('active', item.dataset.messageFilter === 'all'),
+      );
+    }
+    return openMessageReader(pending.id);
   };
 
   const pushMessage = ({
@@ -221,6 +332,7 @@ export function createMessagesFeature(deps) {
     if ($('#messages')?.classList.contains('active')) renderMessages();
     persistSeason();
     onPush?.(message);
+    if (isMedicalActionRequired(message)) onMedicalActionRequired?.(message);
     return message;
   };
 
@@ -258,6 +370,7 @@ export function createMessagesFeature(deps) {
   return {
     moduleVersion: MODULE_VERSIONS.messages,
     getMessages,
+    getMedicalActionMessages,
     setPersist,
     pushMessage,
     renderMessages,
@@ -265,6 +378,10 @@ export function createMessagesFeature(deps) {
     updateMessageBadge,
     markMessageRead,
     markAllMessagesRead,
+    autoMarkStaleMessages,
+    resolveActionRequiredMessages,
+    openMessageReader,
+    openMedicalActionMessage,
     bindHandlers,
   };
 }

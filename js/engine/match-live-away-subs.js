@@ -106,7 +106,7 @@ export function createAwaySubController(deps) {
     const minute = getMinute(), home = getHomeGoals(), away = getAwayGoals(), cards = getCards();
     if (!getMatchStarted() || getPreMatchPreparation() || getMatchFinished() || getAwaySubstitutions() >= 5 || getAwaySubWindows() >= maxAwaySubWindows()) return;
     const chasing = away < home;
-    const windows = [55, ...engineTuning.subWindows, ...(chasing ? engineTuning.subChaseWindows : [])];
+    const windows = [...new Set([...(engineTuning.subWindows || []), ...(chasing ? engineTuning.subChaseWindows || [] : [])])];
     if (!windows.includes(minute)) return;
     const bench = awayBenchPlayers();
     if (!bench.length) return;

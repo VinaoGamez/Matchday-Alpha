@@ -1,7 +1,12 @@
 import { MODULE_VERSIONS, SAVE_KEYS } from '../../core/constants.js';
 import { clamp } from '../../ui/dom.js';
-import { isKnockoutShootoutCompetition } from '../../engine/knockout-shootout.js';
 import { competitionBadgeMarkup, resolveCompetitionBadge } from '../../ui/competition-badge.js';
+import { formatMatchRating as defaultFormatMatchRating } from '../../engine/player-match-stats.js';
+import { formatMatchMinuteLabel } from '../../engine/match-clock.js';
+import { tipKey, buildPlayerTipIndex, ownGoalTipCount } from './match-report-tips.js';
+import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
+import ownGoalBallUrl from '../../../assets/ui/goal-ball-own.png?url';
+import assistBootUrl from '../../../assets/ui/assist-boot.png?url';
 
 /**
  * Calendário de carreira — grade mensal, agenda diária e relatório de partida.
@@ -49,6 +54,9 @@ export function createCalendarViewFeature(deps) {
     isOnPendingMatchDay,
     calendarTrainingMap,
     trainingOptions,
+    findMatchLog,
+    formatMatchRating = defaultFormatMatchRating,
+    formatVenueCrowdLine,
   } = deps;
 
   let calendarCursor;
@@ -142,68 +150,377 @@ export function createCalendarViewFeature(deps) {
     return { game, result, data: null, goals: result.goals || null };
   };
 
-  const reportPercent = (accurate, passes) => (passes ? `${Math.round((accurate / passes) * 100)}%` : '0%');
+  const resolveMatchHistoryLog = game => {
+    if (typeof findMatchLog !== 'function' || !game?.home || !game?.away) return null;
+    return (
+      findMatchLog({
+        home: game.home,
+        away: game.away,
+        season: getCareerSeason(),
+        round: game.round ?? game.phaseIndex ?? null,
+        leg: game.leg || null,
+      }) ||
+      findMatchLog({
+        home: game.home,
+        away: game.away,
+        season: getCareerSeason(),
+        round: game.round ?? game.phaseIndex ?? null,
+      }) ||
+      null
+    );
+  };
+
+  const clubCrestInitials = name =>
+    String(name || '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(part => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || '—';
+
+  const shortScorerName = name => {
+    const parts = String(name || '—')
+      .split(/\s+/)
+      .filter(Boolean);
+    if (parts.length <= 1) return parts[0] || '—';
+    return parts[parts.length - 1];
+  };
+
+  const groupGoalsByScorer = goals => {
+    const order = [];
+    const byKey = new Map();
+    (goals || []).forEach(goal => {
+      const own = goal?.type === 'own';
+      const key = `${own ? 'own:' : ''}${goal?.name || '—'}`;
+      if (!byKey.has(key)) {
+        byKey.set(key, { name: goal?.name || '—', own, stamps: [] });
+        order.push(key);
+      }
+      byKey.get(key).stamps.push({
+        minute: Number(goal.minute) || 0,
+        stoppage: Number(goal.stoppage) || 0,
+      });
+    });
+    return order.map(key => {
+      const entry = byKey.get(key);
+      const minutes = entry.stamps
+        .slice()
+        .sort((a, b) => a.minute - b.minute || a.stoppage - b.stoppage)
+        .map(stamp => `${formatMatchMinuteLabel(stamp.minute, stamp.stoppage)}'`)
+        .join(', ');
+      return {
+        name: entry.own ? `${shortScorerName(entry.name)} (GC)` : shortScorerName(entry.name),
+        minutes,
+      };
+    });
+  };
+
+  const sheetIdentity = sheet => sheet.key || `${sheet.club || ''}|${sheet.name || ''}`;
+
+  const POSITION_ORDER = {
+    GOL: 0,
+    ZAG: 1,
+    LAT: 2,
+    LE: 2,
+    LD: 2,
+    VOL: 3,
+    MC: 4,
+    MEI: 4,
+    ME: 4,
+    MD: 4,
+    PE: 5,
+    PD: 5,
+    ATA: 6,
+    SA: 6,
+    CA: 6,
+  };
+
+  const positionRank = sheet => {
+    const pos = String(sheet.pos || sheet.role || '').toUpperCase();
+    if (POSITION_ORDER[pos] != null) return POSITION_ORDER[pos];
+    if (pos.startsWith('G')) return 0;
+    if (pos.includes('ZAG') || pos === 'Z') return 1;
+    if (pos.includes('LAT') || pos === 'L') return 2;
+    if (pos.includes('VOL')) return 3;
+    if (pos.includes('MEI') || pos === 'M') return 4;
+    if (pos.includes('ATA') || pos === 'A') return 6;
+    return 5;
+  };
+
+  const subStampKey = stamp =>
+    (Number(stamp?.minute) || 0) * 100 + (Number(stamp?.stoppage) || 0);
+
+  /**
+   * Eventos de sub com cronologia (minuto/acréscimo).
+   * Quem entrou e depois saiu recebe ↑ e ↓ na ordem real da partida.
+   */
+  const subMarkers = (sheet, tips) => {
+    const events = [];
+    const entered =
+      !!tips?.subIn?.length || (!sheet.started && (Number(sheet.minutes) || 0) > 0);
+    if (entered) {
+      events.push({
+        kind: 'in',
+        stamp: tips?.subIn?.[0] || {
+          minute: Math.max(0, 90 - (Number(sheet.minutes) || 0)),
+          stoppage: 0,
+        },
+      });
+    }
+    if (tips?.subOut?.length) {
+      events.push({
+        kind: 'out',
+        stamp: tips.subOut[0] || { minute: sheet.minutes, stoppage: 0 },
+      });
+    }
+    return events.sort((a, b) => subStampKey(a.stamp) - subStampKey(b.stamp));
+  };
+
+  const tipMinuteLabel = (minute, stoppage = 0) => {
+    if (minute == null || !Number.isFinite(Number(minute))) return null;
+    return `${formatMatchMinuteLabel(minute, stoppage)}'`;
+  };
+
+  const tipText = (label, minute, stoppage = 0) => {
+    const when = tipMinuteLabel(minute, stoppage);
+    return when ? `${label} - ${when}` : label;
+  };
+
+  const escapeTip = value =>
+    String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+
+  const tipAttrs = text => {
+    // Só data-tip (CSS). Evita title nativo — senão aparecem duas legendas.
+    return `data-tip="${escapeTip(text)}"`;
+  };
+
+  const cardIconMarkup = (kind, tip) =>
+    `<span class="match-report-card-icon ${kind}" aria-label="${
+      kind === 'yellow' ? 'Cartão Amarelo' : 'Cartão Vermelho'
+    }" ${tipAttrs(tip)}><i></i></span>`;
+
+  /** Um único melhor em campo — desempate: nota → gols → assistências → minutos. */
+  const pickManOfTheMatch = sheets => {
+    const rated = (sheets || []).filter(sheet => (Number(sheet.minutes) || 0) > 0 && sheet.rating != null);
+    if (!rated.length) return null;
+    return [...rated].sort(
+      (a, b) =>
+        (Number(b.rating) || 0) - (Number(a.rating) || 0) ||
+        (Number(b.goals) || 0) - (Number(a.goals) || 0) ||
+        (Number(b.assists) || 0) - (Number(a.assists) || 0) ||
+        (Number(b.minutes) || 0) - (Number(a.minutes) || 0) ||
+        String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR'),
+    )[0];
+  };
+
+  const playerEventIcons = (sheet, tipIndex) => {
+    const side = sheet.side === 'away' ? 'away' : sheet.side === 'home' ? 'home' : null;
+    const tips =
+      (side && tipIndex?.get(tipKey(side, sheet.name))) || {
+        goals: [],
+        assists: [],
+        ownGoals: [],
+        yellow: [],
+        red: [],
+        subIn: [],
+        subOut: [],
+      };
+    const goals = Math.max(0, Number(sheet.goals) || 0);
+    // Só o tipIndex (lado|nome): sheet.ownGoals antigo podia marcar homônimo no time adversário.
+    const ownGoals = Math.max(0, ownGoalTipCount(tipIndex, sheet), tips.ownGoals.length);
+    const assists = Math.max(0, Number(sheet.assists) || 0);
+    const yellowCount = Math.max(sheet.yellow ? 1 : 0, tips.yellow.length);
+    const redCount = Math.max(sheet.red ? 1 : 0, tips.red.length);
+    const subs = subMarkers(sheet, tips);
+    if (!goals && !ownGoals && !assists && !yellowCount && !redCount && !subs.length) return '';
+
+    const balls = Array.from({ length: Math.min(goals, 5) }, (_, i) => {
+      const stamp = tips.goals[i] || tips.goals[0];
+      const text = tipText('Gol', stamp?.minute, stamp?.stoppage);
+      return `<img class="match-report-icon match-report-goal-icon" src="${goalBallUrl}" alt="Gol" ${tipAttrs(text)} />`;
+    }).join('');
+
+    const ownBalls = Array.from({ length: Math.min(ownGoals, 3) }, (_, i) => {
+      const stamp = tips.ownGoals[i] || tips.ownGoals[0];
+      const text = tipText('Gol contra', stamp?.minute, stamp?.stoppage);
+      return `<img class="match-report-icon match-report-own-goal-icon" src="${ownGoalBallUrl}" alt="Gol contra" ${tipAttrs(text)} />`;
+    }).join('');
+
+    const boots = Array.from({ length: Math.min(assists, 4) }, (_, i) => {
+      const stamp = tips.assists[i] || tips.assists[0];
+      const text = tipText('Assistência', stamp?.minute, stamp?.stoppage);
+      return `<img class="match-report-icon match-report-assist-icon" src="${assistBootUrl}" alt="Assistência" ${tipAttrs(text)} />`;
+    }).join('');
+
+    const cards =
+      Array.from({ length: Math.min(yellowCount, 2) }, (_, i) => {
+        const stamp = tips.yellow[i] || tips.yellow[0];
+        return cardIconMarkup('yellow', tipText('Cartão Amarelo', stamp?.minute, stamp?.stoppage));
+      }).join('') +
+      Array.from({ length: Math.min(redCount, 1) }, (_, i) => {
+        const stamp = tips.red[i] || tips.red[0];
+        return cardIconMarkup('red', tipText('Cartão Vermelho', stamp?.minute, stamp?.stoppage));
+      }).join('');
+
+    const subIcon = subs
+      .map(({ kind, stamp }) => {
+        if (kind === 'in') {
+          return `<i class="match-report-sub in" aria-label="Entrou" ${tipAttrs(tipText('Entrou', stamp.minute, stamp.stoppage))}></i>`;
+        }
+        return `<i class="match-report-sub out" aria-label="Saiu" ${tipAttrs(tipText('Saiu', stamp.minute, stamp.stoppage))}></i>`;
+      })
+      .join('');
+
+    return `<span class="match-report-events">${balls}${ownBalls}${boots}${cards}${subIcon}</span>`;
+  };
+
+  const sortRatingsList = players =>
+    [...(players || [])]
+      .filter(sheet => (Number(sheet.minutes) || 0) > 0 && sheet.rating != null)
+      .sort((a, b) => {
+        // Titulares (e quem saiu) primeiro; quem entrou depois.
+        const aBench = a.started ? 0 : 1;
+        const bBench = b.started ? 0 : 1;
+        return (
+          aBench - bBench ||
+          positionRank(a) - positionRank(b) ||
+          String(a.name || '').localeCompare(String(b.name || ''), 'pt-BR')
+        );
+      });
+
+  const ratingsBlock = (clubName, players, motmKey, tipIndex) => {
+    const list = sortRatingsList(players);
+    if (!list.length) return '';
+    const rows = list
+      .map(sheet => {
+        const pos = String(sheet.pos || sheet.role || '—').toUpperCase().slice(0, 3);
+        const isBest = motmKey != null && sheetIdentity(sheet) === motmKey;
+        const ratingClass = [
+          sheet.rating >= 8 ? 'rating-high' : sheet.rating <= 4.5 ? 'rating-low' : sheet.rating >= 6.5 ? 'rating-ok' : '',
+          isBest ? 'rating-best' : '',
+        ]
+          .filter(Boolean)
+          .join(' ');
+        return `<li class="${isBest ? 'match-report-best' : ''}"><span class="match-report-pos">${pos}</span><span class="match-report-player${isBest ? ' is-best' : ''}"><span class="match-report-name">${sheet.name}</span>${playerEventIcons(sheet, tipIndex)}</span><strong class="match-report-rating ${ratingClass}">${formatMatchRating(sheet.rating)}</strong></li>`;
+      })
+      .join('');
+    return `<article class="match-report-ratings-side"><b>${clubName.toUpperCase()}</b><ul>${rows}</ul></article>`;
+  };
+
+  const ensureMatchReportModal = () => {
+    let reportModal = $('#calendarMatchReportModal');
+    if (reportModal && $('#matchReportContent')) return reportModal;
+    if (!reportModal) {
+      document.body.insertAdjacentHTML(
+        'beforeend',
+        `<div id="calendarMatchReportModal" class="modal hidden"><div class="modal-card match-report-modal"><button id="closeCalendarMatchReport" class="close" type="button">×</button><div id="matchReportContent"></div></div></div>`,
+      );
+      reportModal = $('#calendarMatchReportModal');
+      onClick('#closeCalendarMatchReport', () => {
+        $('#calendarMatchReportModal')?.classList.add('hidden');
+      });
+    } else if (!$('#matchReportContent')) {
+      reportModal.querySelector('.match-report-modal')?.insertAdjacentHTML(
+        'beforeend',
+        '<div id="matchReportContent"></div>',
+      );
+    }
+    return reportModal;
+  };
 
   const openCalendarMatchReport = entry => {
+    const userClub = getUserClub();
     const userDivision = getUserDivision();
-    const { game, result, data, goals } = entry;
-    const isCup = game.competition === 'COPA DO BRASIL';
+    const { game, result, goals, incidents = [] } = entry;
+    if (!game?.home || !game?.away || !result) return;
     const competition = resolveCompetitionBadge(game, { userDivision });
-    $('#matchReportTitle').textContent = 'Estatísticas finais';
-    $('#matchReportMeta').textContent = isCup
-      ? `${game.phase || 'Copa'} · ${game.leg || ''}`.replace(/\s·\s$/, '')
-      : isKnockoutShootoutCompetition(game)
-        ? `${game.leg || 'Eliminatórias'}`
-        : `Rodada ${game.round}`;
-    const scorerList = (side, score) => {
-      const entries = goals?.[side] || [];
-      if (entries.length) {
-        return entries
-          .map(
-            goal =>
-              `<span>${goal.minute != null ? `${goal.stoppage ? `${goal.minute <= 45 ? 45 : 90}+${goal.stoppage}` : goal.minute}' · ` : ''}${goal.name}${goal.type === 'own' ? ' (gol contra)' : goal.type === 'penalty' ? ' (pênalti)' : goal.type === 'freeKick' ? ' (falta)' : goal.type === 'corner' ? ' (cabeça)' : ''}</span>`
-          )
-          .join('');
-      }
-      return Number(score) === 0 ? '<span>Nenhum gol</span>' : '<span>Autores não registrados</span>';
-    };
-    const score = `${result.homeGoals} — ${result.awayGoals}${result.penalties ? ` <small>(${result.penalties} pên.)</small>` : ''}`;
-    const competitionHtml = `<div class="live-match-competition-wrap">${competitionBadgeMarkup({
-      id: 'matchReportCompetition',
-      nameId: 'matchReportCompetitionName',
-      name: competition.name,
-      kind: competition.kind,
-    })}</div>`;
-    const header = `${competitionHtml}<div class="match-report-score"><span>${game.home}</span><strong>${score}</strong><span>${game.away}</span></div><div class="match-report-goals"><article><b>${game.home.toUpperCase()}</b>${scorerList('home', result.homeGoals)}</article><article><b>${game.away.toUpperCase()}</b>${scorerList('away', result.awayGoals)}</article></div>`;
-    if (!data) {
-      $('#matchReportContent').innerHTML =
-        header + '<div class="match-report-empty">O placar está preservado, mas esta partida foi simulada antes do armazenamento das estatísticas detalhadas.</div>';
-      $('#calendarMatchReportModal').classList.remove('hidden');
-      return;
+    const historyLog = resolveMatchHistoryLog(game);
+    const liveSheets = Array.isArray(entry.ratingPlayers) ? entry.ratingPlayers : null;
+    const details = typeof fixtureDetails === 'function' ? fixtureDetails(game) : { display: '—', time: '' };
+    const venueLine =
+      typeof formatVenueCrowdLine === 'function'
+        ? formatVenueCrowdLine(game)
+        : game.home === userClub
+          ? 'Mandante'
+          : 'Visitante';
+    const homeUser = game.home === userClub;
+    const awayUser = game.away === userClub;
+    const scoreLine = `${result.homeGoals} — ${result.awayGoals}${result.penalties ? ` <small>(${result.penalties})</small>` : ''}`;
+    const scorerLines = side =>
+      groupGoalsByScorer(goals?.[side] || [])
+        .map(entry => `<span>${entry.name} <em>${entry.minutes}</em></span>`)
+        .join('');
+    const header = `
+      <div class="match-report-live-head">
+        <label class="match-report-live-label">AO VIVO</label>
+        <p class="match-report-live-datetime">${details.display || '—'}${details.time ? ` · ${details.time}` : ''}</p>
+        <p class="match-report-live-venue">${venueLine}</p>
+        <div class="live-match-competition-wrap">${competitionBadgeMarkup({
+          id: 'matchReportCompetition',
+          nameId: 'matchReportCompetitionName',
+          name: competition.name,
+          kind: competition.kind,
+        })}</div>
+        <div class="score live-score match-report-live-score">
+          <div class="live-team live-team-home">
+            <i>${clubCrestInitials(game.home)}</i>
+            <b class="${homeUser ? 'user-club-live' : ''}">${game.home.toUpperCase()}</b>
+            <div class="live-scorers">${scorerLines('home')}</div>
+          </div>
+          <div class="live-score-center">
+            <strong>${scoreLine}</strong>
+            <p class="live-match-clock"><strong class="live-match-clock-time">90:00</strong><small class="live-match-clock-phase">FIM DE JOGO</small></p>
+          </div>
+          <div class="live-team live-team-away">
+            <i class="away">${clubCrestInitials(game.away)}</i>
+            <b class="${awayUser ? 'user-club-live' : ''}">${game.away.toUpperCase()}</b>
+            <div class="live-scorers">${scorerLines('away')}</div>
+          </div>
+        </div>
+      </div>`;
+    const sheetSource = liveSheets || historyLog?.players || [];
+    let homeSheets = sheetSource.filter(p => p.club === game.home || p.side === 'home');
+    let awaySheets = sheetSource.filter(p => p.club === game.away || p.side === 'away');
+    // Fallback: se club/side não baterem, divide a lista ao meio (home primeiro).
+    if (!homeSheets.length && !awaySheets.length && sheetSource.length) {
+      const mid = Math.ceil(sheetSource.length / 2);
+      homeSheets = sheetSource.slice(0, mid);
+      awaySheets = sheetSource.slice(mid);
     }
-    const v = key => Number(data[key] ?? 0);
-    const rows = [
-      ['Posse de bola', `${v('homePossession')}%`, `${v('awayPossession')}%`],
-      ['Total de Passes', v('homePasses'), v('awayPasses')],
-      ['% passes certos', reportPercent(v('homeAccurate'), v('homePasses')), reportPercent(v('awayAccurate'), v('awayPasses'))],
-      ['Passes errados', v('homePasses') - v('homeAccurate'), v('awayPasses') - v('awayAccurate')],
-      ['Finalizações', v('homeShots'), v('awayShots')],
-      ['Para Fora', v('homeOff') || Math.max(0, v('homeShots') - v('homeOnTarget')), v('awayOff') || Math.max(0, v('awayShots') - v('awayOnTarget'))],
-      ['No Gol', v('homeOnTarget'), v('awayOnTarget')],
-      ['Defendidas', v('homeSaved'), v('awaySaved')],
-      ['Pênaltis', v('homePenalties'), v('awayPenalties')],
-      ['Escanteios', v('homeCorners'), v('awayCorners')],
-      ['Impedimentos', v('homeOffsides'), v('awayOffsides')],
-      ['Defesas do Goleiro', v('homeKeeperSaves'), v('awayKeeperSaves')],
-      ['Desarmes', v('homeTackles'), v('awayTackles')],
-      ['Faltas Cometidas', v('homeFouls'), v('awayFouls')],
-      ['Cartões Amarelos', v('homeYellow'), v('awayYellow')],
-      ['Cartões Vermelhos', v('homeRed'), v('awayRed')],
-    ];
-    $('#matchReportContent').innerHTML =
-      header +
-      `<div class="match-report-stats"><h3>ESTATÍSTICAS DA PARTIDA</h3>${rows.map(row => `<div class="match-report-stat"><span>${row[1]}</span><span>${row[0]}</span><span>${row[2]}</span></div>`).join('')}</div>`;
-    $('#calendarMatchReportModal').classList.remove('hidden');
+    const motm = pickManOfTheMatch([...homeSheets, ...awaySheets]);
+    const motmKey = motm ? sheetIdentity(motm) : null;
+    const playedNames = new Set(
+      [...homeSheets, ...awaySheets]
+        .filter(sheet => (Number(sheet.minutes) || 0) > 0)
+        .flatMap(sheet => {
+          const name = sheet.name;
+          if (!name) return [];
+          const side = sheet.side === 'away' ? 'away' : sheet.side === 'home' ? 'home' : null;
+          return side ? [`${side}|${name}`, name] : [name];
+        }),
+    );
+    // Garante side nas fichas (necessário para tipKey / homônimos).
+    homeSheets.forEach(sheet => {
+      if (!sheet.side) sheet.side = 'home';
+    });
+    awaySheets.forEach(sheet => {
+      if (!sheet.side) sheet.side = 'away';
+    });
+    const tipIndex = buildPlayerTipIndex(goals, incidents, playedNames);
+    const ratingsHtml =
+      homeSheets.length || awaySheets.length
+        ? `<div class="match-report-ratings"><h3>NOTAS</h3><div class="match-report-ratings-grid">${ratingsBlock(game.home, homeSheets, motmKey, tipIndex)}${ratingsBlock(game.away, awaySheets, motmKey, tipIndex)}</div></div>`
+        : `<div class="match-report-empty">Notas ainda não disponíveis para esta partida.</div>`;
+    const reportModal = ensureMatchReportModal();
+    const content = $('#matchReportContent');
+    if (!reportModal || !content) return;
+    reportModal.style.zIndex = '80';
+    content.innerHTML = header + ratingsHtml;
+    reportModal.classList.remove('hidden');
   };
 
   const renderTrainingRules = () => {
@@ -397,7 +714,7 @@ export function createCalendarViewFeature(deps) {
 
     document.body.insertAdjacentHTML(
       'beforeend',
-      `<div id="calendarMatchReportModal" class="modal hidden"><div class="modal-card match-report-modal"><button id="closeCalendarMatchReport" class="close">×</button><label>RELATÓRIO DA PARTIDA</label><h2 id="matchReportTitle">Estatísticas finais</h2><p id="matchReportMeta"></p><div id="matchReportContent"></div></div></div>`
+      `<div id="calendarMatchReportModal" class="modal hidden"><div class="modal-card match-report-modal"><button id="closeCalendarMatchReport" class="close">×</button><div id="matchReportContent"></div></div></div>`
     );
   };
 

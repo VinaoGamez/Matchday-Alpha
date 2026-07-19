@@ -92,6 +92,12 @@ main > .view.active {
   box-shadow: 0 0 0 2px rgba(6, 19, 27, 0.55);
 }
 
+.sidebar .nav-badge.nav-badge--urgent {
+  background: #e23b3b;
+  color: #fff8f8;
+  box-shadow: 0 0 0 2px rgba(6, 19, 27, 0.55);
+}
+
 .sidebar .nav-badge.hidden {
   display: none;
 }
@@ -914,6 +920,16 @@ main > .view.active {
 
 .message-medical.message-item.unread {
   box-shadow: inset 4px 0 #ffc94f;
+}
+
+.message-item.message-action-required,
+.dashboard-message-row.message-action-required {
+  box-shadow: inset 4px 0 #e23b3b;
+}
+
+.message-item.message-action-required .message-item-main small,
+.dashboard-message-row.message-action-required small {
+  color: #ff8b8b;
 }
 
 .message-discipline.message-item.unread {

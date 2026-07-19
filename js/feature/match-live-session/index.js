@@ -34,6 +34,7 @@ import { MODULE_VERSIONS } from '../../core/constants.js';
  * @param {Function} deps.openChampionship
  * @param {Function} deps.simulateRoundResults
  * @param {Function} deps.openRoundResults
+ * @param {Function} [deps.openLiveMatchRatings] — abre relatório com notas Brasfoot
  * @param {Function} deps.stopMatchClock
  * @param {Function} deps.startMatchClock
  * @param {Function} deps.closeFormationSuggestion
@@ -83,6 +84,7 @@ export function createMatchLiveSessionFeature(deps) {
     openChampionship,
     simulateRoundResults,
     openRoundResults,
+    openLiveMatchRatings,
     stopMatchClock,
     startMatchClock,
     closeFormationSuggestion,
@@ -185,15 +187,25 @@ export function createMatchLiveSessionFeature(deps) {
       if (matchDate) advanceCareerCalendarTo(matchDate);
       if (getHasCareer()) persistSeason(true);
     }
-    $('#matchActions').classList.remove('hidden');
-    $('#matchActions').innerHTML = '<button id="finalDashboard">CLASSIFICAÇÃO</button><button id="finalTable">TABELA DE JOGOS</button><button id="finalNext">SAIR</button>';
-    onClick('#finalDashboard', () => {
+    const actions = $('#matchActions');
+    actions.classList.remove('hidden');
+    actions.innerHTML =
+      '<button type="button" id="finalRatings">NOTAS</button><button type="button" id="finalDashboard">CLASSIFICAÇÃO</button><button type="button" id="finalTable">TABELA DE JOGOS</button><button type="button" id="finalNext">SAIR</button>';
+    // Bind direto nos botões novos (evita listener órfão se o nó foi recriado).
+    actions.querySelector('#finalRatings')?.addEventListener('click', () => {
+      if (typeof openLiveMatchRatings === 'function') openLiveMatchRatings();
+    });
+    actions.querySelector('#finalDashboard')?.addEventListener('click', () => {
       if (getMatchFinished() && !getRoundCommitted()) advanceSeasonRound({ navigateDashboard: false });
       modal.classList.add('hidden');
       openChampionship();
     });
-    onClick('#finalTable', () => { simulateRoundResults(); modal.classList.add('hidden'); openRoundResults(); });
-    onClick('#finalNext', () => exitLiveMatch());
+    actions.querySelector('#finalTable')?.addEventListener('click', () => {
+      simulateRoundResults();
+      modal.classList.add('hidden');
+      openRoundResults();
+    });
+    actions.querySelector('#finalNext')?.addEventListener('click', () => exitLiveMatch());
   };
 
   const exitLiveMatch = () => {

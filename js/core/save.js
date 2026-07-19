@@ -73,6 +73,7 @@ export function isSeasonValidForCareer(career, season) {
 export function clearSeasonSave() {
   localStorage.removeItem(SAVE_KEYS.season);
   localStorage.removeItem(SAVE_KEYS.liveMatch);
+  // playerHistory (matchday-player-history) NÃO é limpo aqui — sobrevive entre temporadas.
 }
 
 /** Flag one-shot: impede persistSeason no beforeunload (Novo Jogo / troca de carreira). */
@@ -100,7 +101,7 @@ export function consumeSkipPersistOnce() {
  * Limpa carreira + temporada + live (+ treino opcional) para liberar cota
  * e evitar conflito ao iniciar Novo Jogo.
  */
-export function clearCareerStorage({ clearTraining = true } = {}) {
+export function clearCareerStorage({ clearTraining = true, clearPlayerHistory = true } = {}) {
   try {
     localStorage.removeItem(SAVE_KEYS.career);
   } catch {
@@ -110,6 +111,13 @@ export function clearCareerStorage({ clearTraining = true } = {}) {
   if (clearTraining) {
     try {
       localStorage.removeItem(SAVE_KEYS.training);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (clearPlayerHistory && SAVE_KEYS.playerHistory) {
+    try {
+      localStorage.removeItem(SAVE_KEYS.playerHistory);
     } catch {
       /* ignore */
     }

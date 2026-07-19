@@ -1,5 +1,5 @@
 /** Build e versões de save — contrato estável entre módulos. */
-export const BUILD_VERSION = 'alpha-02-tester-27';
+export const BUILD_VERSION = 'alpha-02-tester-28';
 
 export const SAVE_KEYS = {
   career: 'matchday-new-game',
@@ -8,11 +8,13 @@ export const SAVE_KEYS = {
   pace: 'futmanager-pace',
   liveMatch: 'matchday-live-match',
   lastSeenBuild: 'matchday-last-seen-build',
+  playerHistory: 'matchday-player-history',
 };
 
 export const SAVE_VERSION = {
   career: 4,
   season: 1,
+  playerHistory: 1,
 };
 
 export const MODULE_VERSIONS = {
@@ -45,6 +47,9 @@ export const MODULE_VERSIONS = {
   seasonGoals: 2,
   managerJob: 2,
   managerSack: 1,
+  playerHistory: 1,
+  playerMatchStats: 1,
+  transfers: 1,
 };
 
 /** Flags para builds de testers — evoluir sem quebrar fluxo congelado. */
@@ -53,4 +58,6 @@ export const FEATURES = {
   calendarRoutines: true,
   medicalTreatment: true,
   externalTunnel: true,
+  /** Mercado: código no repo, UI pública ainda EM BREVE até liberar. */
+  transfers: false,
 };
