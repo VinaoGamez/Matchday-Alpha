@@ -49,7 +49,6 @@ export function createDashboardFeature(deps) {
     isSponsorChoicePending,
     onRequestSponsorPicker,
     canReopenLivePostMatch,
-    lastCompletedUserEntry,
   } = deps;
 
   let leaderMode = 'scorers';
@@ -377,12 +376,13 @@ export function createDashboardFeature(deps) {
     if (cardTitle) cardTitle.textContent = fullyComplete ? 'RESUMO DA TEMPORADA' : 'PRÓXIMA PARTIDA';
 
     const sponsorPending = typeof isSponsorChoicePending === 'function' && isSponsorChoicePending();
+    // Só após fechar o resumo da partida recém-jogada (ainda sem SAIR / avançar rodada).
     const livePostMatch = typeof canReopenLivePostMatch === 'function' && canReopenLivePostMatch();
-    const hasCompletedMatch = typeof lastCompletedUserEntry === 'function' && !!lastCompletedUserEntry();
 
     // Temporada fechada: o CTA precisa ficar visível para reabrir o balanço / avançar.
+    // Com pós-jogo pendente: esconde JOGAR PARTIDA (mesmo fluxo do PÓS-JOGO) e mostra só PÓS-JOGO.
     if (playBtn) {
-      playBtn.classList.toggle('hidden', idle && !sponsorPending);
+      playBtn.classList.toggle('hidden', livePostMatch || (idle && !sponsorPending));
       playBtn.disabled = false;
       if (sponsorPending) {
         playBtn.textContent = 'ESCOLHA OS PATROCÍNIOS →';
@@ -397,10 +397,8 @@ export function createDashboardFeature(deps) {
       }
     }
     if (postMatchBtn) {
-      postMatchBtn.classList.toggle('hidden', !livePostMatch && !hasCompletedMatch);
-      postMatchBtn.title = livePostMatch
-        ? 'Reabrir o resumo pós-jogo da partida atual'
-        : 'Ver o relatório da última partida concluída';
+      postMatchBtn.classList.toggle('hidden', !livePostMatch);
+      postMatchBtn.title = 'Reabrir o resumo pós-jogo da partida atual';
     }
     if (simBtn) simBtn.classList.toggle('hidden', !idle);
     if (inspectBtn) inspectBtn.classList.toggle('hidden', idle || fullyComplete || !display);

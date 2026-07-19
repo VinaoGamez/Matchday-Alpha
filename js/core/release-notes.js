@@ -1,6 +1,21 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-30',
+    date: '2026-07-19',
+    publishedAt: '2026-07-19T18:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Central',
+        items: [
+          'PÓS-JOGO só aparece depois de fechar o resumo da partida recém-jogada; some ao SAIR.',
+          'Com o pós-jogo pendente, JOGAR PARTIDA fica oculto (mesmo fluxo do PÓS-JOGO).',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-29',
     date: '2026-07-19',
     publishedAt: '2026-07-19T17:45:00-03:00',
