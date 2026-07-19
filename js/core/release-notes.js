@@ -1,6 +1,27 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-26',
+    date: '2026-07-19',
+    publishedAt: '2026-07-19T14:50:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Mata-mata',
+        items: [
+          'Empate no agregado (ida+volta) abre disputa de pênaltis ao vivo — não resolve mais sozinho nos bastidores.',
+          'Pênaltis só avançam a fase depois da disputa jogada no seu confronto; jogos só-CPU ainda podem decidir no automático.',
+        ],
+      },
+      {
+        label: 'Elenco / táticas',
+        items: [
+          'Ajustes de UI no painel tático e na página de campeonatos.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-25',
     date: '2026-07-19',
     publishedAt: '2026-07-19T00:45:00-03:00',

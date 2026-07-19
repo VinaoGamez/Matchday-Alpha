@@ -77,7 +77,7 @@ A cada tick do `setInterval`:
 3. Recalcula **posse-alvo** e mistura com a posse atual  
 4. Escolhe o time da bola (sorte proporcional à posse)  
 5. Gera **passes** dos dois lados (`addPasses`)  
-6. Chance rara de **pênalti** (~1,2% por tick, máx. 1 por lado)  
+6. Chance rara de **pênalti** (base baixa por tick; sobe com faltas/cartões/pressão; sem teto rígido)  
 7. Chama **`buildAttack`** (construção → duelo → desfecho)  
 8. Atualiza estatísticas na UI  
 

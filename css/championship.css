@@ -7,12 +7,114 @@
   padding-bottom: 36px;
 }
 
-.ranking-trophy-section {
+.ranking-top-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 260px);
+  gap: 12px;
+  align-items: end;
   margin-bottom: 18px;
+}
+
+.ranking-trophy-section {
+  min-width: 0;
+  margin-bottom: 0;
   overflow: hidden;
   border: 1px solid #28505b;
   border-radius: 8px;
   background: #0b1a22;
+}
+
+.ranking-club-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid #28505b;
+  border-radius: 8px;
+  background: #0b1a22;
+}
+
+.ranking-club-search input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #edf8f5;
+  font: 600 13px "DM Sans", sans-serif;
+  outline: none;
+  box-shadow: none;
+}
+
+.ranking-club-search input::placeholder {
+  color: #6f9196;
+  font-weight: 500;
+}
+
+.ranking-club-search input[type="search"]::-webkit-search-decoration,
+.ranking-club-search input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ranking-club-search button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  padding: 0 !important;
+  border: 1px solid #397487 !important;
+  border-radius: 6px !important;
+  background: #123843 !important;
+  color: #63d9ff !important;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+.ranking-club-search button:hover {
+  border-color: #63d9ff !important;
+  background: #1a4d5c !important;
+}
+
+.ranking-club-search button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.national-ranking-row.ranking-search-hit {
+  background: #1a3d4a !important;
+  box-shadow: inset 3px 0 #63d9ff;
+}
+
+.national-ranking-empty {
+  display: grid;
+  place-items: center;
+  min-height: 80px;
+  padding: 18px;
+  color: #789da2;
+  font: 600 12px "DM Sans", sans-serif;
+}
+
+@media (max-width: 1100px) {
+  .ranking-top-bar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
 }
 
 .ranking-trophy-section > header {
@@ -44,17 +146,17 @@
 .ranking-trophies {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  padding: 8px;
+  padding: 6px;
 }
 
 .ranking-trophy {
   position: relative;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 10px 8px;
   border-right: 1px solid #234b55;
   background: transparent;
 }
@@ -62,8 +164,8 @@
 .ranking-trophy:last-child { border-right: 0; }
 
 .ranking-trophy svg {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2.5;
@@ -90,7 +192,7 @@
 .ranking-trophy > span strong {
   overflow: hidden;
   color: #edf8f5;
-  font: 700 16px Barlow Condensed;
+  font: 700 14px Barlow Condensed;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -104,7 +206,7 @@
   display: grid;
   justify-items: end;
   color: #edf8f5;
-  font: 800 19px Barlow Condensed;
+  font: 800 16px Barlow Condensed;
 }
 
 .ranking-trophy > b small {
@@ -314,37 +416,14 @@
 }
 
 /* Ranking de Técnicos — mesma linguagem do Ranking Nacional. */
-.manager-ranking-legend .manager-ranking-stats {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0;
-  padding: 0;
-}
-
-.manager-ranking-stats article {
-  display: grid;
-  gap: 4px;
-  padding: 14px 16px;
-  border-right: 1px solid #234b55;
-}
-
-.manager-ranking-stats article:last-child { border-right: 0; }
-
-.manager-ranking-stats small {
-  color: #63d9ff;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: .7px;
-}
-
-.manager-ranking-stats strong {
-  color: #edf8f5;
-  font: 800 22px Barlow Condensed;
+.manager-ranking-table .national-ranking-body {
+  /* +2 linhas após remover o card "Mercado" — preenche a viewport sem folga embaixo. */
+  --national-ranking-visible-rows: 12;
 }
 
 .manager-ranking-head,
 .manager-ranking-row {
-  grid-template-columns: 52px minmax(0, 1.05fr) minmax(0, 1fr) 64px 0 minmax(72px, 0.22fr) minmax(96px, 0.28fr);
+  grid-template-columns: 48px minmax(0, 1.05fr) minmax(0, 0.95fr) 52px 0 minmax(56px, 0.18fr) minmax(84px, 0.28fr) minmax(84px, 0.26fr);
 }
 
 .manager-ranking-row.manager-free .manager-ranking-club {
@@ -357,16 +436,21 @@
   font-weight: 700;
 }
 
+.manager-ranking-row .manager-ranking-salary {
+  color: #cfe3e6;
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 @media (max-width: 760px) {
-  .manager-ranking-legend .manager-ranking-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .manager-ranking-stats article:nth-child(2) { border-right: 0; }
-  .manager-ranking-stats article:nth-child(n+3) { border-top: 1px solid #234b55; }
   .manager-ranking-head,
   .manager-ranking-row {
-    grid-template-columns: 40px minmax(110px, 1fr) minmax(90px, 1fr) 48px 0 56px 64px;
+    grid-template-columns: 36px minmax(100px, 1fr) minmax(80px, 0.9fr) 40px 0 48px 72px 60px;
     padding: 0 12px;
+  }
+  .manager-ranking-row .manager-ranking-salary {
+    font-size: 11px;
   }
 }
 

@@ -191,6 +191,8 @@ export function createOptionsFeature(deps) {
       clubName,
       managerName,
       stadiumName,
+      foundingClubName: clubName,
+      careerClubHistory: [clubName],
       pendingSponsorChoice: true,
       division: selectedCareerDivision,
       clubStatus,

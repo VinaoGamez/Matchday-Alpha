@@ -13,6 +13,25 @@ export const ENGINE_TUNING = {
   actionRateMin: 0.56,
   actionRateMax: 0.76,
   bookingBase: 0.055,
+  /**
+   * Pênalti por tick (live ~55 advances): base rara; combatividade soma
+   * (faltas/min, cartões, pressão, perseguição). Sem teto rígido de quantidade;
+   * só amortecimento suave se já houve pênalti no jogo.
+   */
+  penaltyChanceBase: 0.0007,
+  penaltyChanceMin: 0.0003,
+  penaltyChanceMax: 0.0075,
+  penaltyCombatFoulWeight: 0.0035,
+  penaltyCombatCardWeight: 0.0004,
+  penaltyCombatRedWeight: 0.0014,
+  penaltyCombatPressWeight: 0.0048,
+  penaltyCombatChaseWeight: 0.0007,
+  penaltyCombatDuelWeight: 0.0011,
+  penaltyRepeatSoftDamp: 0.9,
+  /** Simulação (IA): chance por boa chegada (~30/jogo; base menor que o live/tick). */
+  penaltyChanceOnGoodAttackBase: 0.00155,
+  penaltyChanceOnGoodAttackMin: 0.0007,
+  penaltyChanceOnGoodAttackMax: 0.012,
   blowoutGapStart: 6,
   blowoutDampPerPoint: 0.045,
   blowoutDampMin: 0.78,
@@ -54,6 +73,54 @@ export const engineBlowoutDamp = gap =>
         1,
       )
     : 1;
+
+/**
+ * Chance de pênalti no momento — sobe com combatividade, sem limite rígido.
+ * @param {object} ctx
+ * @param {number} ctx.minute
+ * @param {number} ctx.fouls
+ * @param {number} ctx.yellow
+ * @param {number} ctx.red
+ * @param {number} ctx.pressHome 0–100
+ * @param {number} ctx.pressAway 0–100
+ * @param {number} [ctx.alreadyAwarded] pênaltis já marcados no jogo
+ * @param {boolean} [ctx.scoreChase] placar apertado / perseguição
+ * @param {number} [ctx.duelEdge] vantagem de drible vs desarme (−1…1 aprox.)
+ */
+export const enginePenaltyChance = (ctx = {}) => {
+  const minute = Math.max(1, Number(ctx.minute) || 1);
+  const fouls = Math.max(0, Number(ctx.fouls) || 0);
+  const yellow = Math.max(0, Number(ctx.yellow) || 0);
+  const red = Math.max(0, Number(ctx.red) || 0);
+  const pressHome = Number(ctx.pressHome) || 50;
+  const pressAway = Number(ctx.pressAway) || 50;
+  const already = Math.max(0, Number(ctx.alreadyAwarded) || 0);
+  const duelEdge = Number(ctx.duelEdge) || 0;
+  const foulRate = fouls / minute;
+  // Pressão média acima de ~50 começa a aquecer o jogo.
+  const pressHeat = Math.max(0, (pressHome + pressAway) / 200 - 0.5);
+  const combat =
+    foulRate * ENGINE_TUNING.penaltyCombatFoulWeight +
+    yellow * ENGINE_TUNING.penaltyCombatCardWeight +
+    red * ENGINE_TUNING.penaltyCombatRedWeight +
+    pressHeat * ENGINE_TUNING.penaltyCombatPressWeight +
+    (ctx.scoreChase ? ENGINE_TUNING.penaltyCombatChaseWeight : 0) +
+    Math.max(0, duelEdge) * ENGINE_TUNING.penaltyCombatDuelWeight;
+  // Amortece repetição sem proibir: 2º/3º pedem jogo ainda mais pegado.
+  const repeatDamp = 1 / (1 + already * ENGINE_TUNING.penaltyRepeatSoftDamp);
+  const useSimScale = ctx.forGoodAttack === true;
+  const base = useSimScale
+    ? ENGINE_TUNING.penaltyChanceOnGoodAttackBase
+    : ENGINE_TUNING.penaltyChanceBase;
+  const min = useSimScale
+    ? ENGINE_TUNING.penaltyChanceOnGoodAttackMin
+    : ENGINE_TUNING.penaltyChanceMin;
+  const max = useSimScale
+    ? ENGINE_TUNING.penaltyChanceOnGoodAttackMax
+    : ENGINE_TUNING.penaltyChanceMax;
+  const combatScale = useSimScale ? 1.15 : 1;
+  return clamp((base + combat * combatScale) * repeatDamp, min, max);
+};
 
 export const matchDifficultyForClub = (club, opponent, isHome) => {
   const ownPower = club?.power ?? 75;

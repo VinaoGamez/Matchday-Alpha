@@ -8,6 +8,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test:match-view": "node scripts/match-view-play-tests.mjs",
+    "test:world-pitch": "node scripts/match-view-world-tests.mjs",
+    "test:match-view-all": "npm run test:world-pitch && npm run test:match-view",
+    "test:ao-vivo-2d": "node modules/ao-vivo-2d/scripts/run-tests.mjs lab",
+    "test:ao-vivo-2d:frozen": "node modules/ao-vivo-2d/scripts/run-tests.mjs frozen",
+    "test:knockout-shootout": "node scripts/knockout-shootout-tests.mjs",
     "deploy:testers": "npm run build && npx wrangler pages deploy dist --project-name matchday-football-alpha --branch main"
   },
   "devDependencies": {

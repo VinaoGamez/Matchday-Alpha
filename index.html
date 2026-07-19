@@ -88,7 +88,7 @@
       </div>
     </section>
     <section id="squad" class="view"><div class="title"><p>PLANTEL PRINCIPAL</p><h1>Elenco</h1></div><p class="roster-note">Qualidade atual, potencial, biotipo, perfil, atributos técnicos e cansaço. A recuperação física varia conforme idade e participação nas partidas.</p><div class="card roster"><div class="roster-head roster-expanded"><span>JOGADOR</span><span>POS</span><span>IDADE</span><span>POT</span><span>ALTURA</span><span>PÉ</span><span>PERFIL</span><span>RISCO</span><span>FOR</span><span>DRI</span><span>VEL</span><span>MAR</span><span>DES</span><span>CHU</span><span>PAS</span><span>CAB</span><span>POS GOL</span><span>PEN GOL</span><span>REF</span><span>FALTA</span><span>PÊNALTI</span><span>ARM</span><span>CANSAÇO</span></div><div id="playerList"></div></div></section>
-    <section id="tactics" class="view"><div class="title"><p>PREPARAÇÃO DA PARTIDA</p><h1>Táticas</h1></div><div class="tactics"><div class="pitch tactical-board"><div class="field-markings" aria-hidden="true"><i class="mid-line"></i><i class="centre-circle"></i><i class="centre-spot"></i><i class="area area-top"></i><i class="area area-bottom"></i><i class="six-yard six-top"></i><i class="six-yard six-bottom"></i><i class="spot spot-top"></i><i class="spot spot-bottom"></i><i class="goal goal-top"></i><i class="goal goal-bottom"></i></div><div id="pitchPlayers"></div></div><div class="card controls"><div class="tactic-suggestion-wrap"><button id="applyTacticSuggestion" type="button" class="tactic-suggestion-btn">✦ SUGESTÃO TÁTICA</button><span class="tactic-suggestion-tooltip">Monta automaticamente a melhor formação, escalação e ajustes de mentalidade, estilo de construção, intensidade de pressão e linha de impedimento com base apenas no seu elenco disponível.</span></div><label>FORMAÇÃO</label><div id="formations" class="formation-buttons"></div><p id="formationDescription"></p><div class="tactic-slider"><label>MENTALIDADE <output id="mentalityReadout"></output></label><div><small>DEFENSIVA</small><input id="mentalitySlider" type="range" min="0" max="100" value="50"><small>OFENSIVA</small></div></div><div class="tactic-slider"><label>ESTILO DE CONSTRUÇÃO <output id="possessionReadout"></output></label><div><small>CONTRA-ATAQUE</small><input id="possessionSlider" type="range" min="0" max="100" value="50"><small>POSSE</small></div></div><div class="tactic-slider"><label>INTENSIDADE DE PRESSÃO <output id="pressReadout"></output></label><div><small>BAIXA</small><input id="pressSlider" type="range" min="0" max="100" value="50"><small>ALTA</small></div></div><div class="tactic-slider"><label>LINHA DE IMPEDIMENTO <output id="offsideLineReadout"></output></label><div><small>BAIXA</small><input id="offsideLineSlider" type="range" min="0" max="100" value="50"><small>ALTA</small></div></div></div><aside class="card tactic-roster"><label>ELENCO PARA A PARTIDA</label><small class="tactic-roster-hint">Arraste um jogador até uma posição no campo para ajustar a equipe.</small><section><h3>TITULARES</h3><div class="tactic-roster-head"><span>JOGADOR</span><span>POS</span><span>OVR</span><span>CANSAÇO</span></div><div id="tacticStarters"></div></section><section><h3>RESERVAS</h3><div class="tactic-roster-head"><span>JOGADOR</span><span>POS</span><span>OVR</span><span>CANSAÇO</span></div><div id="tacticBench"></div></section></aside></div></section>
+    <section id="tactics" class="view"><div class="title"><p>PREPARAÇÃO DA PARTIDA</p><h1>Táticas</h1></div><div class="tactics"><div class="pitch tactical-board"><div class="field-markings" aria-hidden="true"><i class="mid-line"></i><i class="centre-circle"></i><i class="centre-spot"></i><i class="area area-top"></i><i class="area area-bottom"></i><i class="six-yard six-top"></i><i class="six-yard six-bottom"></i><i class="spot spot-top"></i><i class="spot spot-bottom"></i><i class="goal goal-top"></i><i class="goal goal-bottom"></i></div><div id="pitchPlayers"></div></div><div class="card controls"><div class="tactic-suggestion-wrap"><button id="applyTacticSuggestion" type="button" class="tactic-suggestion-btn">✦ SUGESTÃO TÁTICA</button><span class="tactic-suggestion-tooltip">Monta automaticamente a melhor formação, escalação e ajustes de mentalidade, estilo de construção, intensidade de pressão e linha de impedimento com base apenas no seu elenco disponível.</span></div><label>FORMAÇÃO</label><div id="formations" class="formation-buttons"></div><p id="formationDescription"></p><div class="tactic-slider"><label>MENTALIDADE <output id="mentalityReadout"></output></label><div><small>DEFENSIVA</small><input id="mentalitySlider" type="range" min="0" max="100" value="50"><small>OFENSIVA</small></div></div><div class="tactic-slider"><label>ESTILO DE CONSTRUÇÃO <output id="possessionReadout"></output></label><div><small>CONTRA-ATAQUE</small><input id="possessionSlider" type="range" min="0" max="100" value="50"><small>POSSE</small></div></div><div class="tactic-slider"><label>INTENSIDADE DE PRESSÃO <output id="pressReadout"></output></label><div><small>BAIXA</small><input id="pressSlider" type="range" min="0" max="100" value="50"><small>ALTA</small></div></div><div class="tactic-slider"><label>LINHA DE IMPEDIMENTO <output id="offsideLineReadout"></output></label><div><small>BAIXA</small><input id="offsideLineSlider" type="range" min="0" max="100" value="50"><small>ALTA</small></div></div></div><aside class="card tactic-roster"><label>ELENCO PARA A PARTIDA</label><small class="tactic-roster-hint">Arraste entre titulares e reservas, ou solte na prancheta para ajustar a equipe.</small><section><h3>TITULARES</h3><div class="tactic-roster-head"><span>JOGADOR</span><span>POS</span><span>OVR</span><span>CANSAÇO</span></div><div id="tacticStarters"></div></section><section><h3>RESERVAS</h3><div class="tactic-roster-head"><span>JOGADOR</span><span>POS</span><span>OVR</span><span>CANSAÇO</span></div><div id="tacticBench"></div></section></aside></div></section>
     <section id="office" class="view office-view">
       <div class="title"><p>GESTÃO FINANCEIRA DO CLUBE</p><h1>Escritório</h1><span>Administre o orçamento, invista na estrutura e acompanhe os movimentos de caixa.</span></div>
       <div class="office-layout">
@@ -270,29 +270,37 @@
     </section>
     <section id="ranking" class="view national-ranking-view">
       <div class="title ranking-page-heading"><p>CLASSIFICAÇÃO NACIONAL DE CLUBES</p><h1>Ranking Nacional</h1></div>
-      <div class="ranking-trophy-section">
-        <header><div><small>CONQUISTAS NACIONAIS</small><strong>Pontos para o clube campeão</strong></div></header>
-        <div class="ranking-trophies">
-          <article class="ranking-trophy trophy-a">
-            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-            <span><small>BRASILEIRÃO</small><strong>Série A</strong></span><b>40 <small>PTS</small></b>
-          </article>
-          <article class="ranking-trophy trophy-b">
-            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-            <span><small>BRASILEIRÃO</small><strong>Série B</strong></span><b>28 <small>PTS</small></b>
-          </article>
-          <article class="ranking-trophy trophy-c">
-            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-            <span><small>BRASILEIRÃO</small><strong>Série C</strong></span><b>20 <small>PTS</small></b>
-          </article>
-          <article class="ranking-trophy trophy-d">
-            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-            <span><small>BRASILEIRÃO</small><strong>Série D</strong></span><b>12 <small>PTS</small></b>
-          </article>
-          <article class="ranking-trophy trophy-cup">
-            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-            <span><small>MATA-MATA</small><strong>Copa do Brasil</strong></span><b>35 <small>PTS</small></b>
-          </article>
+      <div class="ranking-top-bar">
+        <div class="ranking-trophy-section">
+          <header><div><small>CONQUISTAS NACIONAIS</small><strong>Pontos para o clube campeão</strong></div></header>
+          <div class="ranking-trophies">
+            <article class="ranking-trophy trophy-a">
+              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+              <span><small>BRASILEIRÃO</small><strong>Série A</strong></span><b>40 <small>PTS</small></b>
+            </article>
+            <article class="ranking-trophy trophy-b">
+              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+              <span><small>BRASILEIRÃO</small><strong>Série B</strong></span><b>28 <small>PTS</small></b>
+            </article>
+            <article class="ranking-trophy trophy-c">
+              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+              <span><small>BRASILEIRÃO</small><strong>Série C</strong></span><b>20 <small>PTS</small></b>
+            </article>
+            <article class="ranking-trophy trophy-d">
+              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+              <span><small>BRASILEIRÃO</small><strong>Série D</strong></span><b>12 <small>PTS</small></b>
+            </article>
+            <article class="ranking-trophy trophy-cup">
+              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+              <span><small>MATA-MATA</small><strong>Copa do Brasil</strong></span><b>35 <small>PTS</small></b>
+            </article>
+          </div>
+        </div>
+        <div class="ranking-club-search" role="search">
+          <input id="nationalRankingClubSearch" type="search" placeholder="Pesquisar time…" autocomplete="off" spellcheck="false" aria-label="Pesquisar time por nome">
+          <button id="nationalRankingClubSearchBtn" type="button" aria-label="Pesquisar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+          </button>
         </div>
       </div>
       <div class="card national-ranking-table">
@@ -303,17 +311,8 @@
     </section>
     <section id="managers" class="view national-ranking-view manager-ranking-view">
       <div class="title ranking-page-heading"><p>CLASSIFICAÇÃO NACIONAL DE TREINADORES</p><h1>Ranking de Técnicos</h1></div>
-      <div class="ranking-trophy-section manager-ranking-legend">
-        <header><div><small>MERCADO DE TÉCNICOS</small><strong>Empregados e livres no mesmo ranking</strong></div></header>
-        <div class="manager-ranking-stats">
-          <article><small>TOTAL</small><strong id="managerRankingTotalCount">—</strong></article>
-          <article><small>EMPREGADOS</small><strong id="managerRankingEmployedCount">—</strong></article>
-          <article><small>LIVRES</small><strong id="managerRankingFreeCount">—</strong></article>
-          <article><small>SUA POSIÇÃO</small><strong id="managerRankingUserPosition">—</strong></article>
-        </div>
-      </div>
       <div class="card national-ranking-table manager-ranking-table">
-        <div class="national-ranking-head manager-ranking-head"><span>#</span><span>TÉCNICO</span><span>CLUBE</span><span>DIV.</span><span class="national-ranking-col-hidden">BASE</span><span>TEMP.</span><span>TOTAL</span></div>
+        <div class="national-ranking-head manager-ranking-head"><span>#</span><span>TÉCNICO</span><span>CLUBE</span><span>DIV.</span><span class="national-ranking-col-hidden">BASE</span><span>TEMP.</span><span>SALÁRIO</span><span>TOTAL</span></div>
         <div id="managerRankingUserRow" class="national-ranking-user-slot"></div>
         <div id="managerRankingTable" class="national-ranking-body"></div>
       </div>

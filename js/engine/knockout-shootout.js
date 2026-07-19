@@ -1,6 +1,10 @@
 /**
  * Regras compartilhadas de disputa de pênaltis em mata-matas.
  * Novos campeonatos eliminatórios: registre em KNOCKOUT_SHOOTOUT_COMPETITIONS.
+ *
+ * Empate no AGREGADO (ida+volta) → pênaltis.
+ * Confrontos com o usuário NUNCA resolvem shootout no automático silencioso:
+ * a disputa precisa ser jogada ao vivo (AO VIVO).
  */
 export const KNOCKOUT_COMPETITIONS = {
   COPA: 'COPA DO BRASIL',
@@ -19,6 +23,15 @@ export const registerKnockoutShootoutCompetition = key => {
 
 export const isKnockoutShootoutCompetition = game =>
   !!game && (KNOCKOUT_SHOOTOUT_COMPETITIONS.has(game.competition) || (!!game.tieId && game.knockoutRound != null));
+
+/** Mesma fixture do confronto (manda/visitante + leg/tie quando existirem). */
+export const sameKnockoutFixture = (a, b) =>
+  !!a &&
+  !!b &&
+  a.home === b.home &&
+  a.away === b.away &&
+  (a.leg == null || b.leg == null || a.leg === b.leg) &&
+  (a.tieId == null || b.tieId == null || a.tieId === b.tieId);
 
 export const knockoutTieAggregate = games => {
   const aggregate = new Map();
@@ -44,9 +57,10 @@ export const applyShootoutToDecidingGame = (decidingGame, winner, scoresByClub) 
   decidingGame.shootoutWinner = winner;
   decidingGame.shootoutPenalties = `${penHome}–${penAway}`;
   decidingGame.penalties = decidingGame.shootoutPenalties;
+  decidingGame.winner = winner;
 };
 
-/** Só exibe shootout quando houve empate no tempo regulamentar ou disputa registrada. */
+/** Só exibe shootout quando houve empate no tempo regulamentar/agregado ou disputa registrada. */
 export const knockoutShootoutLabel = game => {
   const label = game?.penalties || game?.shootoutPenalties;
   if (!label) return '';
@@ -68,6 +82,7 @@ export const clearStaleKnockoutShootout = game => {
   if (!game) return false;
   const homeGoals = Number(game.homeGoals ?? 0);
   const awayGoals = Number(game.awayGoals ?? 0);
+  // Disputa de agregado: se há shootoutWinner, preservar mesmo com placar do jogo ≠ empate
   if (homeGoals === awayGoals || game.shootoutWinner) return false;
   if (!game.penalties && !game.shootoutPenalties && !game.shootoutWinner) return false;
   delete game.penalties;
@@ -93,6 +108,7 @@ export const sanitizeKnockoutShootoutSave = ({ cupCompetition, serieDFixtures = 
 
 /**
  * Simula shootout automático (jogos só CPU) com placar plausível.
+ * NÃO usar em confrontos do usuário.
  */
 export const simulateAutomaticShootout = (clubA, clubB, { pickWinner, int }) => {
   const winner = pickWinner(clubA, clubB);
@@ -107,9 +123,11 @@ export const simulateAutomaticShootout = (clubA, clubB, { pickWinner, int }) => 
 };
 
 /**
- * Resolve confronto eliminatório com suporte a shootout já jogado ao vivo ou simulado.
+ * Resolve confronto eliminatório.
+ * @param {object} [opts]
+ * @param {boolean} [opts.allowAutoShootout=true] — false bloqueia simulação silenciosa (confrontos do usuário)
  */
-export const resolveKnockoutTieWinner = (games, { pickWinner, int }) => {
+export const resolveKnockoutTieWinner = (games, { pickWinner, int, allowAutoShootout = true } = {}) => {
   if (!games?.length) return null;
   const clubsInTie = [games[0].home, games[0].away];
   const aggregate = knockoutTieAggregate(games);
@@ -121,24 +139,56 @@ export const resolveKnockoutTieWinner = (games, { pickWinner, int }) => {
   const deciding = games[games.length - 1];
   if (deciding?.shootoutWinner) return deciding.shootoutWinner;
 
+  // Empate no agregado sem disputa jogada: só CPU pode resolver no automático
+  if (!allowAutoShootout) return null;
+
   const shootout = simulateAutomaticShootout(clubsInTie[0], clubsInTie[1], { pickWinner, int });
   applyShootoutToDecidingGame(deciding, shootout.winner, shootout.scores);
   return shootout.winner;
 };
 
 /**
- * Verifica se, com o placar ao vivo aplicado, o confronto exige shootout.
+ * Verifica se, com o placar ao vivo aplicado, o confronto exige shootout
+ * por EMPATE NO AGREGADO (não exige empate no jogo da volta).
  */
-export const projectedKnockoutNeedsShootout = (games, liveGame, liveStats, { allLegsRequired = null } = {}) => {
-  if (!games?.length || !liveGame || liveStats?.homeGoals !== liveStats?.awayGoals) return false;
+export const projectedKnockoutNeedsShootout = (games, liveGame, liveStats) => {
+  if (!games?.length || !liveGame || !liveStats) return false;
+  if (liveGame.shootoutWinner || liveStats.shootoutWinner) return false;
+
   const projected = games.map(game =>
-    game === liveGame ? { ...game, ...liveStats, completed: true } : game,
+    sameKnockoutFixture(game, liveGame)
+      ? {
+          ...game,
+          homeGoals: liveStats.homeGoals,
+          awayGoals: liveStats.awayGoals,
+          completed: true,
+        }
+      : { ...game },
   );
-  if (typeof allLegsRequired === 'function' ? allLegsRequired(liveGame, projected) : projected.some(game => !game.completed && game !== liveGame)) {
-    return false;
-  }
-  if (projected.some(game => !game.completed && game.homeGoals == null)) return false;
+
+  // Outras pernas do confronto ainda sem placar → não é hora de pênaltis
+  const pendingOtherLeg = projected.some(
+    game =>
+      !sameKnockoutFixture(game, liveGame) &&
+      !game.completed &&
+      game.homeGoals == null,
+  );
+  if (pendingOtherLeg) return false;
+
+  // Todos os jogos do confronto precisam ter placar (ou ser o live)
+  if (projected.some(game => game.homeGoals == null && game.awayGoals == null)) return false;
+
   const aggregate = knockoutTieAggregate(projected);
+  const [c0, c1] = [games[0].home, games[0].away];
+  return (aggregate.get(c0) || 0) === (aggregate.get(c1) || 0);
+};
+
+/** Empate de agregado já gravado nas fixtures, ainda sem shootout. */
+export const knockoutTieNeedsPlayedShootout = games => {
+  if (!games?.length) return false;
+  if (games.some(game => !game.completed && game.homeGoals == null)) return false;
+  if (games.some(game => game.shootoutWinner)) return false;
+  const aggregate = knockoutTieAggregate(games);
   const [c0, c1] = [games[0].home, games[0].away];
   return (aggregate.get(c0) || 0) === (aggregate.get(c1) || 0);
 };

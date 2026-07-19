@@ -1,0 +1,35 @@
+{
+  "id": "ao-vivo-2d",
+  "title": "AO VIVO 2D (Match View)",
+  "status": "deferred-future",
+  "frozenAt": "2026-07-19",
+  "note": "Arquivado para implementação futura. Não integrar no AO VIVO da carreira até nova decisão.",
+  "source": "assets/match-view",
+  "validatedEngine": false,
+  "doesNotTouch": [
+    "js/engine/match-live.js",
+    "js/engine/match-live-orchestration.js",
+    "js/engine/match-sim.js",
+    "js/legacy/engine.js",
+    "index.html#matchModal"
+  ],
+  "variants": {
+    "frozen": "Snapshot validado — não alterar",
+    "lab": "Sandbox para testes e refinamentos"
+  },
+  "entrypoints": {
+    "hub": "index.html",
+    "frozenPreview": "frozen/preview.html",
+    "frozenWorld": "frozen/world-preview.html",
+    "labPreview": "lab/preview.html",
+    "labWorld": "lab/world-preview.html"
+  },
+  "globals": [
+    "MatchViewGeometry",
+    "MatchViewWorldPitch",
+    "MatchViewPlayEngine",
+    "MatchViewPlaybook",
+    "MatchViewMatchSim",
+    "MatchViewLiveBridge"
+  ]
+}

@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AO VIVO 2D · LAB — WorldPitch</title>
+  <style>
+    :root {
+      --bg: #0a1210;
+      --panel: #12201c;
+      --line: #2d5a48;
+      --grass: #1a4a32;
+      --grass2: #164028;
+      --home: #5ec8ff;
+      --away: #ffb04a;
+      --ball: #f4f0e6;
+      --text: #e8f5ef;
+      --muted: #8fb3a4;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "DM Sans", "Segoe UI", sans-serif;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+    .wrap {
+      width: min(960px, 96vw);
+      display: grid;
+      gap: 12px;
+    }
+    .note {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+    .note strong { color: #b6ff38; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .toolbar button, .toolbar select {
+      font: 700 12px "DM Sans", sans-serif;
+      color: var(--text);
+      background: #1a332a;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .toolbar button:hover { border-color: #63d9ff; }
+    .toolbar button.primary {
+      background: #1a5a3a;
+      border-color: #3d9a6a;
+    }
+    .toolbar label {
+      font-size: 12px;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .status strong { color: #b6ff38; }
+    .stage-wrap {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #0d1a14;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: crosshair;
+    }
+    .links { font-size: 12px; }
+    .links a { color: #63d9ff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="note">
+      <strong>WorldPitch</strong> — verdade tática em metros (visão superior).
+      Aqui o campo é ortogonal. No telão, o espelho usa o centro óptico e o trapézio calibrados do estádio — não cola este desenho linear na perspectiva.
+    </div>
+    <div class="toolbar">
+      <button type="button" id="btnKickoff">Kickoff</button>
+      <button type="button" id="btnIP">Forma IP</button>
+      <button type="button" id="btnOOP">Forma OOP</button>
+      <button type="button" class="primary" id="btnBoth">Both</button>
+      <button type="button" id="btnSettle">Settle +4</button>
+      <label>
+        ataque
+        <select id="attackSide">
+          <option value="home">home (+X)</option>
+          <option value="away">away (−X)</option>
+        </select>
+      </label>
+      <span class="status" id="status">—</span>
+    </div>
+    <div class="stage-wrap">
+      <canvas id="pitch" width="1050" height="680" aria-label="Campo visão superior"></canvas>
+    </div>
+    <div class="links">
+      <a href="preview.html">← telão perspectiva (espelho)</a>
+    </div>
+  </div>
+
+  <script src="world-pitch.js"></script>
+  <script>
+    (() => {
+      const W = window.MatchViewWorldPitch;
+      const canvas = document.getElementById("pitch");
+      const ctx = canvas.getContext("2d");
+      const statusEl = document.getElementById("status");
+
+      let world = W.createWorld({ seed: 7 });
+
+      const PAD = 28;
+      function toCanvas(x, y) {
+        const fw = W.FIELD.length;
+        const fh = W.FIELD.width;
+        const sx = (canvas.width - PAD * 2) / fw;
+        const sy = (canvas.height - PAD * 2) / fh;
+        return {
+          cx: PAD + (x + W.FIELD.halfL) * sx,
+          cy: PAD + (W.FIELD.halfW - y) * sy, // Y mundo ↑ = tela ↑
+          sx,
+          sy,
+        };
+      }
+
+      function fromCanvas(cx, cy) {
+        const fw = W.FIELD.length;
+        const fh = W.FIELD.width;
+        const sx = (canvas.width - PAD * 2) / fw;
+        const sy = (canvas.height - PAD * 2) / fh;
+        return {
+          x: (cx - PAD) / sx - W.FIELD.halfL,
+          y: W.FIELD.halfW - (cy - PAD) / sy,
+        };
+      }
+
+      function drawField() {
+        const { width, height } = canvas;
+        ctx.fillStyle = "#0d1a14";
+        ctx.fillRect(0, 0, width, height);
+
+        const tl = toCanvas(-W.FIELD.halfL, W.FIELD.halfW);
+        const br = toCanvas(W.FIELD.halfL, -W.FIELD.halfW);
+        const pw = br.cx - tl.cx;
+        const ph = br.cy - tl.cy;
+
+        // stripes
+        const stripes = 10;
+        for (let i = 0; i < stripes; i++) {
+          ctx.fillStyle = i % 2 ? "#1a4a32" : "#164028";
+          ctx.fillRect(tl.cx + (pw * i) / stripes, tl.cy, pw / stripes + 1, ph);
+        }
+
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(tl.cx, tl.cy, pw, ph);
+
+        // halfway
+        const mid = toCanvas(0, 0);
+        ctx.beginPath();
+        ctx.moveTo(mid.cx, tl.cy);
+        ctx.lineTo(mid.cx, br.cy);
+        ctx.stroke();
+
+        // center circle ~9.15m
+        const r = 9.15 * ((canvas.width - PAD * 2) / W.FIELD.length);
+        ctx.beginPath();
+        ctx.arc(mid.cx, mid.cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // penalty boxes rough 16.5 x 40.3
+        const boxD = 16.5;
+        const boxH = 40.32 / 2;
+        for (const side of [-1, 1]) {
+          const x0 = side < 0 ? -W.FIELD.halfL : W.FIELD.halfL - boxD;
+          const a = toCanvas(x0, boxH);
+          const b = toCanvas(x0 + boxD, -boxH);
+          ctx.strokeRect(a.cx, a.cy, b.cx - a.cx, b.cy - a.cy);
+        }
+      }
+
+      function drawPlayers() {
+        for (const p of world.players) {
+          const { cx, cy } = toCanvas(p.x, p.y);
+          const rad = Math.max(7, PLAYER_R_PX);
+          ctx.beginPath();
+          ctx.fillStyle = p.team === "home" ? "#5ec8ff" : "#ffb04a";
+          ctx.arc(cx, cy, rad, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(0,0,0,0.45)";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.fillStyle = "#0a1210";
+          ctx.font = "700 9px DM Sans, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(p.role === "GK" ? "G" : p.role[0], cx, cy);
+        }
+        const b = toCanvas(world.ball.x, world.ball.y);
+        ctx.beginPath();
+        ctx.fillStyle = "#f4f0e6";
+        ctx.arc(b.cx, b.cy, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#333";
+        ctx.stroke();
+      }
+
+      const PLAYER_R_PX = 8;
+
+      function paint() {
+        drawField();
+        drawPlayers();
+        const sep = W.minSeparation(world);
+        const side = document.getElementById("attackSide").value;
+        statusEl.innerHTML =
+          `ciclo <strong>${world.cycle}</strong> · sep <strong>${sep.toFixed(2)}m</strong>` +
+          ` · bola (${world.ball.x.toFixed(1)}, ${world.ball.y.toFixed(1)})` +
+          ` · ataque ${side}`;
+      }
+
+      function attackSide() {
+        return document.getElementById("attackSide").value;
+      }
+
+      document.getElementById("btnKickoff").onclick = () => {
+        world = W.createWorld({ seed: Date.now() % 1e6 });
+        paint();
+      };
+      document.getElementById("btnIP").onclick = () => {
+        W.setShapeIP(world, attackSide(), 1);
+        W.settle(world, 12);
+        paint();
+      };
+      document.getElementById("btnOOP").onclick = () => {
+        const def = attackSide() === "home" ? "away" : "home";
+        W.setShapeOOP(world, def, 1);
+        W.settle(world, 12);
+        paint();
+      };
+      document.getElementById("btnBoth").onclick = () => {
+        W.setShapeBoth(world, attackSide(), 1);
+        W.settle(world, 14);
+        paint();
+      };
+      document.getElementById("btnSettle").onclick = () => {
+        W.settle(world, 4);
+        paint();
+      };
+
+      canvas.addEventListener("click", (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const cx = (e.clientX - rect.left) * scaleX;
+        const cy = (e.clientY - rect.top) * scaleY;
+        const w = fromCanvas(cx, cy);
+        const c = W.clampInField(w.x, w.y, 0.5);
+        world.ball.x = c.x;
+        world.ball.y = c.y;
+        paint();
+      });
+
+      paint();
+    })();
+  </script>
+</body>
+</html>

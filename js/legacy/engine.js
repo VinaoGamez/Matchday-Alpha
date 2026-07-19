@@ -83,9 +83,11 @@ import {
   knockoutCompetitionLabel,
   resolveKnockoutTieWinner,
   projectedKnockoutNeedsShootout,
+  knockoutTieNeedsPlayedShootout,
   formatKnockoutFixtureScore,
   clearStaleKnockoutShootout,
   sanitizeKnockoutShootoutSave,
+  sameKnockoutFixture,
 } from '../engine/knockout-shootout.js';
 
 /** Motor legado — migração incremental para módulos (Alpha 02). */
@@ -411,12 +413,48 @@ export async function bootEngine({ bus } = {}) {
   const generatedClubPool=[];brazilianCities.forEach(city=>clubSuffixes.forEach(suffix=>generatedClubPool.push(`${suffix} ${city}`)));
   for(let index=generatedClubPool.length-1;index>0;index--){const swap=int(0,index),value=generatedClubPool[index];generatedClubPool[index]=generatedClubPool[swap];generatedClubPool[swap]=value;}
   const divisionTeams={A:[...teams],B:[],C:[],D:[]};
+  let careerWorldNeedsPersist=false;
   if(savedNewGame){
     const restoredDivisions=savedNewGame.divisionTeams&&Object.keys(divisionRules).every(division=>Array.isArray(savedNewGame.divisionTeams[division]));
-    if(restoredDivisions)Object.keys(divisionRules).forEach(division=>divisionTeams[division]=[...savedNewGame.divisionTeams[division]]);
-    else{const normalizedUser=userClub.toLocaleLowerCase('pt-BR'),available=generatedClubPool.filter(name=>name.toLocaleLowerCase('pt-BR')!==normalizedUser);Object.keys(divisionRules).forEach(division=>{const generatedCount=divisionRules[division].clubs-(division===userDivision?1:0),generated=available.splice(0,generatedCount);divisionTeams[division]=division===userDivision?[userClub,...generated]:generated;});}
+    const foundingClubName=savedNewGame.foundingClubName||savedNewGame.clubName||userClub;
+    const careerClubHistory=Array.isArray(savedNewGame.careerClubHistory)
+      ?savedNewGame.careerClubHistory.filter(Boolean)
+      :[foundingClubName].filter(Boolean);
+    if(restoredDivisions){
+      Object.keys(divisionRules).forEach(division=>divisionTeams[division]=[...savedNewGame.divisionTeams[division]]);
+    }else{
+      // Mundo ainda não persistido: gera a pirâmide e já marca para gravar (evita sumir clube ao trocar de emprego).
+      const protectedNames=new Set(
+        [userClub,foundingClubName,...careerClubHistory]
+          .filter(Boolean)
+          .map(name=>name.toLocaleLowerCase('pt-BR')),
+      );
+      const available=generatedClubPool.filter(name=>!protectedNames.has(name.toLocaleLowerCase('pt-BR')));
+      Object.keys(divisionRules).forEach(division=>{
+        const generatedCount=divisionRules[division].clubs-(division===userDivision?1:0);
+        const generated=available.splice(0,generatedCount);
+        divisionTeams[division]=division===userDivision?[userClub,...generated]:generated;
+      });
+      careerWorldNeedsPersist=true;
+    }
+    // Garante clube fundador e clubes já treinados pelo jogador no universo.
+    const namesInWorld=()=>new Set(Object.values(divisionTeams).flat());
+    [foundingClubName,...careerClubHistory].filter(Boolean).forEach(name=>{
+      if(namesInWorld().has(name))return;
+      divisionTeams.D.push(name);
+      careerWorldNeedsPersist=true;
+    });
+    if(!savedNewGame.foundingClubName||!Array.isArray(savedNewGame.divisionTeams))careerWorldNeedsPersist=true;
     Object.keys(divisionRules).forEach(division=>divisionRules[division].clubs=divisionTeams[division].length);
     teams.splice(0,teams.length,...divisionTeams[userDivision]);
+    if(careerWorldNeedsPersist){
+      Object.assign(savedNewGame,{
+        foundingClubName,
+        careerClubHistory:[...new Set([foundingClubName,...careerClubHistory,userClub].filter(Boolean))],
+        divisionTeams:Object.fromEntries(Object.keys(divisionRules).map(division=>[division,[...divisionTeams[division]]])),
+      });
+      writeJson(SAVE_KEYS.career,{...savedNewGame});
+    }
   }
   const clubs={};
   const fullBenchRoles=['GOL','ZAG','ZAG','LAT','LAT','VOL','MC','MC','MEI','PE','PD','ATA'];
@@ -1510,12 +1548,45 @@ export async function bootEngine({ bus } = {}) {
     const userRow=entry.club===userClub,scoreHint=`Base ${entry.base.toFixed(1)} + Campeonatos ${entry.championshipPoints.toFixed(1)} + Títulos ${entry.titlePoints.toFixed(1)}`;
     return `<div class="national-ranking-row${pinned?' national-ranking-user-row user-ranking':userRow?' user-ranking':''}" data-club="${entry.club}" role="button" tabindex="0" aria-label="${entry.club} · ${scoreHint} · Total ${entry.total.toFixed(1)}"><span>${position}</span>${clubMarkup}<span>${entry.division}</span><span class="national-ranking-base national-ranking-col-hidden" aria-hidden="true">${entry.base.toFixed(1)}</span><span class="national-ranking-championships national-ranking-col-hidden" aria-hidden="true">${entry.championshipPoints.toFixed(1)}</span><span class="national-ranking-titles">${entry.titlePoints.toFixed(1)}</span><span class="national-ranking-total" title="${scoreHint}">${entry.total.toFixed(1)}</span></div>`;
   };
+  let nationalRankingSearchQuery='';
+  const normalizeClubSearch=value=>String(value||'')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .trim();
   const renderNationalRanking=()=>{
-    const ranking=currentNationalRanking(),userIndex=ranking.findIndex(entry=>entry.club===userClub),userSlot=$('#nationalRankingUserRow');
-    if(userIndex>=0){userSlot.innerHTML=nationalRankingRowHtml(ranking[userIndex],userIndex+1,{pinned:true});userSlot.hidden=false;}
+    const ranking=currentNationalRanking();
+    const query=normalizeClubSearch(nationalRankingSearchQuery);
+    const userIndex=ranking.findIndex(entry=>entry.club===userClub);
+    const userSlot=$('#nationalRankingUserRow');
+    const userMatches=!query||(userIndex>=0&&normalizeClubSearch(ranking[userIndex].club).includes(query));
+    if(userIndex>=0&&userMatches){userSlot.innerHTML=nationalRankingRowHtml(ranking[userIndex],userIndex+1,{pinned:true});userSlot.hidden=false;}
     else{userSlot.innerHTML='';userSlot.hidden=true;}
-    $('#nationalRankingTable').innerHTML=ranking.map((entry,index)=>nationalRankingRowHtml(entry,index+1,{pinned:false})).join('');
+    const filtered=query
+      ?ranking.map((entry,index)=>({entry,position:index+1})).filter(({entry})=>normalizeClubSearch(entry.club).includes(query))
+      :ranking.map((entry,index)=>({entry,position:index+1}));
+    const table=$('#nationalRankingTable');
+    table.innerHTML=filtered.length
+      ?filtered.map(({entry,position})=>nationalRankingRowHtml(entry,position,{pinned:false})).join('')
+      :'<div class="national-ranking-empty">Nenhum time encontrado.</div>';
+    if(query&&filtered.length){
+      requestAnimationFrame(()=>{
+        const hit=table.querySelector('.national-ranking-row');
+        if(!hit)return;
+        hit.classList.add('ranking-search-hit');
+        hit.scrollIntoView({block:'nearest',behavior:'smooth'});
+      });
+    }
   };
+  const runNationalRankingClubSearch=()=>{
+    const input=$('#nationalRankingClubSearch');
+    nationalRankingSearchQuery=input?.value||'';
+    renderNationalRanking();
+  };
+  onClick('#nationalRankingClubSearchBtn',runNationalRankingClubSearch);
+  on('#nationalRankingClubSearch','keydown',event=>{
+    if(event.key==='Enter'){event.preventDefault();runNationalRankingClubSearch();}
+  });
   renderNationalRanking();
   const managerRankingHelpers=()=>({
     getClubDivision:clubName=>clubs[clubName]?.division||'—',
@@ -1528,13 +1599,30 @@ export async function bootEngine({ bus } = {}) {
       return roundRankingScore(raw*(nationalLeaguePointWeights[club.division]||1));
     },
   });
+  /** Comissão por rodada × ~4 rodadas ≈ salário mensal exibido no ranking. */
+  const STAFF_ROUNDS_PER_MONTH=4;
+  const managerMonthlySalary=(entry)=>{
+    const preferred=['A','B','C','D'].includes(entry.preferredDivision)?entry.preferredDivision:null;
+    const division=entry.status==='employed'?(entry.division||'D'):(preferred||'D');
+    const club=entry.club?clubs[entry.club]:null;
+    const perRound=estimateStaffBill(club||{},division,{
+      managerId:entry.id,
+      managerName:entry.name,
+      managerReputation:entry.reputation,
+      preferredDivision:entry.preferredDivision||division,
+      titlePoints:entry.titlePoints,
+    });
+    return Math.max(0,Math.round(perRound*STAFF_ROUNDS_PER_MONTH));
+  };
   const managerRankingRowHtml=(entry,position,{pinned=false}={})=>{
     const isUser=entry.club===userClub||entry.name===careerProfile.managerName;
     const nameCell=pinned
       ?`<span class="national-ranking-club-cell"><i class="crest national-ranking-row-crest" aria-hidden="true">${clubInitials}</i><span>${entry.name}</span></span>`
       :`<span>${entry.name}</span>`;
-    const scoreHint=`Base ${entry.base.toFixed(1)} + Temporada ${entry.seasonPoints.toFixed(1)} + Títulos ${entry.titlePoints.toFixed(1)}`;
-    return `<div class="national-ranking-row manager-ranking-row${pinned?' national-ranking-user-row user-ranking':isUser?' user-ranking':''}${entry.status==='free'?' manager-free':''}" data-manager="${entry.id}" ${entry.club?`data-club="${entry.club}"`:''} role="button" tabindex="0" aria-label="${entry.name} · ${scoreHint} · Total ${entry.total.toFixed(1)}"><span>${position}</span>${nameCell}<span class="manager-ranking-club">${entry.clubLabel}</span><span>${entry.division}</span><span class="national-ranking-col-hidden" aria-hidden="true">${entry.base.toFixed(1)}</span><span class="manager-ranking-season">${entry.seasonPoints.toFixed(1)}</span><span class="national-ranking-total" title="${scoreHint}">${entry.total.toFixed(1)}</span></div>`;
+    const salary=managerMonthlySalary(entry);
+    const salaryLabel=formatBudget(salary);
+    const scoreHint=`Base ${entry.base.toFixed(1)} + Temporada ${entry.seasonPoints.toFixed(1)} + Títulos ${entry.titlePoints.toFixed(1)} · Salário ${salaryLabel}/mês`;
+    return `<div class="national-ranking-row manager-ranking-row${pinned?' national-ranking-user-row user-ranking':isUser?' user-ranking':''}${entry.status==='free'?' manager-free':''}" data-manager="${entry.id}" ${entry.club?`data-club="${entry.club}"`:''} role="button" tabindex="0" aria-label="${entry.name} · ${scoreHint} · Total ${entry.total.toFixed(1)}"><span>${position}</span>${nameCell}<span class="manager-ranking-club">${entry.clubLabel}</span><span>${entry.division}</span><span class="national-ranking-col-hidden" aria-hidden="true">${entry.base.toFixed(1)}</span><span class="manager-ranking-season">${entry.seasonPoints.toFixed(1)}</span><span class="manager-ranking-salary" title="Salário mensal estimado">${salaryLabel}</span><span class="national-ranking-total" title="${scoreHint}">${entry.total.toFixed(1)}</span></div>`;
   };
   const renderManagerRanking=()=>{
     const helpers=managerRankingHelpers();
@@ -1548,16 +1636,6 @@ export async function bootEngine({ bus } = {}) {
     }
     const table=$('#managerRankingTable');
     if(table)table.innerHTML=ranking.map((entry,index)=>managerRankingRowHtml(entry,index+1,{pinned:false})).join('');
-    const employed=ranking.filter(entry=>entry.status==='employed').length;
-    const free=ranking.length-employed;
-    const totalEl=$('#managerRankingTotalCount');
-    const employedEl=$('#managerRankingEmployedCount');
-    const freeEl=$('#managerRankingFreeCount');
-    const posEl=$('#managerRankingUserPosition');
-    if(totalEl)totalEl.textContent=String(ranking.length);
-    if(employedEl)employedEl.textContent=String(employed);
-    if(freeEl)freeEl.textContent=String(free);
-    if(posEl)posEl.textContent=userIndex>=0?`${userIndex+1}º`:'—';
   };
   renderManagerRanking();
   const router=createRouter({ $$, onClick });
@@ -2353,7 +2431,6 @@ export async function bootEngine({ bus } = {}) {
   });
   onClick('#inspectOpponent',()=>openScout(matchClub().name));
   onClick('#closeTeamScout',()=>$('#teamScoutModal').classList.add('hidden'));
-  onClick('#openChampionship',()=>openChampionship());
   onClick('#closeChampionship',()=>{closeCupBracket();$('#championshipModal').classList.add('hidden');});
 
   // A janela completa do campeonato mantém foco na classificação e na agenda.
@@ -3318,6 +3395,11 @@ export async function bootEngine({ bus } = {}) {
     setChampionshipPagePickerOpen(false);
     renderChampionshipPage();
   };
+  // Mini-tabela do Dashboard: vai para a seção Campeonatos (não abre o modal).
+  onClick('#openChampionship',()=>{
+    selectChampionshipPageCompetition(userDivision);
+    router.openView('table');
+  });
   const stepChampionshipPageNav=step=>{
     if(pageCompetition==='CUP'){
       pageCupPhase=clamp(pageCupPhase+step,1,cupPhaseDefinitions.length);
@@ -3379,9 +3461,16 @@ export async function bootEngine({ bus } = {}) {
   const resolveCupTieWinner=(games,aggregate)=>{
     const clubsInTie=[games[0].home,games[0].away],firstGoals=aggregate.get(clubsInTie[0])||0,secondGoals=aggregate.get(clubsInTie[1])||0;
     let winner=firstGoals>secondGoals?clubsInTie[0]:secondGoals>firstGoals?clubsInTie[1]:null;
-    if(firstGoals===secondGoals)winner=resolveKnockoutTieWinner(games,{pickWinner:cupPenaltyWinner,int});
-    else games.forEach(clearStaleKnockoutShootout);
-    games.forEach(game=>{game.winner=winner;});
+    if(firstGoals===secondGoals){
+      const involvesUser=games.some(isUserFixture);
+      // Confronto do usuário: NÃO simular pênaltis — precisa ter sido jogado ao vivo
+      winner=resolveKnockoutTieWinner(games,{
+        pickWinner:cupPenaltyWinner,
+        int,
+        allowAutoShootout:!involvesUser,
+      });
+    }else games.forEach(clearStaleKnockoutShootout);
+    if(winner)games.forEach(game=>{game.winner=winner;});
     return winner;
   };
   const notifyCupTieResult=(games,winner)=>{games.forEach(game=>{if(game.home!==userClub&&game.away!==userClub)return;const opponent=game.home===userClub?game.away:game.home,scoreLabel=formatKnockoutFixtureScore(game),qualified=winner===userClub;pushMessage({category:'competition',type:'cup',title:`Copa do Brasil · ${game.phase}`,body:`${game.home} ${scoreLabel} ${game.away} · ${qualified?`${userClub} avança de fase`:`${userClub} eliminado por ${opponent}`}`,round:currentRound,meta:{competition:'Copa do Brasil',phase:game.phase}});});};
@@ -3972,17 +4061,65 @@ export async function bootEngine({ bus } = {}) {
   const makeTies=clubsList=>Array.from({length:Math.floor(clubsList.length/2)},(_,index)=>({home:clubsList[index*2],away:clubsList[index*2+1]}));
   const installTieRounds=(ties,startRound,extraTies=[])=>{const all=[...ties,...extraTies];nationalCompetitions.D.fixtures[startRound-1]=all.map((tie,tieIndex)=>({home:tie.home,away:tie.away,round:startRound,competition:KNOCKOUT_COMPETITIONS.SERIE_D,tieId:`d-ko-r${startRound}-t${tieIndex}`,leg:'IDA',knockoutRound:startRound,twoLegged:true,completed:false}));nationalCompetitions.D.fixtures[startRound]=all.map((tie,tieIndex)=>({home:tie.away,away:tie.home,round:startRound+1,competition:KNOCKOUT_COMPETITIONS.SERIE_D,tieId:`d-ko-r${startRound}-t${tieIndex}`,leg:'VOLTA',knockoutRound:startRound,twoLegged:true,completed:false}));};
   const getSerieDTieGames=game=>{if(!game?.tieId)return[];return nationalCompetitions.D.fixtures.filter(Array.isArray).flat().filter(item=>item.tieId===game.tieId).sort((a,b)=>(a.leg==='IDA'?0:1)-(b.leg==='IDA'?0:1));};
-  const mergeSerieDTieResults=(games,startRound)=>{const historyGames=[...dRoundResults(startRound),...dRoundResults(startRound+1)];return games.map(fixture=>{const played=historyGames.find(item=>item.home===fixture.home&&item.away===fixture.away);if(!played)return {...fixture};return {...fixture,...played,completed:true,penalties:played.penalties||fixture.penalties,shootoutWinner:played.shootoutWinner||fixture.shootoutWinner};});};
+  const mergeSerieDTieResults=(games,startRound)=>{const historyGames=[...dRoundResults(startRound),...dRoundResults(startRound+1)];return games.map(fixture=>{const played=historyGames.find(item=>item.home===fixture.home&&item.away===fixture.away);if(!played)return {...fixture};return {...fixture,...played,completed:true,penalties:played.penalties||fixture.penalties,shootoutWinner:played.shootoutWinner||fixture.shootoutWinner,shootoutPenalties:played.shootoutPenalties||fixture.shootoutPenalties};});};
   const getKnockoutTieGames=game=>{if(!game)return[];if(game.competition===KNOCKOUT_COMPETITIONS.COPA){const stage=cupCompetition.stages.find(item=>item.fixtures.includes(game));return stage?cupTieGames(stage,game.tieId):[];}if(isKnockoutShootoutCompetition(game))return getSerieDTieGames(game);return [];};
-  const resolveTies=(ties,startRound)=>{const idaFixtures=nationalCompetitions.D.fixtures[startRound-1]||[],winners=[],losers=[];ties.forEach((tie,tieIndex)=>{const tieId=`d-ko-r${startRound}-t${tieIndex}`,games=mergeSerieDTieResults(getSerieDTieGames({tieId}).length?getSerieDTieGames({tieId}):[idaFixtures[tieIndex],(nationalCompetitions.D.fixtures[startRound]||[])[tieIndex]].filter(Boolean),startRound),winner=resolveKnockoutTieWinner(games,{pickWinner:cupPenaltyWinner,int});winners.push(winner);losers.push(winner===tie.home?tie.away:tie.home);});return{winners,losers};};
+  /** Grava shootout da cópia resolvida de volta nas fixtures oficiais da Série D. */
+  const persistSerieDTieShootout=games=>{
+    const deciding=games?.[games.length-1];
+    if(!deciding?.shootoutWinner)return;
+    nationalCompetitions.D.fixtures.filter(Array.isArray).flat().forEach(fixture=>{
+      if(!sameKnockoutFixture(fixture,deciding))return;
+      fixture.shootoutWinner=deciding.shootoutWinner;
+      fixture.shootoutPenalties=deciding.shootoutPenalties||deciding.penalties;
+      fixture.penalties=fixture.shootoutPenalties;
+      fixture.winner=deciding.shootoutWinner;
+    });
+    const histRounds=[deciding.knockoutRound,deciding.round,(deciding.knockoutRound||0)+1].filter(Boolean);
+    histRounds.forEach(round=>{
+      const entry=(userDivision==='D'?seasonRoundHistory:competitionRoundHistory.D).find(item=>item.round===round);
+      entry?.games?.forEach(game=>{
+        if(!sameKnockoutFixture(game,deciding))return;
+        game.shootoutWinner=deciding.shootoutWinner;
+        game.shootoutPenalties=deciding.shootoutPenalties||deciding.penalties;
+        game.penalties=game.shootoutPenalties;
+        game.winner=deciding.shootoutWinner;
+      });
+    });
+  };
+  const resolveTies=(ties,startRound)=>{
+    const idaFixtures=nationalCompetitions.D.fixtures[startRound-1]||[];
+    const winners=[],losers=[];
+    for(let tieIndex=0;tieIndex<ties.length;tieIndex++){
+      const tie=ties[tieIndex];
+      const tieId=`d-ko-r${startRound}-t${tieIndex}`;
+      const raw=getSerieDTieGames({tieId}).length
+        ?getSerieDTieGames({tieId})
+        :[idaFixtures[tieIndex],(nationalCompetitions.D.fixtures[startRound]||[])[tieIndex]].filter(Boolean);
+      const games=mergeSerieDTieResults(raw,startRound);
+      if(!games.length||games.some(game=>game.homeGoals==null&&!game.completed))return null;
+      const involvesUser=games.some(isUserFixture);
+      // Usuário no confronto + empate no agregado → exige pênaltis jogados (não simula)
+      if(involvesUser&&knockoutTieNeedsPlayedShootout(games))return null;
+      const winner=resolveKnockoutTieWinner(games,{
+        pickWinner:cupPenaltyWinner,
+        int,
+        allowAutoShootout:!involvesUser,
+      });
+      if(!winner)return null;
+      persistSerieDTieShootout(games);
+      winners.push(winner);
+      losers.push(winner===tie.home?tie.away:tie.home);
+    }
+    return{winners,losers};
+  };
   const updateSeriesDKnockout=completedRound=>{
     if(completedRound===10&&!dKnockout.stages.second){const qualified=serieDGroups.map(group=>group.map(name=>nationalCompetitions.D.standings.find(row=>row.club===name)).sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff).slice(0,4).map(row=>row.club)),ties=[];for(let group=0;group<16;group+=2){const left=qualified[group],right=qualified[group+1];ties.push({home:left[0],away:right[3]},{home:left[1],away:right[2]},{home:left[2],away:right[1]},{home:left[3],away:right[0]});}dKnockout.stages.second=ties;installTieRounds(ties,11);notifySerieDKnockoutPhase(11,'2ª fase eliminatória');}
-    if(completedRound===12&&!dKnockout.stages.third){const resolved=resolveTies(dKnockout.stages.second,11);dKnockout.stages.third=makeTies(resolved.winners);installTieRounds(dKnockout.stages.third,13);notifySerieDKnockoutPhase(13,'3ª fase eliminatória');}
-    if(completedRound===14&&!dKnockout.stages.round16){const resolved=resolveTies(dKnockout.stages.third,13);dKnockout.stages.round16=makeTies(resolved.winners);installTieRounds(dKnockout.stages.round16,15);notifySerieDKnockoutPhase(15,'Oitavas de final');}
-    if(completedRound===16&&!dKnockout.stages.quarter){const resolved=resolveTies(dKnockout.stages.round16,15);dKnockout.stages.quarter=makeTies(resolved.winners);installTieRounds(dKnockout.stages.quarter,17);notifySerieDKnockoutPhase(17,'Quartas de final');}
-    if(completedRound===18&&!dKnockout.stages.semi){const resolved=resolveTies(dKnockout.stages.quarter,17);dKnockout.promoted=[...resolved.winners];dKnockout.stages.semi=makeTies(resolved.winners);dKnockout.stages.playoff=makeTies(resolved.losers);installTieRounds(dKnockout.stages.semi,19,dKnockout.stages.playoff);notifySerieDKnockoutPhase(19,'Semifinal');}
-    if(completedRound===20&&!dKnockout.stages.final){const semifinal=resolveTies(dKnockout.stages.semi,19),playoff=resolveTies(dKnockout.stages.playoff,19);dKnockout.promoted=[...new Set([...dKnockout.promoted,...playoff.winners])];dKnockout.stages.final=makeTies(semifinal.winners);installTieRounds(dKnockout.stages.final,21);notifySerieDKnockoutPhase(21,'Final');}
-    if(completedRound===22&&dKnockout.stages.final&&!dKnockout.champion)dKnockout.champion=resolveTies(dKnockout.stages.final,21).winners[0]||null;
+    if(completedRound===12&&!dKnockout.stages.third){const resolved=resolveTies(dKnockout.stages.second,11);if(!resolved)return;dKnockout.stages.third=makeTies(resolved.winners);installTieRounds(dKnockout.stages.third,13);notifySerieDKnockoutPhase(13,'3ª fase eliminatória');}
+    if(completedRound===14&&!dKnockout.stages.round16){const resolved=resolveTies(dKnockout.stages.third,13);if(!resolved)return;dKnockout.stages.round16=makeTies(resolved.winners);installTieRounds(dKnockout.stages.round16,15);notifySerieDKnockoutPhase(15,'Oitavas de final');}
+    if(completedRound===16&&!dKnockout.stages.quarter){const resolved=resolveTies(dKnockout.stages.round16,15);if(!resolved)return;dKnockout.stages.quarter=makeTies(resolved.winners);installTieRounds(dKnockout.stages.quarter,17);notifySerieDKnockoutPhase(17,'Quartas de final');}
+    if(completedRound===18&&!dKnockout.stages.semi){const resolved=resolveTies(dKnockout.stages.quarter,17);if(!resolved)return;dKnockout.promoted=[...resolved.winners];dKnockout.stages.semi=makeTies(resolved.winners);dKnockout.stages.playoff=makeTies(resolved.losers);installTieRounds(dKnockout.stages.semi,19,dKnockout.stages.playoff);notifySerieDKnockoutPhase(19,'Semifinal');}
+    if(completedRound===20&&!dKnockout.stages.final){const semifinal=resolveTies(dKnockout.stages.semi,19),playoff=resolveTies(dKnockout.stages.playoff,19);if(!semifinal||!playoff)return;dKnockout.promoted=[...new Set([...dKnockout.promoted,...playoff.winners])];dKnockout.stages.final=makeTies(semifinal.winners);installTieRounds(dKnockout.stages.final,21);notifySerieDKnockoutPhase(21,'Final');}
+    if(completedRound===22&&dKnockout.stages.final&&!dKnockout.champion){const resolved=resolveTies(dKnockout.stages.final,21);if(!resolved)return;dKnockout.champion=resolved.winners[0]||null;}
     rebuildCalendarGames();
   };
   const finalizeNationalRankingSeason=()=>{
@@ -4166,11 +4303,22 @@ export async function bootEngine({ bus } = {}) {
     const rankingSnap=managerRanking.snapshot();
     pendingSponsorChoice=true;
     pendingSponsorOffers=null;
+    const foundingClubName=savedNewGame.foundingClubName||oldClubName;
+    const careerClubHistory=[...new Set([
+      ...(Array.isArray(savedNewGame.careerClubHistory)?savedNewGame.careerClubHistory:[]),
+      foundingClubName,
+      oldClubName,
+      newClubName,
+    ].filter(Boolean))];
     const nextCareer={
       ...savedNewGame,
       clubName:newClubName,
       managerName:careerProfile.managerName,
       division:newDivision,
+      foundingClubName,
+      careerClubHistory,
+      // Pirâmide completa: sem isso o boot regenera o mundo só com o novo clube.
+      divisionTeams:Object.fromEntries(Object.keys(divisionRules).map(division=>[division,[...divisionTeams[division]]])),
       stadiumName:newClub.stadiumName||savedNewGame.stadiumName||null,
       pendingSponsorChoice:true,
       userRoster:assignSquadJerseyNumbers(newClub.roster.map(player=>({
@@ -4284,10 +4432,18 @@ export async function bootEngine({ bus } = {}) {
       }
       skipPersistOnUnload=true;
       pruneClubMemory(clubs,nationalRankingEntries);
+      const foundingClubName=savedNewGame.foundingClubName||savedNewGame.clubName||userClub;
+      const careerClubHistory=[...new Set([
+        ...(Array.isArray(savedNewGame.careerClubHistory)?savedNewGame.careerClubHistory:[]),
+        foundingClubName,
+        userClub,
+      ].filter(Boolean))];
       const nextSave={
         ...savedNewGame,
         division:pendingUserDivision,
         divisionTeams:pendingDivisionTeams,
+        foundingClubName,
+        careerClubHistory,
         userRoster:clubs[userClub].roster.map(player=>({
           ...player,
           fatigue:100,
@@ -4779,14 +4935,14 @@ export async function bootEngine({ bus } = {}) {
     pushLiveVolumeIncident,
   }));
   const cupLiveMatchNeedsShootout=()=>liveKnockoutNeedsShootout();
+  /** Empate no AGREGADO (ida+volta) — não exige empate no placar da volta. */
   const liveKnockoutNeedsShootout=()=>{
-    if(!liveMatchGame||!isKnockoutShootoutCompetition(liveMatchGame)||home!==away)return false;
+    if(!liveMatchGame||!isKnockoutShootoutCompetition(liveMatchGame))return false;
+    if(liveMatchGame.shootoutWinner||shootoutState)return false;
     const games=getKnockoutTieGames(liveMatchGame);
     if(!games.length)return false;
     const liveStats=buildLiveKnockoutStats();
-    return projectedKnockoutNeedsShootout(games,liveMatchGame,liveStats,{
-      allLegsRequired:(liveGame,projected)=>projected.some(game=>!game.completed&&game!==liveGame),
-    });
+    return projectedKnockoutNeedsShootout(games,liveMatchGame,liveStats);
   };
   const collectLiveMatchPersistState=()=>({
     seed:savedNewGame?.seed,
@@ -4988,6 +5144,12 @@ export async function bootEngine({ bus } = {}) {
     if(matchFinished){
       stopMatchClock();
       modal.classList.remove('hidden');
+      // Save antigo / bug: empate no agregado sem disputa → reabre pênaltis
+      if(!shootoutState&&!liveMatchGame?.shootoutWinner&&liveKnockoutNeedsShootout()){
+        matchFinished=false;
+        startPenaltyShootout();
+        return true;
+      }
       if(shootoutState){renderShootoutTrack();$('#shootoutPanel').classList.remove('hidden');}
       else if(liveMatchGame?.penalties){$('#shootoutTitle').textContent=`Shootout ${liveMatchGame.penalties}`;$('#shootoutPanel').classList.remove('hidden');}
       renderFinalSummary();
@@ -5145,19 +5307,25 @@ export async function bootEngine({ bus } = {}) {
     if(!button||button.disabled)return;
     if(pendingPenalty?.mode==='against'||pendingPenalty?.mode==='shootout-cpu')return;
     const takerName=button.dataset.taker;
-    if(pendingPenalty?.mode==='shootout'){
-      const lineup=shootoutLineup(pendingPenalty.kickingClub),taker=lineup.find(player=>player.name===takerName);
+    // Shootout: se o pending foi apagado após a cobrança da IA, recupera pela vez atual.
+    const shootoutKickClub=pendingPenalty?.mode==='shootout'
+      ?pendingPenalty.kickingClub
+      :(shootoutState&&currentShootoutClub()===userClub?userClub:null);
+    if(shootoutKickClub){
+      const lineup=shootoutLineup(shootoutKickClub),taker=lineup.find(player=>player.name===takerName);
       if(!taker)return;
-      const kickingClub=pendingPenalty.kickingClub;
-      const userClubName=userClub;
-      const isUser=kickingClub===userClubName;
+      const kickingClub=shootoutKickClub;
+      const isUser=kickingClub===userClub;
       const current=isUser?profile():opponentForMatch();
       const other=isUser?opponentForMatch():profile();
       const side=isUser?'home':'away';
       const plan=planPenaltyOutcome(side,{...current,attack:current.attack+9},other,{taker:taker.name,penaltySkill:taker.penaltyTaking});
+      if(!plan?.outcome)return;
+      pendingPenalty={mode:'shootout',kickingClub};
       runPenaltyDuelResolve(takerName,plan,()=>{
-        executeShootoutKick(kickingClub,taker,plan);
+        // Limpa antes do execute — ele pode já abrir a próxima escolha/CPU.
         pendingPenalty=null;
+        executeShootoutKick(kickingClub,taker,plan);
       });
       return;
     }
@@ -5165,6 +5333,7 @@ export async function bootEngine({ bus } = {}) {
     if(!taker||!pendingPenalty)return;
     const pending={...pendingPenalty};
     const plan=planPenaltyOutcome('home',{...pending.current,attack:pending.current.attack+9},pending.other,{taker:taker.name,penaltySkill:taker.penaltyTaking});
+    if(!plan?.outcome)return;
     runPenaltyDuelResolve(takerName,plan,()=>{
       shot('home',{...pending.current,attack:pending.current.attack+9},pending.other,{
         penalty:true,

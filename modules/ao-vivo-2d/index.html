@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AO VIVO 2D — módulo</title>
+  <style>
+    :root {
+      --bg: #0e1410;
+      --panel: #182018;
+      --ink: #e8f0e4;
+      --muted: #9aab9a;
+      --ok: #8fd98f;
+      --lab: #e6c35c;
+      --line: #2a382a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background:
+        radial-gradient(ellipse 80% 50% at 20% 0%, #1a2a1c 0%, transparent 55%),
+        var(--bg);
+      color: var(--ink);
+      padding: 2.5rem 1.25rem 3rem;
+    }
+    main {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 1.65rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.35rem;
+    }
+    .lead {
+      color: var(--muted);
+      line-height: 1.45;
+      margin: 0 0 1.75rem;
+      max-width: 40rem;
+    }
+    .grid {
+      display: grid;
+      gap: 1rem;
+    }
+    @media (min-width: 640px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1.1rem 1.2rem 1.25rem;
+    }
+    section h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.05rem;
+    }
+    section p {
+      margin: 0 0 0.9rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.45rem;
+      border-radius: 4px;
+      margin-bottom: 0.55rem;
+    }
+    .tag-ok { background: #1e3a24; color: var(--ok); }
+    .tag-lab { background: #3a3218; color: var(--lab); }
+    a.link {
+      display: block;
+      color: var(--ink);
+      text-decoration: none;
+      padding: 0.45rem 0;
+      border-top: 1px solid var(--line);
+      font-size: 0.92rem;
+    }
+    a.link:hover { color: var(--ok); }
+    .note {
+      margin-top: 1.5rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    code {
+      font-size: 0.8em;
+      background: #0a100c;
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AO VIVO 2D</h1>
+    <p class="lead">
+      Módulo visual separado do AO VIVO da carreira. Use <strong>frozen</strong> como referência validada
+      e <strong>lab</strong> para testar refinamentos sem alterar o snapshot.
+    </p>
+
+    <div class="grid">
+      <section>
+        <div class="tag tag-ok">Validado · não alterar</div>
+        <h2>frozen/</h2>
+        <p>Snapshot de 19 Jul 2026 — baseline para integração futura.</p>
+        <a class="link" href="./frozen/preview.html">Telão (estádio)</a>
+        <a class="link" href="./frozen/world-preview.html">Top-down (WorldPitch)</a>
+        <a class="link" href="./frozen/layout-editor.html">Editor de layout</a>
+      </section>
+
+      <section>
+        <div class="tag tag-lab">Lab · testes</div>
+        <h2>lab/</h2>
+        <p>Cópia isolada para experimentar. Não mexe no frozen nem no engine da carreira.</p>
+        <a class="link" href="./lab/preview.html">Telão (estádio)</a>
+        <a class="link" href="./lab/world-preview.html">Top-down (WorldPitch)</a>
+        <a class="link" href="./lab/layout-editor.html">Editor de layout</a>
+      </section>
+    </div>
+
+    <p class="note">
+      Testes: <code>npm run test:ao-vivo-2d</code> (lab) ·
+      <code>npm run test:ao-vivo-2d:frozen</code> (snapshot).<br>
+      AO VIVO da carreira permanece em <code>js/engine/match-live*</code> — este módulo não o altera.
+    </p>
+  </main>
+</body>
+</html>

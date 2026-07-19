@@ -2,6 +2,7 @@ import { MODULE_VERSIONS } from '../core/constants.js';
 import { getSponsors, sponsorLogoSlug } from './economy.js';
 import { allowsExtendedSecondHalfStoppage, rollStoppageMinutes } from './match-clock.js';
 import { isKnockoutShootoutCompetition } from './knockout-shootout.js';
+import { enginePenaltyChance } from './match-tuning.js';
 
 const SPONSOR_LOGO_URLS = Object.fromEntries(
   Object.entries(
@@ -213,7 +214,8 @@ export function createLiveMatchOrchestration(deps) {
     if (cupLiveMatchNeedsShootout()) {
       stopMatchClock();
       log('Fim de jogo no tempo regulamentar.', '');
-      $('#matchStatus').textContent = 'Empate — a disputa seguirá nos pênaltis.';
+      // Pode ser empate no jogo OU só no agregado (ida+volta) — pênaltis obrigatórios
+      $('#matchStatus').textContent = 'Empate no agregado — disputa de pênaltis.';
       updateLiveMatchClock();
       startPenaltyShootout();
       return;
@@ -946,15 +948,17 @@ export function createLiveMatchOrchestration(deps) {
       const pending = getPendingPenalty?.();
       if (!pending || pending.mode !== 'shootout-cpu') return;
       if (!plan) {
-        executeShootoutKick(kickingClub, taker);
+        // Limpa o modo CPU antes de avançar — a próxima cobrança (usuário) redefine pending.
         setPendingPenalty(null);
+        executeShootoutKick(kickingClub, taker);
         return;
       }
       const note = $('#penaltyCompare')?.querySelector('.penalty-compare-note');
       if (note) note.textContent = 'Bola rolando — acompanhe a cobrança.';
       runPenaltyDuelResolve(taker.name, plan, () => {
-        executeShootoutKick(kickingClub, taker, plan);
+        // Não limpar depois do execute: scheduleNext pode já ter aberto a escolha do usuário.
         setPendingPenalty(null);
+        executeShootoutKick(kickingClub, taker, plan);
       });
     });
   };
@@ -996,7 +1000,7 @@ export function createLiveMatchOrchestration(deps) {
     const games = getKnockoutTieGames(liveMatchGame), clubs = [games[0]?.home, games[0]?.away].filter(Boolean);
     if (clubs.length < 2) return;
     setShootoutState({ clubs, firstKicker: 1, kickIndex: 0, results: { [clubs[0]]: [], [clubs[1]]: [] }, usedNames: { [clubs[0]]: [], [clubs[1]]: [] }, suddenDeath: false, competition: liveMatchGame?.competition });
-    log(`Empate no tempo regulamentar. Disputa de pênaltis — ${knockoutCompetitionLabel(liveMatchGame)}!`, 'penalty');
+    log(`Empate no agregado. Disputa de pênaltis — ${knockoutCompetitionLabel(liveMatchGame)}!`, 'penalty');
     $('#matchStatus').textContent = 'Disputa de pênaltis — escolha os cobradores quando for sua vez.';
     $('#matchActions').classList.add('hidden');
     const panel = $('#shootoutPanel');
@@ -1253,8 +1257,24 @@ export function createLiveMatchOrchestration(deps) {
       stats.away.penalties < 1 &&
       minute >= 3;
     const penSide = forcePenaltyAgainst ? 'away' : side;
-    const penRoll = forcePenaltyAgainst || (Math.random() < 0.012 && stats[penSide].penalties < 1);
-    if (penRoll && stats[penSide].penalties < 1) {
+    const matchPenalties = (stats.home.penalties || 0) + (stats.away.penalties || 0);
+    const homeGoalsLive = Math.max(0, Number(getHomeScore?.() || 0));
+    const awayGoalsLive = Math.max(0, Number(getAwayScore?.() || 0));
+    // Placar apertado / perseguição (não qualquer diferença de gols).
+    const scoreChase = minute >= 55 && Math.abs(homeGoalsLive - awayGoalsLive) <= 1;
+    const penaltyChance = enginePenaltyChance({
+      minute,
+      fouls: (stats.home.fouls || 0) + (stats.away.fouls || 0),
+      yellow: (stats.home.yellow || 0) + (stats.away.yellow || 0),
+      red: (stats.home.red || 0) + (stats.away.red || 0),
+      pressHome: homeTactic.press,
+      pressAway: awayTactic.press,
+      alreadyAwarded: matchPenalties,
+      scoreChase,
+      duelEdge: (current.attack - other.defense) / 80,
+    });
+    const penRoll = forcePenaltyAgainst || Math.random() < penaltyChance;
+    if (penRoll) {
       const penCurrent = penSide === 'home' ? homeProfile : awayProfile;
       const penOther = penSide === 'home' ? awayProfile : homeProfile;
       stats[penSide].penalties++;

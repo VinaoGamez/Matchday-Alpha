@@ -183,10 +183,55 @@ export function createTacticsFeature(deps) {
     );
   };
 
-  const enableBoardRepositioning = (board, selector) => {
-    if (!board) return;
+  const lineupEditingUnlocked = () => {
+    const live = getLiveState();
+    return !live.matchStarted || !!live.preMatchPreparation || !!live.freeSubEdits;
+  };
+
+  /** Troca slots do elenco (prancheta ↔ tabelas). Titular↔reserva só com escalação liberada. */
+  const applySquadSlotSwap = (sourceIndex, targetIndex) => {
     const live = getLiveState();
     const squad = getSquad();
+    const { cards, matchStarted, positionAssignments } = live;
+    if (!Number.isInteger(sourceIndex) || !Number.isInteger(targetIndex) || sourceIndex === targetIndex) return false;
+    if (sourceIndex < 0 || targetIndex < 0 || sourceIndex >= squad.length || targetIndex >= squad.length) return false;
+    if (cards?.home?.[sourceIndex]?.red) return false;
+    const moved = squad[sourceIndex];
+    const exchanged = squad[targetIndex];
+    if (!moved || playerUnavailable(moved)) return false;
+    const crossLine = (sourceIndex < 11) !== (targetIndex < 11);
+    if (crossLine && !lineupEditingUnlocked()) return false;
+    const targetWasVacant = !!cards?.home?.[targetIndex]?.red;
+    [squad[sourceIndex], squad[targetIndex]] = [exchanged, moved];
+    if (cards?.home) {
+      if (!crossLine && sourceIndex < 11) {
+        [cards.home[sourceIndex], cards.home[targetIndex]] = [cards.home[targetIndex], cards.home[sourceIndex]];
+      } else if (crossLine) {
+        const fieldSlot = sourceIndex < 11 ? sourceIndex : targetIndex;
+        cards.home[fieldSlot] = freshStarterCard();
+      }
+    }
+    if (matchStarted && sourceIndex < 11 && targetIndex < 11) {
+      log(
+        targetWasVacant
+          ? `${moved.name} ocupa a posição de ${positionAssignments[targetIndex]}; a vaga da expulsão passa para ${positionAssignments[sourceIndex]}.`
+          : `${moved.name} troca de posição com ${exchanged.name}: ${positionAssignments[targetIndex]} e ${positionAssignments[sourceIndex]}.`,
+        'substitution',
+        'home',
+      );
+    }
+    renderRoster();
+    draw();
+    if (matchStarted) {
+      renderSubstitutionControls();
+      renderStats();
+    }
+    if (getHasCareer()) persistSeason();
+    return true;
+  };
+
+  const enableBoardRepositioning = (board, selector) => {
+    if (!board) return;
     const draggables = [...board.querySelectorAll(selector)];
     const targets = [...board.querySelectorAll('[data-slot]')];
     draggables.forEach(marker => {
@@ -211,29 +256,24 @@ export function createTacticsFeature(deps) {
         marker.classList.remove('drop-target');
         const sourceIndex = Number(event.dataTransfer.getData('text/plain'));
         const targetIndex = Number(marker.dataset.slot);
-        const { cards, matchStarted, positionAssignments, activePreparationTitle } = live;
-        if (!Number.isInteger(sourceIndex) || !Number.isInteger(targetIndex) || sourceIndex === targetIndex || cards?.home?.[sourceIndex]?.red) return;
-        const moved = squad[sourceIndex];
-        const exchanged = squad[targetIndex];
-        const targetWasVacant = !!cards?.home?.[targetIndex]?.red;
-        [squad[sourceIndex], squad[targetIndex]] = [exchanged, moved];
-        if (cards?.home) [cards.home[sourceIndex], cards.home[targetIndex]] = [cards.home[targetIndex], cards.home[sourceIndex]];
-        if (matchStarted) {
-          log(
-            targetWasVacant
-              ? `${moved.name} ocupa a posição de ${positionAssignments[targetIndex]}; a vaga da expulsão passa para ${positionAssignments[sourceIndex]}.`
-              : `${moved.name} troca de posição com ${exchanged.name}: ${positionAssignments[targetIndex]} e ${positionAssignments[sourceIndex]}.`,
-            'substitution',
-            'home',
-          );
-        }
-        renderTacticRoster();
-        draw();
-        if (matchStarted) {
-          renderSubstitutionControls();
-          renderStats();
-        }
-        if (getHasCareer()) persistSeason();
+        applySquadSlotSwap(sourceIndex, targetIndex);
+      });
+    });
+  };
+
+  const clearRosterDropTargets = () =>
+    $$('.tactic-player-row.drop-target').forEach(el => el.classList.remove('drop-target'));
+
+  const bindRosterRowDrag = () => {
+    $$('.tactic-player-row.repositionable').forEach(row => {
+      row.addEventListener('dragstart', event => {
+        event.dataTransfer.setData('text/plain', row.dataset.slot);
+        event.dataTransfer.effectAllowed = 'move';
+        row.classList.add('dragging');
+      });
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+        clearRosterDropTargets();
       });
     });
   };
@@ -253,14 +293,7 @@ export function createTacticsFeature(deps) {
       `<div class="tactic-player-row ${playerUnavailable(player) ? 'unavailable' : 'repositionable'}" data-slot="${index}" draggable="${!playerUnavailable(player)}" tabindex="0">${playerNameCell(player.name, player, { prefix: starter ? `${index + 1}. ` : '' })}<span>${player.pos}</span><span>${player.overall}</span><span class="tactic-fatigue"><i><b style="width:${clamp(player.fatigue, 0, 100)}%"></b></i>${Math.round(player.fatigue)}%</span></div>`;
     $('#tacticStarters').innerHTML = squad.slice(0, 11).map((player, index) => playerRow(player, index, true)).join('');
     $('#tacticBench').innerHTML = squad.slice(11).map((player, index) => playerRow(player, index + 11, false)).join('');
-    $$('.tactic-player-row.repositionable').forEach(row => {
-      row.addEventListener('dragstart', event => {
-        event.dataTransfer.setData('text/plain', row.dataset.slot);
-        event.dataTransfer.effectAllowed = 'move';
-        row.classList.add('dragging');
-      });
-      row.addEventListener('dragend', () => row.classList.remove('dragging'));
-    });
+    bindRosterRowDrag();
     setTacticsPitchHighlight(null);
   };
 
@@ -689,7 +722,7 @@ export function createTacticsFeature(deps) {
       })
     );
     $$('.tactic-suggestion-btn').forEach(button => button.addEventListener('click', applyTacticSuggestion));
-    // Destaque na prancheta ao passar/focar no elenco (titulares).
+    // Destaque na prancheta + drop entre titulares/reservas.
     const rosterRoots = ['#tacticStarters', '#tacticBench']
       .map(sel => $(sel))
       .filter(Boolean);
@@ -715,6 +748,25 @@ export function createTacticsFeature(deps) {
         if (!row || !root.contains(row)) return;
         if (row.contains(event.relatedTarget)) return;
         setTacticsPitchHighlight(null);
+      });
+      root.addEventListener('dragover', event => {
+        const row = event.target.closest('.tactic-player-row[data-slot]');
+        if (!row || !root.contains(row)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        clearRosterDropTargets();
+        row.classList.add('drop-target');
+      });
+      root.addEventListener('dragleave', event => {
+        if (root.contains(event.relatedTarget)) return;
+        clearRosterDropTargets();
+      });
+      root.addEventListener('drop', event => {
+        const row = event.target.closest('.tactic-player-row[data-slot]');
+        event.preventDefault();
+        clearRosterDropTargets();
+        if (!row || !root.contains(row)) return;
+        applySquadSlotSwap(Number(event.dataTransfer.getData('text/plain')), Number(row.dataset.slot));
       });
     });
     onClick('#makeSubstitution', makeSubstitution);

@@ -1,0 +1,1299 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AO VIVO 2D · LAB — Preview Visão de Jogada</title>
+  <style>
+    :root {
+      --a: #63d9ff;
+      --b: #b6ff38;
+      /* Calibração layout.json — base 1672×940 */
+      --pitch-tl-x: 25.896%;
+      --pitch-tl-y: 39.245%;
+      --pitch-tr-x: 73.225%;
+      --pitch-tr-y: 39.245%;
+      --pitch-br-x: 89.445%;
+      --pitch-br-y: 80.675%;
+      --pitch-bl-x: 9.569%;
+      --pitch-bl-y: 80.426%;
+      --sb-left: 38.705%;
+      --sb-top: 13.262%;
+      --sb-width: 22.636%;
+      --sb-height: 8.509%;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #070f14;
+      color: #edf8f5;
+      font-family: "DM Sans", "Segoe UI", sans-serif;
+    }
+    .wrap {
+      width: min(1120px, 96vw);
+      display: grid;
+      gap: 12px;
+    }
+    .note {
+      padding: 12px 14px;
+      border: 1px solid #28505b;
+      border-radius: 8px;
+      background: #0b1a22;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #cfe3e6;
+    }
+    .note strong { color: #b6ff38; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      font-size: 12px;
+      color: #9ebfc2;
+    }
+    .toolbar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .toolbar button, .demo-bar button {
+      font: 700 12px "DM Sans", sans-serif;
+      color: #edf8f5;
+      background: #123843;
+      border: 1px solid #3a6b77;
+      border-radius: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .toolbar button:hover, .demo-bar button:hover {
+      border-color: #63d9ff;
+      color: #fff;
+    }
+    .toolbar button:disabled, .demo-bar button:disabled {
+      opacity: 0.45;
+      cursor: wait;
+    }
+    .demo-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .demo-bar .status {
+      margin-left: auto;
+      font-size: 12px;
+      color: #9ebfc2;
+    }
+    .demo-bar .status strong { color: #b6ff38; }
+    .event-log {
+      max-height: 140px;
+      overflow: auto;
+      padding: 8px 10px;
+      border: 1px solid #28505b;
+      border-radius: 8px;
+      background: #0b1a22;
+      font: 12px/1.45 "DM Sans", sans-serif;
+      color: #9ebfc2;
+    }
+    .event-log div { margin: 2px 0; }
+    .event-log .goal { color: #b6ff38; font-weight: 700; }
+    .event-log .ht { color: #63d9ff; }
+    .toolbar button.primary, .demo-bar button.primary {
+      background: #1a5a3a;
+      border-color: #3d9a6a;
+    }
+    .toolbar button.danger {
+      background: #5a1a1a;
+      border-color: #9a3d3d;
+    }
+    .hidden { display: none !important; }
+
+    /* Imagem + camada de entidades: mesmo contêiner, aspect e origem */
+    .stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1672 / 940;
+      overflow: hidden;
+      border: 1px solid #3a6b77;
+      border-radius: 10px;
+      background: #000;
+      box-shadow: 0 20px 50px #00000088;
+    }
+    .stage > img.stadium {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      display: block;
+      pointer-events: none;
+      user-select: none;
+      z-index: 1;
+    }
+
+    .scoreboard {
+      position: absolute;
+      left: var(--sb-left);
+      top: var(--sb-top);
+      width: var(--sb-width);
+      height: var(--sb-height);
+      z-index: 8;
+      background: transparent;
+      pointer-events: none;
+    }
+    .scoreboard .sb-part {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      box-sizing: border-box;
+    }
+    .scoreboard .sb-crest {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font: 800 clamp(9px, 1.15vw, 13px) "Barlow Condensed", "Arial Narrow", sans-serif;
+      font-style: normal;
+      letter-spacing: .2px;
+      color: #edf8f5;
+      text-shadow: 0 1px 2px #000a;
+    }
+    .scoreboard .sb-crest.a {
+      background: radial-gradient(circle at 35% 30%, #2a6a82, #123843 70%);
+      border: 2px solid var(--a);
+      box-shadow: 0 0 10px #63d9ff66, 0 2px 6px #000000aa;
+    }
+    .scoreboard .sb-crest.b {
+      background: radial-gradient(circle at 35% 30%, #3a5a28, #1a2e14 70%);
+      border: 2px solid var(--b);
+      box-shadow: 0 0 10px #b6ff3866, 0 2px 6px #000000aa;
+    }
+    .scoreboard .score {
+      font: 800 clamp(14px, 2.15vw, 24px) "Barlow Condensed", "Arial Narrow", sans-serif;
+      color: #fff;
+      text-shadow: 0 2px 8px #000d;
+      letter-spacing: .5px;
+      line-height: 1;
+    }
+    .scoreboard .clock {
+      font: 700 clamp(8px, 1vw, 11px) "DM Sans", sans-serif;
+      color: #c5dde0;
+      letter-spacing: .8px;
+      text-shadow: 0 1px 4px #000c;
+      line-height: 1;
+    }
+    .scoreboard .sb-divider {
+      background: #ffffffcc;
+      box-shadow: none;
+      border-radius: 1px;
+      padding: 0;
+      opacity: 0.85;
+    }
+    .scoreboard .sb-sponsor {
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 2px;
+      background: #00000055;
+      box-shadow: inset 0 0 0 1px #ffffff18;
+    }
+    .scoreboard .sb-sponsor .logo {
+      position: absolute;
+      inset: 2px;
+      display: grid;
+      place-items: center;
+      opacity: 0;
+      transition: opacity .45s ease;
+      font: 800 clamp(8px, 1.1vw, 12px) "Barlow Condensed", sans-serif;
+      letter-spacing: .6px;
+      color: #edf8f5;
+      text-shadow: 0 1px 3px #000c;
+    }
+    .scoreboard .sb-sponsor .logo.is-on { opacity: 1; }
+    .scoreboard .sb-sponsor .logo img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .field-layer,
+    .fx-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .field-layer { z-index: 4; }
+    .fx-layer { z-index: 6; }
+
+    .entity {
+      position: absolute;
+      left: 0;
+      top: 0;
+      transform: translate(-50%, -85%);
+      transform-origin: 50% 100%;
+      will-change: left, top, transform, opacity;
+      opacity: 1;
+    }
+    .entity.is-ball {
+      transform: translate(-50%, -50%);
+      transform-origin: 50% 50%;
+    }
+    .entity .sprite {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      user-select: none;
+      pointer-events: none;
+    }
+    .entity .num {
+      position: absolute;
+      left: 50%;
+      top: calc(100% - 2px);
+      transform: translateX(-50%);
+      padding: 0 3px;
+      border-radius: 2px;
+      background: #000000b0;
+      color: #fff;
+      font: 700 8px "DM Sans", sans-serif;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .entity-shadow {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 22px;
+      height: 8px;
+      border-radius: 50%;
+      background: radial-gradient(ellipse at center, #00000066 0%, #00000022 55%, #0000 72%);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      will-change: opacity;
+      opacity: 1;
+    }
+    .entity-shadow.is-ball {
+      width: 14px;
+      height: 5px;
+      background: radial-gradient(ellipse at center, #00000055 0%, #00000018 60%, #0000 75%);
+    }
+
+    .guides {
+      position: absolute;
+      inset: 0;
+      z-index: 7;
+      pointer-events: none;
+      opacity: 0;
+    }
+    body.show-guides .guides { opacity: 1; }
+    .guides .pitch-box {
+      position: absolute;
+      inset: 0;
+      clip-path: polygon(
+        var(--pitch-tl-x) var(--pitch-tl-y),
+        var(--pitch-tr-x) var(--pitch-tr-y),
+        var(--pitch-br-x) var(--pitch-br-y),
+        var(--pitch-bl-x) var(--pitch-bl-y)
+      );
+      box-shadow: inset 0 0 0 2px #ffef3a;
+      background: #ffe81422;
+    }
+    .guides .mid {
+      position: absolute;
+      left: 50%;
+      top: var(--pitch-tl-y);
+      height: calc(var(--pitch-bl-y) - var(--pitch-tl-y));
+      width: 2px;
+      transform: translateX(-50%);
+      background: #ffef3a;
+    }
+    .guides .sb {
+      position: absolute;
+      left: var(--sb-left);
+      top: var(--sb-top);
+      width: var(--sb-width);
+      height: var(--sb-height);
+      border: 2px solid #ff4bff;
+      background: #ff4bff33;
+    }
+    .guides .areas {
+      position: absolute;
+      inset: 0;
+    }
+    .guides .areas svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .guides .areas .pen-home {
+      fill: #63d9ff33;
+      stroke: #63d9ff;
+      stroke-width: 2;
+    }
+    .guides .areas .pen-away {
+      fill: #b6ff3833;
+      stroke: #b6ff38;
+      stroke-width: 2;
+    }
+    .guides .areas .six-yard {
+      fill: #ffef3a18;
+      stroke: #ffef3a;
+      stroke-width: 1.5;
+      stroke-dasharray: 6 4;
+    }
+    .guides .areas .spot-cross line {
+      stroke-width: 1.5;
+    }
+    .guides .areas .spot-pen-a line { stroke: #63d9ff; }
+    .guides .areas .spot-pen-b line { stroke: #b6ff38; }
+    .guides .areas .halfway-line {
+      stroke: #ff2a2a;
+      stroke-width: 3;
+      fill: none;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      font-size: 12px;
+      color: #9ebfc2;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend img { width: 22px; height: 22px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="note">
+      <strong style="color:#e6c35c">LAB</strong> · AO VIVO 2D (sandbox) —
+      WorldPitch (metros) espelhado com a <strong>angulação do estádio</strong>.
+      Experimente aqui; o snapshot validado está em <a href="../frozen/preview.html" style="color:#8fd98f">frozen/</a>
+      · <a href="../index.html" style="color:#9ebfc2">hub do módulo</a>.
+    </div>
+    <div class="toolbar">
+      <label><input type="checkbox" id="toggleGuides"> mostrar guias</label>
+      <button type="button" id="btnKickoff">repor saída</button>
+      <button type="button" id="btnRefreshLive">atualizar do AO VIVO</button>
+      <button type="button" class="primary" id="btnFullMatch">Simular partida</button>
+      <button type="button" class="danger hidden" id="btnStopMatch">Parar</button>
+      <a href="world-preview.html" style="color:#b6ff38;font-size:12px;margin-left:auto">visão superior →</a>
+      <a href="layout-editor.html" style="color:#63d9ff;font-size:12px">editor de layout →</a>
+    </div>
+    <div class="demo-bar">
+      <button type="button" data-play="buildup">Construção</button>
+      <button type="button" data-play="shot">Chute</button>
+      <button type="button" data-play="cross">Cruzamento</button>
+      <button type="button" data-play="corner">Escanteio</button>
+      <button type="button" data-play="tackle">Desarme</button>
+      <button type="button" data-play="counter">Contra</button>
+      <label style="margin-left:4px">
+        ataque
+        <select id="attackSide" style="margin-left:4px;background:#0b1a22;color:#edf8f5;border:1px solid #3a6b77;border-radius:4px;padding:4px 6px">
+          <option value="home">mandante</option>
+          <option value="away">visitante</option>
+        </select>
+      </label>
+      <span class="status" id="liveStatus">carregando…</span>
+    </div>
+    <div class="event-log" id="eventLog" aria-live="polite"></div>
+
+    <div class="stage" id="stage">
+      <img class="stadium" src="stadium.png" alt="Estádio" width="1672" height="940">
+
+      <div class="scoreboard" id="scoreboard">
+        <div class="sb-part" data-part="crestHome" title="">
+          <i class="sb-crest a" id="sbCrestHome" aria-label="Mandante">—</i>
+        </div>
+        <div class="sb-part" data-part="crestAway" title="">
+          <i class="sb-crest b" id="sbCrestAway" aria-label="Visitante">—</i>
+        </div>
+        <div class="sb-part" data-part="score">
+          <div class="score" id="sbScore">0 — 0</div>
+        </div>
+        <div class="sb-part" data-part="timer">
+          <div class="clock" id="sbClock">0'</div>
+        </div>
+        <div class="sb-part sb-divider" data-part="divider" aria-hidden="true"></div>
+        <div class="sb-part sb-sponsor" data-part="sponsor" id="sbSponsor" aria-label="Patrocinadores"></div>
+      </div>
+
+      <div class="field-layer" id="fieldLayer"></div>
+      <div class="fx-layer" id="fxLayer"></div>
+
+      <div class="guides" aria-hidden="true">
+        <div class="pitch-box"></div>
+        <div class="mid"></div>
+        <div class="sb"></div>
+        <div class="areas">
+          <svg viewBox="0 0 1672 940" preserveAspectRatio="none">
+            <polygon id="guideSixHome" class="six-yard" points=""></polygon>
+            <polygon id="guideSixAway" class="six-yard" points=""></polygon>
+            <polygon id="guidePenHome" class="pen-home" points=""></polygon>
+            <polygon id="guidePenAway" class="pen-away" points=""></polygon>
+            <g id="guideSpotPenA" class="spot-cross spot-pen-a" transform="translate(0,0)">
+              <line x1="-5" y1="0" x2="5" y2="0"></line>
+              <line x1="0" y1="-5" x2="0" y2="5"></line>
+            </g>
+            <g id="guideSpotPenB" class="spot-cross spot-pen-b" transform="translate(0,0)">
+              <line x1="-5" y1="0" x2="5" y2="0"></line>
+              <line x1="0" y1="-5" x2="0" y2="5"></line>
+            </g>
+            <line id="guideHalfway" class="halfway-line" x1="0" y1="0" x2="0" y2="0"></line>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><img src="tokens/home-outfield.png" alt=""> Mandante</span>
+      <span><img src="tokens/home-gk.png" alt=""> Goleiro mandante</span>
+      <span><img src="tokens/away-outfield.png" alt=""> Visitante</span>
+      <span><img src="tokens/away-gk.png" alt=""> Goleiro visitante</span>
+      <span><img src="tokens/ball.png" alt=""> Bola</span>
+    </div>
+  </div>
+
+  <script src="field-geometry.js"></script>
+  <script src="live-bridge.js"></script>
+  <script src="world-pitch.js"></script>
+  <script src="play-engine.js"></script>
+  <script src="playbook.js"></script>
+  <script src="match-sim.js"></script>
+  <script>
+    (() => {
+      "use strict";
+
+      const G = window.MatchViewGeometry;
+      const Bridge = window.MatchViewLiveBridge;
+      const Playbook = window.MatchViewPlaybook;
+      const MatchSim = window.MatchViewMatchSim;
+      const BASE_W = G.BASE_W;
+      const BASE_H = G.BASE_H;
+      const PLAYER_BASE = 40;
+      const BALL_BASE = 15;
+      const GK_SCALE = 1.08;
+      const UV_MIN = 0.02;
+      const UV_MAX = 0.98;
+
+      const FIELD_CORNERS = G.FIELD_CORNERS;
+      const PENALTY_AREAS = {
+        home: G.cloneQuad(G.PENALTY_AREAS.home),
+        away: G.cloneQuad(G.PENALTY_AREAS.away),
+      };
+      const SIX_YARD_AREAS = {
+        home: G.cloneQuad(G.SIX_YARD_AREAS.home),
+        away: G.cloneQuad(G.SIX_YARD_AREAS.away),
+      };
+      const FIELD_SPOTS = structuredClone(G.FIELD_SPOTS);
+      Object.assign(FIELD_SPOTS, {
+        cornerHomeFar: { ...(G.FIELD_SPOTS.cornerHomeFar || { u: 0, v: 0 }) },
+        cornerHomeNear: { ...(G.FIELD_SPOTS.cornerHomeNear || { u: 0, v: 1 }) },
+        cornerAwayFar: { ...(G.FIELD_SPOTS.cornerAwayFar || { u: 1, v: 0 }) },
+        cornerAwayNear: { ...(G.FIELD_SPOTS.cornerAwayNear || { u: 1, v: 1 }) },
+      });
+      const BALL_KICKOFF = { ...G.BALL_KICKOFF };
+      const HALFWAY_LINE = {
+        far: { ...G.HALFWAY_LINE.far },
+        near: { ...G.HALFWAY_LINE.near },
+      };
+
+      const ASSETS = {
+        home: { outfield: "tokens/home-outfield.png", gk: "tokens/home-gk.png" },
+        away: { outfield: "tokens/away-outfield.png", gk: "tokens/away-gk.png" },
+        ball: "tokens/ball.png",
+      };
+
+      const HOME_NUMS = {
+        GK: 1,
+        DF: [2, 3, 4, 5],
+        MF: [6, 8, 10],
+        FW: [7, 9, 11],
+      };
+
+      const stage = document.getElementById("stage");
+      const fieldLayer = document.getElementById("fieldLayer");
+      const fxLayer = document.getElementById("fxLayer");
+      const liveStatusEl = document.getElementById("liveStatus");
+
+      /** @type {{ width: number, height: number, scaleX: number, scaleY: number }} */
+      let view = { width: BASE_W, height: BASE_H, scaleX: 1, scaleY: 1 };
+
+      /** @type {Array<any>} */
+      const entities = [];
+      /** @type {ReturnType<typeof Bridge.loadMatchViewLiveState>|null} */
+      let liveState = null;
+      let playingAnim = false;
+      let matchRunning = false;
+      let matchController = null;
+      let sponsorTimer = 0;
+      let livePollPaused = false;
+      const eventLogEl = document.getElementById("eventLog");
+      let ballEntity = null;
+      let rafId = 0;
+      let needsOrder = false;
+
+      const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+      function clampUV(u, v, team = null, role = null) {
+        if (role === "GK" && team) {
+          return G.clampToSixYardArea(u, v, team, SIX_YARD_AREAS, FIELD_CORNERS);
+        }
+        return {
+          u: clamp(u, UV_MIN, UV_MAX),
+          v: clamp(v, UV_MIN, UV_MAX),
+        };
+      }
+
+      function mapToField(u, v) {
+        return G.mapToField(u, v, FIELD_CORNERS);
+      }
+
+      function getPerspectiveScale(v) {
+        return G.getPerspectiveScale(v);
+      }
+
+      function paintAreaGuides() {
+        document.getElementById("guidePenHome").setAttribute(
+          "points",
+          G.areaPointsAttr(PENALTY_AREAS.home)
+        );
+        document.getElementById("guidePenAway").setAttribute(
+          "points",
+          G.areaPointsAttr(PENALTY_AREAS.away)
+        );
+        document.getElementById("guideSixHome").setAttribute(
+          "points",
+          G.areaPointsAttr(SIX_YARD_AREAS.home)
+        );
+        document.getElementById("guideSixAway").setAttribute(
+          "points",
+          G.areaPointsAttr(SIX_YARD_AREAS.away)
+        );
+        const hw = document.getElementById("guideHalfway");
+        hw.setAttribute("x1", String(HALFWAY_LINE.far.x));
+        hw.setAttribute("y1", String(HALFWAY_LINE.far.y));
+        hw.setAttribute("x2", String(HALFWAY_LINE.near.x));
+        hw.setAttribute("y2", String(HALFWAY_LINE.near.y));
+        const putSpot = (id, uv) => {
+          const p = mapToField(uv.u, uv.v);
+          document.getElementById(id).setAttribute(
+            "transform",
+            `translate(${p.x}, ${p.y})`
+          );
+        };
+        putSpot("guideSpotPenA", FIELD_SPOTS.penaltyHome);
+        putSpot("guideSpotPenB", FIELD_SPOTS.penaltyAway);
+      }
+
+      function updateViewMetrics() {
+        const rect = stage.getBoundingClientRect();
+        view.width = rect.width;
+        view.height = rect.height;
+        view.scaleX = rect.width / BASE_W;
+        view.scaleY = rect.height / BASE_H;
+      }
+
+      function toScreen(u, v, elevation = 0) {
+        const mapped = mapToField(u, v);
+        const persp = getPerspectiveScale(v);
+        return {
+          screenX: mapped.x * view.scaleX,
+          screenY: mapped.y * view.scaleY - elevation * persp * view.scaleY,
+          persp,
+          mappedX: mapped.x,
+          mappedY: mapped.y,
+        };
+      }
+
+      function baseSizeFor(entity) {
+        if (entity.kind === "ball") {
+          return BALL_BASE; // 12–18 após perspectiva
+        }
+        return entity.role === "GK" ? PLAYER_BASE * GK_SCALE : PLAYER_BASE;
+      }
+
+      function applyEntityTransform(entity) {
+        const elev = entity.elevation || 0;
+        const { screenX, screenY, persp } = toScreen(entity.u, entity.v, elev);
+        entity.screenX = screenX;
+        entity.screenY = screenY;
+        entity.scale = persp;
+        const fadeOp = entity.fadeOpacity != null ? entity.fadeOpacity : 1;
+
+        const size = baseSizeFor(entity) * persp * ((view.scaleX + view.scaleY) / 2);
+        const el = entity.el;
+        el.style.left = `${screenX}px`;
+        el.style.top = `${screenY}px`;
+        el.style.width = `${size}px`;
+        el.style.height = `${size}px`;
+        el.style.opacity = String(fadeOp);
+
+        el.style.transform = entity.kind === "ball"
+          ? "translate(-50%, -50%)"
+          : "translate(-50%, -85%)";
+
+        if (entity.shadowEl) {
+          const ground = toScreen(entity.u, entity.v, 0);
+          const sw = (entity.kind === "ball" ? 14 : 22) * persp * view.scaleX;
+          const sh = (entity.kind === "ball" ? 5 : 8) * persp * view.scaleY;
+          entity.shadowEl.style.left = `${ground.screenX}px`;
+          entity.shadowEl.style.top = `${ground.screenY}px`;
+          entity.shadowEl.style.width = `${sw}px`;
+          entity.shadowEl.style.height = `${sh}px`;
+          const elevFade = elev > 0 ? clamp(1 - elev / 28, 0.25, 1) : 1;
+          entity.shadowEl.style.opacity = String(elevFade * fadeOp * 0.85);
+        }
+      }
+
+      function renderEntity(entity) {
+        if (!entity.el) {
+          const shadow = document.createElement("div");
+          shadow.className = "entity-shadow" + (entity.kind === "ball" ? " is-ball" : "");
+          fieldLayer.appendChild(shadow);
+          entity.shadowEl = shadow;
+
+          const el = document.createElement("div");
+          el.className = "entity" + (entity.kind === "ball" ? " is-ball" : "");
+          el.dataset.id = entity.id;
+          const img = document.createElement("img");
+          img.className = "sprite";
+          img.src = entity.src;
+          img.alt = entity.kind === "ball" ? "Bola" : `${entity.team} ${entity.role}`;
+          el.appendChild(img);
+          if (entity.kind !== "ball" && entity.num != null) {
+            const num = document.createElement("span");
+            num.className = "num";
+            num.textContent = String(entity.num);
+            el.appendChild(num);
+          }
+          fieldLayer.appendChild(el);
+          entity.el = el;
+        }
+        applyEntityTransform(entity);
+        needsOrder = true;
+        return entity;
+      }
+
+      function updateRenderOrder() {
+        const sorted = entities.slice().sort((a, b) => a.screenY - b.screenY);
+        sorted.forEach((entity, i) => {
+          const z = 10 + i;
+          if (entity.shadowEl) entity.shadowEl.style.zIndex = String(z);
+          if (entity.el) entity.el.style.zIndex = String(z + 1);
+        });
+        // Bola acima do gramado/sombras, abaixo da camada de efeitos
+        if (ballEntity?.el) {
+          const ballZ = 10 + sorted.indexOf(ballEntity) + 1;
+          ballEntity.el.style.zIndex = String(Math.max(ballZ, 12));
+        }
+        needsOrder = false;
+      }
+
+      function tickAnimations(now) {
+        let active = false;
+        for (const entity of entities) {
+          const anim = entity.anim;
+          if (!anim) continue;
+          active = true;
+          const t = clamp((now - anim.start) / anim.duration, 0, 1);
+          const e = easeInOut(t);
+          entity.u = lerp(anim.fromU, anim.toU, e);
+          entity.v = lerp(anim.fromV, anim.toV, e);
+          if (anim.elevationFrom != null) {
+            entity.elevation = lerp(anim.elevationFrom, anim.elevationTo, Math.sin(Math.PI * e));
+            if (t >= 1) entity.elevation = anim.elevationTo;
+          }
+          applyEntityTransform(entity);
+          if (t >= 1) {
+            entity.u = anim.toU;
+            entity.v = anim.toV;
+            if (anim.elevationFrom != null) entity.elevation = anim.elevationTo;
+            entity.anim = null;
+            if (typeof anim.onDone === "function") anim.onDone();
+          }
+        }
+        updateRenderOrder();
+        if (active) rafId = requestAnimationFrame(tickAnimations);
+        else rafId = 0;
+      }
+
+      function ensureAnimLoop() {
+        if (!rafId) rafId = requestAnimationFrame(tickAnimations);
+      }
+
+      function moveEntity(entity, targetU, targetV, duration = 600) {
+        const uv = clampUV(targetU, targetV, entity.team, entity.role);
+        entity.anim = {
+          start: performance.now(),
+          duration: Math.max(0, duration),
+          fromU: entity.u,
+          fromV: entity.v,
+          toU: uv.u,
+          toV: uv.v,
+        };
+        if (duration <= 0) {
+          entity.u = uv.u;
+          entity.v = uv.v;
+          entity.anim = null;
+          applyEntityTransform(entity);
+          updateRenderOrder();
+          return Promise.resolve();
+        }
+        return new Promise((resolve) => {
+          entity.anim.onDone = resolve;
+          ensureAnimLoop();
+        });
+      }
+
+      function moveBall(targetU, targetV, duration = 500, elevation = 0, opts = {}) {
+        if (!ballEntity) return Promise.resolve();
+        // allowOut: bola pode sair totalmente das linhas (highlight / lateral / fundo)
+        const uv = opts.allowOut
+          ? { u: clamp(targetU, -0.12, 1.12), v: clamp(targetV, -0.12, 1.12) }
+          : clampUV(targetU, targetV);
+        const startU = ballEntity.u;
+        const startV = ballEntity.v;
+        const startElev = ballEntity.elevation || 0;
+        const peak = Math.max(0, elevation);
+
+        return new Promise((resolve) => {
+          const start = performance.now();
+          const dur = Math.max(0, duration);
+          const step = (now) => {
+            const t = dur <= 0 ? 1 : clamp((now - start) / dur, 0, 1);
+            const e = easeInOut(t);
+            ballEntity.u = lerp(startU, uv.u, e);
+            ballEntity.v = lerp(startV, uv.v, e);
+            ballEntity.elevation = peak > 0
+              ? Math.sin(Math.PI * e) * peak
+              : lerp(startElev, 0, e);
+            applyEntityTransform(ballEntity);
+            updateRenderOrder();
+            if (t < 1) {
+              requestAnimationFrame(step);
+              return;
+            }
+            ballEntity.u = uv.u;
+            ballEntity.v = uv.v;
+            ballEntity.elevation = 0;
+            applyEntityTransform(ballEntity);
+            updateRenderOrder();
+            resolve();
+          };
+          requestAnimationFrame(step);
+        });
+      }
+
+      /** Fade de tokens + bola (início/fim de jogada). toOpacity 0..1 */
+      function fadeField(toOpacity, duration = 240) {
+        const to = clamp(toOpacity, 0, 1);
+        const dur = Math.max(0, duration);
+        for (const entity of entities) {
+          entity.fadeOpacity = entity.fadeOpacity != null ? entity.fadeOpacity : 1;
+          if (entity.el) {
+            entity.el.style.transition = dur > 0 ? `opacity ${dur}ms ease` : "none";
+          }
+          if (entity.shadowEl) {
+            entity.shadowEl.style.transition = dur > 0 ? `opacity ${dur}ms ease` : "none";
+          }
+        }
+        // força reflow para a transition pegar
+        void fieldLayer.offsetWidth;
+        for (const entity of entities) {
+          entity.fadeOpacity = to;
+          applyEntityTransform(entity);
+        }
+        if (dur <= 0) return Promise.resolve();
+        return new Promise((resolve) => setTimeout(resolve, dur));
+      }
+
+      function nextNumber(role, counters) {
+        if (role === "GK") return HOME_NUMS.GK;
+        const list = HOME_NUMS[role] || [];
+        const i = counters[role] || 0;
+        counters[role] = i + 1;
+        return list[i] != null ? list[i] : i + 1;
+      }
+
+      function avoidOverlap(players) {
+        if (window.MatchViewPlayEngine?.spacePoints) {
+          const pts = players.map((p) => ({
+            id: p.id,
+            team: p.team,
+            role: p.role,
+            u: p.u,
+            v: p.v,
+            movable: true,
+            _p: p,
+          }));
+          window.MatchViewPlayEngine.spacePoints(pts, 14);
+          for (const pt of pts) {
+            pt._p.u = clamp(pt.u, UV_MIN, UV_MAX);
+            pt._p.v = clamp(pt.v, UV_MIN, UV_MAX);
+            applyEntityTransform(pt._p);
+          }
+          return;
+        }
+        const SAFE = 0.05;
+        for (let n = 0; n < 8; n++) {
+          for (let i = 0; i < players.length; i++) {
+            for (let j = i + 1; j < players.length; j++) {
+              const a = players[i];
+              const b = players[j];
+              const du = a.u - b.u;
+              const dv = (a.v - b.v) * 1.3;
+              const d = Math.hypot(du, dv) || 0.0001;
+              if (d >= SAFE) continue;
+              const push = (SAFE - d) * 0.55;
+              const nu = du / d;
+              const nv = dv / d / 1.3;
+              a.u = clamp(a.u + nu * push * 0.5, UV_MIN, UV_MAX);
+              a.v = clamp(a.v + nv * push * 0.8, UV_MIN, UV_MAX);
+              b.u = clamp(b.u - nu * push * 0.5, UV_MIN, UV_MAX);
+              b.v = clamp(b.v - nv * push * 0.8, UV_MIN, UV_MAX);
+            }
+          }
+        }
+        players.forEach(applyEntityTransform);
+      }
+
+      function syncPositions() {
+        for (const entity of entities) {
+          if (entity.kind !== "player" && entity.kind !== "ball") continue;
+          if (entity.anim) {
+            entity.u = entity.anim.toU;
+            entity.v = entity.anim.toV;
+            const done = entity.anim.onDone;
+            entity.anim = null;
+            // Crítico: senão moveEntity fica await eterno → simulação “trava”
+            if (typeof done === "function") done();
+          }
+          applyEntityTransform(entity);
+        }
+        updateRenderOrder();
+      }
+
+      function renderFormation(formation, team) {
+        const counters = { DF: 0, MF: 0, FW: 0 };
+        const pack = ASSETS[team];
+        const created = [];
+        formation.forEach((slot, idx) => {
+          const role = slot.role || "MF";
+          const uv = clampUV(slot.u, slot.v, team, role);
+          const entity = {
+            id: `${team}-${role}-${idx}`,
+            kind: "player",
+            team,
+            role,
+            pos: slot.pos || role,
+            slot: slot.slot != null ? slot.slot : idx,
+            u: uv.u,
+            v: uv.v,
+            elevation: 0,
+            num: slot.num != null ? slot.num : nextNumber(role, counters),
+            src: role === "GK" ? pack.gk : pack.outfield,
+            el: null,
+            shadowEl: null,
+            anim: null,
+            screenX: 0,
+            screenY: 0,
+            scale: 1,
+          };
+          entities.push(entity);
+          renderEntity(entity);
+          created.push(entity);
+        });
+        return created;
+      }
+
+      function createBall(u, v) {
+        const uv = clampUV(u, v);
+        ballEntity = {
+          id: "ball",
+          kind: "ball",
+          team: null,
+          role: "BALL",
+          u: uv.u,
+          v: uv.v,
+          elevation: 0,
+          num: null,
+          src: ASSETS.ball,
+          el: null,
+          shadowEl: null,
+          anim: null,
+          screenX: 0,
+          screenY: 0,
+          scale: 1,
+        };
+        entities.push(ballEntity);
+        renderEntity(ballEntity);
+        return ballEntity;
+      }
+
+      function clearEntities() {
+        entities.length = 0;
+        ballEntity = null;
+        fieldLayer.innerHTML = "";
+        fxLayer.innerHTML = "";
+      }
+
+      function setupKickoff() {
+        clearEntities();
+        updateViewMetrics();
+        if (!liveState) liveState = Bridge.loadMatchViewLiveState();
+
+        const World = window.MatchViewWorldPitch;
+        let left;
+        let right;
+        let ballUv = BALL_KICKOFF;
+
+        if (World?.kickoffUVSlots) {
+          // Kickoff do WorldPitch (metros → UV) — fonte da verdade
+          const slots = World.kickoffUVSlots();
+          left = slots.home;
+          right = slots.away;
+          ballUv = slots.ball;
+        } else {
+          left = liveState.leftSlots || structuredClone(G.HOME_FORMATION);
+          right = liveState.rightSlots || left.map((p) => ({ ...p, u: 1 - p.u }));
+        }
+
+        renderFormation(left, "home");
+        renderFormation(right, "away");
+        avoidOverlap(entities.filter((e) => e.kind === "player"));
+        entities.filter((e) => e.kind === "player").forEach(applyEntityTransform);
+
+        createBall(ballUv.u, ballUv.v);
+        updateRenderOrder();
+      }
+
+      function relayout() {
+        updateViewMetrics();
+        entities.forEach(applyEntityTransform);
+        updateRenderOrder();
+      }
+
+      function applyScoreboardLayout() {
+        const sb = G.normalizeScoreboard(G.SCOREBOARD);
+        Object.assign(G.SCOREBOARD, sb);
+        const root = document.documentElement.style;
+        root.setProperty("--sb-left", `${sb.left}%`);
+        root.setProperty("--sb-top", `${sb.top}%`);
+        root.setProperty("--sb-width", `${sb.width}%`);
+        root.setProperty("--sb-height", `${sb.height}%`);
+        for (const key of ["crestHome", "crestAway", "score", "timer", "divider", "sponsor"]) {
+          const el = document.querySelector(`#scoreboard [data-part="${key}"]`);
+          const p = sb[key];
+          if (!el || !p) continue;
+          el.style.left = `${p.left}%`;
+          el.style.top = `${p.top}%`;
+          el.style.width = `${p.width}%`;
+          el.style.height = `${p.height}%`;
+        }
+      }
+
+      function paintLiveScoreboard(state) {
+        const homeCrest = document.getElementById("sbCrestHome");
+        const awayCrest = document.getElementById("sbCrestAway");
+        const scoreEl = document.getElementById("sbScore");
+        const clockEl = document.getElementById("sbClock");
+        if (homeCrest) {
+          homeCrest.textContent = state.homeInitials;
+          homeCrest.setAttribute("aria-label", state.homeName);
+          homeCrest.parentElement.title = state.homeName;
+        }
+        if (awayCrest) {
+          awayCrest.textContent = state.awayInitials;
+          awayCrest.setAttribute("aria-label", state.awayName);
+          awayCrest.parentElement.title = state.awayName;
+        }
+        if (scoreEl) scoreEl.textContent = `${state.homeGoals} — ${state.awayGoals}`;
+        if (clockEl) clockEl.textContent = state.clock;
+      }
+
+      function startSponsorRotation(state) {
+        const box = document.getElementById("sbSponsor");
+        if (!box) return;
+        if (sponsorTimer) {
+          clearInterval(sponsorTimer);
+          sponsorTimer = 0;
+        }
+        box.innerHTML = "";
+
+        const logos = state?.sponsors?.logos?.length
+          ? state.sponsors.logos
+          : [];
+
+        if (!logos.length) {
+          const el = document.createElement("div");
+          el.className = "logo is-on";
+          el.style.background = "#00000066";
+          el.textContent = state?.sponsors?.master || "SEM PATROCÍNIO";
+          box.appendChild(el);
+          return;
+        }
+
+        logos.forEach((s, i) => {
+          const el = document.createElement("div");
+          el.className = "logo" + (i === 0 ? " is-on" : "");
+          el.title = s.name;
+          const img = document.createElement("img");
+          img.src = s.url;
+          img.alt = s.name;
+          img.onerror = () => {
+            img.remove();
+            el.textContent = s.name;
+            el.style.background = "#00000066";
+          };
+          el.appendChild(img);
+          box.appendChild(el);
+        });
+
+        if (logos.length < 2) return;
+        let idx = 0;
+        const ms = G.SCOREBOARD.sponsor.rotateMs || 4000;
+        sponsorTimer = setInterval(() => {
+          const nodes = box.querySelectorAll(".logo");
+          if (!nodes.length) return;
+          nodes[idx].classList.remove("is-on");
+          idx = (idx + 1) % nodes.length;
+          nodes[idx].classList.add("is-on");
+        }, ms);
+      }
+
+      function setDemoButtonsDisabled(disabled) {
+        document.querySelectorAll("[data-play]").forEach((btn) => {
+          btn.disabled = !!disabled;
+        });
+        document.getElementById("btnKickoff").disabled = !!disabled;
+        document.getElementById("btnRefreshLive").disabled = !!disabled;
+        document.getElementById("btnFullMatch").disabled = !!disabled;
+      }
+
+      function logEvent(html, cls = "") {
+        if (!eventLogEl) return;
+        const row = document.createElement("div");
+        if (cls) row.className = cls;
+        row.innerHTML = html;
+        eventLogEl.prepend(row);
+        while (eventLogEl.children.length > 40) eventLogEl.lastChild.remove();
+      }
+
+      function paintSimScoreboard(homeGoals, awayGoals, clock) {
+        const scoreEl = document.getElementById("sbScore");
+        const clockEl = document.getElementById("sbClock");
+        if (scoreEl) scoreEl.textContent = `${homeGoals} — ${awayGoals}`;
+        if (clockEl) clockEl.textContent = clock;
+      }
+
+      async function softReset(t = 0.7) {
+        // Mid-block com mescla (não kickoff — kickoff só em setupKickoff / gol / escanteio)
+        const Engine = window.MatchViewPlayEngine;
+        if (!Engine?.createDirector) {
+          setupKickoff();
+          return;
+        }
+        const d = Engine.createDirector(matchApi, {
+          instant: false,
+          pace: 1.5,
+          seed: Date.now() % 1e6,
+        });
+        await d.softResetShape(t, 360);
+        d.clampKeepersOnPitch();
+        // Bola sempre nas botas de um jogador (nunca voa sozinha ao centro)
+        const mid = G.BALL_KICKOFF || BALL_KICKOFF;
+        const players = entities.filter((e) => e.kind === "player" && e.role !== "GK");
+        const pool = players.filter((p) => p.role === "MF");
+        const candidates = pool.length ? pool : players;
+        let best = candidates[0];
+        let bestD = Infinity;
+        for (const p of candidates) {
+          const dd = (p.u - mid.u) ** 2 + (p.v - mid.v) ** 2;
+          if (dd < bestD) {
+            bestD = dd;
+            best = p;
+          }
+        }
+        if (best) await moveBall(best.u + 0.01, best.v, 0, 0);
+      }
+
+      const matchApi = {
+        moveEntity,
+        moveBall,
+        fadeField,
+        syncPositions,
+        softReset,
+        getMatchEntities: () => entities,
+        getFieldSpots: () => FIELD_SPOTS,
+        cornerSpotForAttack: (side, near) =>
+          G.cornerSpotForAttack(side, near, FIELD_SPOTS),
+        isPlaying: () => playingAnim,
+        setPlaying: (v) => {
+          playingAnim = !!v;
+          if (!matchRunning) setDemoButtonsDisabled(playingAnim);
+        },
+        isMatchRunning: () => matchRunning,
+        setMatchRunning: (v) => {
+          matchRunning = !!v;
+          livePollPaused = matchRunning;
+          document.getElementById("btnStopMatch").classList.toggle("hidden", !matchRunning);
+          setDemoButtonsDisabled(matchRunning);
+        },
+      };
+
+      function refreshFromLive({ resetPitch = false } = {}) {
+        liveState = Bridge.loadMatchViewLiveState();
+        paintLiveScoreboard(liveState);
+        startSponsorRotation(liveState);
+        if (resetPitch) setupKickoff();
+
+        const formLeft = liveState.userAtHome ? liveState.userFormation : liveState.awayFormation;
+        const formRight = liveState.userAtHome ? liveState.awayFormation : liveState.userFormation;
+        const srcLabel =
+          liveState.source === "live"
+            ? "AO VIVO"
+            : liveState.source === "season"
+              ? "temporada (sem partida)"
+              : "fallback";
+        liveStatusEl.innerHTML =
+          `<strong>${srcLabel}</strong> · ${liveState.homeName} ${liveState.homeGoals}–${liveState.awayGoals} ${liveState.awayName}` +
+          ` · ${liveState.clock}` +
+          ` · form. ${formLeft} / ${formRight}` +
+          (liveState.sponsors.master ? ` · pat. ${liveState.sponsors.master}` : "");
+      }
+
+      async function runPlay(kind) {
+        if (matchRunning) return;
+        const side = document.getElementById("attackSide").value || "home";
+        liveStatusEl.innerHTML = `animando <strong>${Playbook.CATALOG[kind]?.label || kind}</strong>…`;
+        const result = await Playbook.playDemo(matchApi, kind, side);
+        if (!result.ok) {
+          liveStatusEl.textContent = result.reason || "falhou";
+          return;
+        }
+        const outcome = result.outcome ? ` → ${result.outcome}` : "";
+        logEvent(`${Playbook.CATALOG[kind].label}${outcome} (${side})`);
+        liveStatusEl.innerHTML =
+          `última: <strong>${Playbook.CATALOG[kind].label}</strong>${outcome}`;
+      }
+
+      async function runFullMatchDemo() {
+        if (matchRunning || !MatchSim) return;
+        if (eventLogEl) eventLogEl.innerHTML = "";
+        refreshFromLive({ resetPitch: true });
+        const homeName = liveState?.homeName || "Mandante";
+        const awayName = liveState?.awayName || "Visitante";
+        logEvent(`Início · ${homeName} vs ${awayName}`);
+        liveStatusEl.innerHTML = "simulando <strong>partida</strong>…";
+
+        matchController = { stop: null };
+        const result = await MatchSim.runFullMatch(
+          matchApi,
+          {
+            setupKickoff: () => setupKickoff(),
+            softReset: (t) => softReset(t),
+            onTick: ({ clock, homeGoals, awayGoals, events }) => {
+              paintSimScoreboard(homeGoals, awayGoals, clock);
+              liveStatusEl.innerHTML =
+                `<strong>${clock}</strong> · ${homeName} ${homeGoals}–${awayGoals} ${awayName} · ${events} jogadas`;
+            },
+            onEvent: (ev) => {
+              if (ev.kind === "halftime") {
+                logEvent("Intervalo", "ht");
+                return;
+              }
+              if (ev.kind === "play") {
+                logEvent(`${ev.minute}' ${ev.label} (${ev.attackSide === "home" ? homeName : awayName})`);
+              }
+            },
+            onScore: ({ homeGoals, awayGoals, scorerSide, minute, play }) => {
+              const who = scorerSide === "home" ? homeName : awayName;
+              logEvent(`GOL ${minute}' ${who} · ${play}`, "goal");
+              paintSimScoreboard(homeGoals, awayGoals, MatchSim.clockLabel(minute));
+            },
+            onEnd: ({ homeGoals, awayGoals, events }) => {
+              paintSimScoreboard(homeGoals, awayGoals, "90'");
+              logEvent(`Fim · ${homeName} ${homeGoals}–${awayGoals} ${awayName} · ${events} jogadas`);
+              liveStatusEl.innerHTML =
+                `<strong>Fim</strong> · ${homeName} ${homeGoals}–${awayGoals} ${awayName}`;
+              matchController = null;
+            },
+          },
+          { seed: Date.now() % 1e9, pace: 1.45, maxEvents: 34 }
+        );
+        return result;
+      }
+
+      // API modular (console / futura ligação com match-live)
+      Object.assign(window, {
+        FIELD_CORNERS,
+        PENALTY_AREAS,
+        mapToField,
+        getPerspectiveScale,
+        clampToPenaltyArea: (u, v, team) =>
+          G.clampToPenaltyArea(u, v, team, PENALTY_AREAS, FIELD_CORNERS),
+        clampToSixYardArea: (u, v, team) =>
+          G.clampToSixYardArea(u, v, team, SIX_YARD_AREAS, FIELD_CORNERS),
+        FIELD_SPOTS,
+        HALFWAY_LINE,
+        renderEntity,
+        moveEntity,
+        moveBall,
+        renderFormation,
+        updateRenderOrder,
+        setupKickoff,
+        getMatchEntities: () => entities,
+        refreshMatchViewLive: () => refreshFromLive({ resetPitch: true }),
+        MatchViewDemo: matchApi,
+        runFullMatchDemo,
+      });
+
+      document.getElementById("toggleGuides").addEventListener("change", (e) => {
+        document.body.classList.toggle("show-guides", e.target.checked);
+      });
+      document.getElementById("btnKickoff").addEventListener("click", () => {
+        refreshFromLive({ resetPitch: true });
+      });
+      document.getElementById("btnRefreshLive").addEventListener("click", () => {
+        refreshFromLive({ resetPitch: true });
+      });
+      document.getElementById("btnFullMatch").addEventListener("click", () => {
+        runFullMatchDemo();
+      });
+      document.getElementById("btnStopMatch").addEventListener("click", () => {
+        matchRunning = false;
+        matchApi.setMatchRunning(false);
+        liveStatusEl.textContent = "partida interrompida";
+      });
+      document.querySelectorAll("[data-play]").forEach((btn) => {
+        btn.addEventListener("click", () => runPlay(btn.dataset.play));
+      });
+
+      applyScoreboardLayout();
+      paintAreaGuides();
+      refreshFromLive({ resetPitch: true });
+
+      // Mantém placar/cronômetro alinhados se a partida rodar noutra aba
+      setInterval(() => {
+        if (playingAnim || livePollPaused || matchRunning) return;
+        refreshFromLive({ resetPitch: false });
+      }, 2000);
+
+      new ResizeObserver(() => {
+        applyScoreboardLayout();
+        relayout();
+      }).observe(stage);
+    })();
+
+  </script>
+</body>
+</html>

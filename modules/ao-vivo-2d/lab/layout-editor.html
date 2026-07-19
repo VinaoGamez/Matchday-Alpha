@@ -1,0 +1,1957 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Matchday — Editor de Layout (Visão de Jogada)</title>
+  <style>
+    :root {
+      --a: #63d9ff;
+      --b: #b6ff38;
+      --panel: #0b1a22;
+      --line: #28505b;
+      --text: #cfe3e6;
+      --muted: #9ebfc2;
+      --accent: #b6ff38;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #070f14;
+      color: #edf8f5;
+      font-family: "DM Sans", "Segoe UI", sans-serif;
+    }
+    .app {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 14px;
+      padding: 14px;
+      min-height: 100vh;
+    }
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+    }
+    .main { display: grid; gap: 10px; align-content: start; }
+    .note {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--text);
+    }
+    .note strong { color: var(--accent); }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .toolbar label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toolbar button, .side button, .side .file-btn {
+      appearance: none;
+      border: 1px solid #3a6b77;
+      background: #12303a;
+      color: #edf8f5;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font: 600 12px "DM Sans", sans-serif;
+      cursor: pointer;
+    }
+    .toolbar button:hover, .side button:hover, .side .file-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .toolbar button.primary {
+      background: #1a3d28;
+      border-color: #4a8a3a;
+      color: var(--accent);
+    }
+
+    .stage-wrap {
+      border: 1px solid #3a6b77;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 16px 40px #00000088;
+    }
+    .stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1672 / 940;
+      overflow: hidden;
+      touch-action: none;
+      user-select: none;
+    }
+    .stage img.stadium {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Camadas transparentes NÃO podem capturar clique — só os handles/entidades */
+    .layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .layer-field { z-index: 6; }
+    .layer-penalty { z-index: 5; }
+    .layer-players { z-index: 4; }
+    .layer-scoreboard { z-index: 7; }
+
+    .pitch-poly {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      fill: #ffe81422;
+      stroke: #ffef3a;
+      stroke-width: 2;
+    }
+    .pitch-poly svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: none;
+    }
+    .penalty-poly polygon.pen-home {
+      fill: #63d9ff33;
+      stroke: #63d9ff;
+      stroke-width: 2.5;
+    }
+    .penalty-poly polygon.pen-away {
+      fill: #b6ff3833;
+      stroke: #b6ff38;
+      stroke-width: 2.5;
+    }
+    .penalty-poly polygon.six-yard {
+      fill: #ffef3a22;
+      stroke: #ffef3a;
+      stroke-width: 1.5;
+      stroke-dasharray: 6 4;
+    }
+    .penalty-poly .halfway-line {
+      stroke: #ff2a2a;
+      stroke-width: 3;
+      fill: none;
+    }
+    /* Alças em + (cruz) — ajuste fino sem cobrir a linha */
+    .handle,
+    .spot {
+      --arm: #ffef3a;
+      --thick: 2px;
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      margin: -8px 0 0 -8px;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+      cursor: grab;
+      z-index: 30;
+      pointer-events: auto;
+      touch-action: none;
+    }
+    .handle:active,
+    .spot:active { cursor: grabbing; }
+    .handle::before,
+    .handle::after,
+    .spot::before,
+    .spot::after {
+      content: "";
+      position: absolute;
+      background: var(--arm);
+      box-shadow: 0 0 0 1px #000a;
+      pointer-events: none;
+    }
+    .handle::before,
+    .spot::before {
+      left: 0;
+      right: 0;
+      top: 50%;
+      height: var(--thick);
+      transform: translateY(-50%);
+    }
+    .handle::after,
+    .spot::after {
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: var(--thick);
+      transform: translateX(-50%);
+    }
+    .handle[data-corner="farLeft"],
+    .handle[data-corner="nearLeft"] { --arm: var(--a); }
+    .handle[data-corner="farRight"],
+    .handle[data-corner="nearRight"] { --arm: var(--b); }
+    .handle.pen {
+      width: 14px;
+      height: 14px;
+      margin: -7px 0 0 -7px;
+      z-index: 28;
+    }
+    .handle.pen.home { --arm: #63d9ff; }
+    .handle.pen.away { --arm: #b6ff38; }
+    .handle.six {
+      width: 14px;
+      height: 14px;
+      margin: -7px 0 0 -7px;
+      z-index: 29;
+      --arm: #ffef3a;
+    }
+    .handle.halfway {
+      --arm: #ff2a2a;
+      z-index: 32;
+    }
+    .spot {
+      width: 10px;
+      height: 10px;
+      margin: -5px 0 0 -5px;
+      z-index: 31;
+      --thick: 1.5px;
+    }
+    .spot.penalty-home { --arm: #63d9ff; }
+    .spot.penalty-away { --arm: #b6ff38; }
+    .spot.corner { --arm: #ff9f1a; }
+    .handle .tag,
+    .spot .tag {
+      position: absolute;
+      left: 50%;
+      top: -16px;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font: 700 8px/1 "DM Sans", sans-serif;
+      color: #fff;
+      background: #000c;
+      padding: 2px 3px;
+      border-radius: 2px;
+      pointer-events: none;
+    }
+
+    .sb-box {
+      position: absolute;
+      border: 2px dashed #ff4bff;
+      background: #ff4bff18;
+      cursor: move;
+      z-index: 15;
+      pointer-events: auto;
+      touch-action: none;
+    }
+    .sb-box .resize {
+      position: absolute;
+      right: -6px;
+      bottom: -6px;
+      width: 14px;
+      height: 14px;
+      background: #ff4bff;
+      border: 2px solid #fff;
+      border-radius: 3px;
+      cursor: nwse-resize;
+    }
+    /* Partes do placar — cada uma arrastável/redimensionável */
+    .sb-part {
+      position: absolute;
+      border: 1.5px dashed;
+      cursor: move;
+      pointer-events: auto;
+      display: grid;
+      place-items: center;
+      z-index: 16;
+      touch-action: none;
+      box-sizing: border-box;
+    }
+    .sb-part .label {
+      font: 700 8px/1 "DM Sans", sans-serif;
+      text-shadow: 0 1px 2px #000c;
+      pointer-events: none;
+      letter-spacing: .3px;
+      text-align: center;
+      padding: 0 2px;
+    }
+    .sb-part .label.float {
+      position: absolute;
+      top: -13px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      background: #000a;
+      padding: 2px 4px;
+      border-radius: 2px;
+    }
+    .sb-part .resize {
+      position: absolute;
+      right: -5px;
+      bottom: -5px;
+      width: 11px;
+      height: 11px;
+      border: 2px solid #fff;
+      border-radius: 2px;
+      cursor: nwse-resize;
+    }
+    .sb-part.crest-home {
+      border-color: #63d9ff;
+      background: #63d9ff28;
+    }
+    .sb-part.crest-home .label { color: #9ee8ff; }
+    .sb-part.crest-home .resize { background: #63d9ff; }
+    .sb-part.crest-away {
+      border-color: #b6ff38;
+      background: #b6ff3828;
+    }
+    .sb-part.crest-away .label { color: #d4ff8a; }
+    .sb-part.crest-away .resize { background: #b6ff38; }
+    .sb-part.score-box {
+      border-color: #ffffff;
+      background: #ffffff22;
+    }
+    .sb-part.score-box .label { color: #fff; }
+    .sb-part.score-box .resize { background: #ddd; }
+    .sb-part.timer-box {
+      border-color: #7ec8ff;
+      background: #7ec8ff22;
+    }
+    .sb-part.timer-box .label { color: #b8e0ff; }
+    .sb-part.timer-box .resize { background: #7ec8ff; }
+    .sb-part.sponsor-box {
+      border-color: #ffb020;
+      background: #ffb02022;
+    }
+    .sb-part.sponsor-box .label { color: #ffd080; }
+    .sb-part.sponsor-box .resize { background: #ffb020; }
+    .sb-part.divider-line {
+      border: none;
+      background: #ffffff;
+      box-shadow: 0 0 0 1px #0008;
+      min-width: 2px;
+      padding: 0;
+    }
+    .sb-part.divider-line .label {
+      position: absolute;
+      top: 50%;
+      left: 100%;
+      transform: translate(6px, -50%);
+      color: #fff;
+      white-space: nowrap;
+    }
+    .sb-part.divider-line .resize {
+      background: #fff;
+      cursor: nwse-resize;
+      right: -6px;
+      bottom: -6px;
+      transform: none;
+    }
+    .sb-crest-preview {
+      width: 70%;
+      height: 70%;
+      border-radius: 50%;
+      border: 2px solid;
+      display: grid;
+      place-items: center;
+      font: 800 10px "Barlow Condensed", sans-serif;
+      color: #edf8f5;
+      pointer-events: none;
+    }
+    .sb-crest-preview.a {
+      background: radial-gradient(circle at 35% 30%, #2a6a82, #123843 70%);
+      border-color: var(--a);
+    }
+    .sb-crest-preview.b {
+      background: radial-gradient(circle at 35% 30%, #3a5a28, #1a2e14 70%);
+      border-color: var(--b);
+    }
+    .sb-score-preview {
+      font: 800 14px "Barlow Condensed", sans-serif;
+      color: #fff;
+      pointer-events: none;
+      text-shadow: 0 1px 4px #000c;
+    }
+    .sb-timer-preview {
+      font: 700 11px "DM Sans", sans-serif;
+      color: #c5dde0;
+      pointer-events: none;
+    }
+
+    .entity {
+      position: absolute;
+      transform: translate(-50%, -85%);
+      cursor: grab;
+      pointer-events: auto;
+      touch-action: none;
+      z-index: 10;
+    }
+    .entity:active { cursor: grabbing; }
+    .entity.is-ball { transform: translate(-50%, -50%); }
+    .entity.selected {
+      outline: 2px solid #fff;
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    .entity img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      pointer-events: none;
+    }
+    .entity .badge {
+      position: absolute;
+      left: 50%;
+      top: calc(100% - 1px);
+      transform: translateX(-50%);
+      background: #000c;
+      color: #fff;
+      font: 700 8px/1.2 "DM Sans", sans-serif;
+      padding: 1px 3px;
+      border-radius: 2px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .entity-shadow {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(ellipse at center, #00000055 0%, #0000 70%);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 9;
+    }
+
+    .side {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .panel h2 {
+      margin: 0;
+      font: 700 13px/1.2 "DM Sans", sans-serif;
+      color: var(--accent);
+      letter-spacing: .3px;
+    }
+    .panel p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .panel .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .panel .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .panel textarea {
+      width: 100%;
+      min-height: 220px;
+      resize: vertical;
+      border: 1px solid #3a6b77;
+      border-radius: 6px;
+      background: #061018;
+      color: #d7ecef;
+      font: 11px/1.35 ui-monospace, Consolas, monospace;
+      padding: 8px;
+    }
+    .panel .hint {
+      font-size: 11px;
+      color: #7ea0a6;
+    }
+    .sel-title {
+      font: 700 12px "DM Sans", sans-serif;
+      color: #edf8f5;
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 70px 1fr;
+      gap: 4px 8px;
+      font-size: 12px;
+      color: var(--text);
+      align-items: center;
+    }
+    .kv input[type="number"] {
+      width: 100%;
+      border: 1px solid #3a6b77;
+      border-radius: 4px;
+      background: #061018;
+      color: #edf8f5;
+      padding: 4px 6px;
+      font: 12px ui-monospace, Consolas, monospace;
+    }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      background: #1a3d28;
+      border: 1px solid #4a8a3a;
+      color: var(--accent);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font: 600 13px "DM Sans", sans-serif;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .2s;
+      z-index: 100;
+    }
+    .toast.show { opacity: 1; }
+    .hidden { display: none !important; }
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="main">
+      <div class="note">
+        <strong>Editor de layout</strong> — placar separado em
+        <strong>ESCUDO A/B · PLACAR · TIMER · LINHA · PATROCÍNIO</strong>.
+        Ao terminar: <strong>Copiar JSON</strong> e cole no chat.
+      </div>
+
+      <div class="toolbar">
+        <label><input type="checkbox" id="togField" checked> cantos do campo</label>
+        <label><input type="checkbox" id="togPenalty" checked> grande área</label>
+        <label><input type="checkbox" id="togSix" checked> pequena área (GK)</label>
+        <label><input type="checkbox" id="togHalfway" checked> meio-campo</label>
+        <label><input type="checkbox" id="togSpots" checked> pênaltis + escanteios</label>
+        <label><input type="checkbox" id="togPlayers" checked> jogadores + bola</label>
+        <label><input type="checkbox" id="togScoreboard" checked> placar</label>
+        <button type="button" id="btnReset">resetar</button>
+        <button type="button" id="btnKickoff">formação 4-3-3</button>
+        <a href="preview.html" style="color:#63d9ff;font-size:12px;margin-left:auto">abrir preview →</a>
+      </div>
+
+      <div class="stage-wrap">
+        <div class="stage" id="stage">
+          <img class="stadium" src="stadium.png" alt="Estádio">
+
+          <div class="layer layer-field" id="layerField">
+            <div class="pitch-poly">
+              <svg viewBox="0 0 1672 940" preserveAspectRatio="none">
+                <polygon id="pitchPoly" points=""></polygon>
+              </svg>
+            </div>
+            <div class="handle" data-corner="farLeft"><span class="tag">farL</span></div>
+            <div class="handle" data-corner="farRight"><span class="tag">farR</span></div>
+            <div class="handle" data-corner="nearLeft"><span class="tag">nearL</span></div>
+            <div class="handle" data-corner="nearRight"><span class="tag">nearR</span></div>
+          </div>
+
+          <div class="layer layer-penalty" id="layerPenalty">
+            <div class="pitch-poly penalty-poly">
+              <svg viewBox="0 0 1672 940" preserveAspectRatio="none">
+                <polygon id="sixHome" class="six-yard" points=""></polygon>
+                <polygon id="sixAway" class="six-yard" points=""></polygon>
+                <polygon id="penHome" class="pen-home" points=""></polygon>
+                <polygon id="penAway" class="pen-away" points=""></polygon>
+                <line id="halfwayLine" class="halfway-line" x1="0" y1="0" x2="0" y2="0"></line>
+              </svg>
+            </div>
+            <div id="penaltyHandles"></div>
+            <div id="sixHandles"></div>
+            <div id="halfwayHandles"></div>
+            <div id="spotHandles"></div>
+          </div>
+
+          <div class="layer layer-players" id="layerPlayers"></div>
+
+          <div class="layer layer-scoreboard" id="layerScoreboard">
+            <div class="sb-box" id="sbBox">
+              <div class="sb-part crest-home" data-sb-part="crestHome">
+                <span class="label float">ESCUDO A</span>
+                <i class="sb-crest-preview a">AM</i>
+                <div class="resize" data-resize="crestHome"></div>
+              </div>
+              <div class="sb-part crest-away" data-sb-part="crestAway">
+                <span class="label float">ESCUDO B</span>
+                <i class="sb-crest-preview b">EC</i>
+                <div class="resize" data-resize="crestAway"></div>
+              </div>
+              <div class="sb-part score-box" data-sb-part="score">
+                <span class="label float">PLACAR</span>
+                <div class="sb-score-preview">1 — 0</div>
+                <div class="resize" data-resize="score"></div>
+              </div>
+              <div class="sb-part timer-box" data-sb-part="timer">
+                <span class="label float">TIMER</span>
+                <div class="sb-timer-preview">34'</div>
+                <div class="resize" data-resize="timer"></div>
+              </div>
+              <div class="sb-part divider-line" data-sb-part="divider" title="Linha vertical — arraste: comprimento (↓) e espessura (→)">
+                <span class="label">LINHA</span>
+                <div class="resize" data-resize="divider"></div>
+              </div>
+              <div class="sb-part sponsor-box" data-sb-part="sponsor">
+                <span class="label float">PATROCÍNIO</span>
+                <div class="resize" data-resize="sponsor"></div>
+              </div>
+              <div class="resize" id="sbResize"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="panel">
+        <h2>Seleção</h2>
+        <div class="sel-title" id="selTitle">Nada selecionado</div>
+        <div class="kv" id="selFields"></div>
+        <p class="hint">Placar: ESCUDO A/B · PLACAR · TIMER · LINHA · PATROCÍNIO. Arraste/redimensione. Setas = 1px.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Exportar / importar</h2>
+        <p>Cole este JSON no chat para eu recalibrar o preview.</p>
+        <div class="actions">
+          <button type="button" class="primary" id="btnCopy">Copiar JSON</button>
+          <button type="button" id="btnDownload">Baixar .json</button>
+          <label class="file-btn">Importar<input type="file" id="fileImport" accept="application/json,.json"></label>
+        </div>
+        <textarea id="exportOut" readonly spellcheck="false"></textarea>
+      </div>
+
+      <div class="panel">
+        <h2>Atalhos</h2>
+        <p>
+          Arrastar = mover · canto inferior direito do placar = redimensionar<br>
+          Auto-salva no navegador a cada alteração.
+        </p>
+      </div>
+    </aside>
+  </div>
+  <div class="toast" id="toast">Copiado</div>
+
+  <script src="field-geometry.js"></script>
+  <script>
+    (() => {
+      "use strict";
+
+      const G = window.MatchViewGeometry;
+      const BASE_W = G.BASE_W;
+      const BASE_H = G.BASE_H;
+      const PLAYER_BASE = 40;
+      const BALL_BASE = 15;
+      const GK_SCALE = 1.08;
+      const STORAGE_KEY = "matchday-matchview-layout-v15";
+
+      const SB_PARTS = ["crestHome", "crestAway", "score", "timer", "divider", "sponsor"];
+      const SQUARE_PARTS = new Set(G.SQUARE_SB_PARTS || ["crestHome", "crestAway", "sponsor"]);
+      const SB_PART_LABELS = {
+        crestHome: "Escudo A (tamanho + alinhamento sync)",
+        crestAway: "Escudo B (tamanho + alinhamento sync)",
+        score: "Placar",
+        timer: "Timer",
+        divider: "Linha vertical",
+        sponsor: "Patrocínio (quadrado)",
+      };
+
+      const PEN_CORNER_KEYS = G.AREA_CORNER_KEYS;
+      const SPOT_KEYS = [
+        "penaltyHome",
+        "penaltyAway",
+        "cornerHomeFar",
+        "cornerHomeNear",
+        "cornerAwayFar",
+        "cornerAwayNear",
+      ];
+      const SPOT_LABELS = {
+        penaltyHome: "pênalti A",
+        penaltyAway: "pênalti B",
+        cornerHomeFar: "escanteio A longe",
+        cornerHomeNear: "escanteio A perto",
+        cornerAwayFar: "escanteio B longe",
+        cornerAwayNear: "escanteio B perto",
+      };
+
+      function spotClass(key) {
+        if (key === "penaltyHome") return "penalty-home";
+        if (key === "penaltyAway") return "penalty-away";
+        if (String(key).startsWith("corner")) return "corner";
+        return "";
+      }
+
+      function mergeSpots(raw, fallback) {
+        const out = structuredClone(fallback);
+        if (!raw) return out;
+        for (const key of SPOT_KEYS) {
+          if (raw[key]) out[key] = { ...out[key], ...raw[key] };
+        }
+        return out;
+      }
+
+      const DEFAULT = {
+        fieldCorners: structuredClone(G.FIELD_CORNERS),
+        penaltyAreas: {
+          home: G.cloneQuad(G.PENALTY_AREAS.home),
+          away: G.cloneQuad(G.PENALTY_AREAS.away),
+        },
+        sixYardAreas: {
+          home: G.cloneQuad(G.SIX_YARD_AREAS.home),
+          away: G.cloneQuad(G.SIX_YARD_AREAS.away),
+        },
+        halfwayLine: {
+          far: { ...G.HALFWAY_LINE.far },
+          near: { ...G.HALFWAY_LINE.near },
+        },
+        spots: structuredClone(G.FIELD_SPOTS),
+        scoreboard: G.normalizeScoreboard(G.SCOREBOARD),
+        homeFormation: structuredClone(G.HOME_FORMATION),
+        /* Centro visual do gramado = bola */
+        ball: { ...G.BALL_KICKOFF },
+      };
+
+      const ASSETS = {
+        home: { outfield: "tokens/home-outfield.png", gk: "tokens/home-gk.png" },
+        away: { outfield: "tokens/away-outfield.png", gk: "tokens/away-gk.png" },
+        ball: "tokens/ball.png",
+      };
+
+      const NUMS = { GK: 1, DF: [2, 3, 4, 5], MF: [6, 8, 10], FW: [7, 9, 11] };
+
+      const stage = document.getElementById("stage");
+      const layerPlayers = document.getElementById("layerPlayers");
+      const pitchPoly = document.getElementById("pitchPoly");
+      const sbBox = document.getElementById("sbBox");
+      const exportOut = document.getElementById("exportOut");
+      const selTitle = document.getElementById("selTitle");
+      const selFields = document.getElementById("selFields");
+      const toast = document.getElementById("toast");
+
+      let state = structuredClone(DEFAULT);
+      /** @type {{ type: string, key?: string, id?: string } | null} */
+      let selection = null;
+      /** @type {Array<any>} */
+      let players = [];
+      let view = { w: BASE_W, h: BASE_H, sx: 1, sy: 1 };
+
+      const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
+      const round = (n, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+      const roundUV = (n) => round(n, 4);
+
+      function toastMsg(msg) {
+        toast.textContent = msg;
+        toast.classList.add("show");
+        clearTimeout(toastMsg._t);
+        toastMsg._t = setTimeout(() => toast.classList.remove("show"), 1400);
+      }
+
+      function updateView() {
+        const r = stage.getBoundingClientRect();
+        view = { w: r.width, h: r.height, sx: r.width / BASE_W, sy: r.height / BASE_H };
+      }
+
+      function mapToField(u, v) {
+        return G.mapToField(u, v, state.fieldCorners);
+      }
+
+      function screenToUV(sx, sy) {
+        return G.screenToUV(sx / view.sx, sy / view.sy, state.fieldCorners);
+      }
+
+      function getPerspectiveScale(v) {
+        return G.getPerspectiveScale(v);
+      }
+
+      function clampPlayerUV(entity, u, v) {
+        if (entity.kind === "player" && entity.role === "GK") {
+          return G.clampToSixYardArea(
+            u,
+            v,
+            entity.team,
+            state.sixYardAreas,
+            state.fieldCorners
+          );
+        }
+        return { u: clamp(u, 0, 1), v: clamp(v, 0, 1) };
+      }
+
+      function roundPt(p) {
+        return { x: round(p.x), y: round(p.y) };
+      }
+
+      function exportQuad(q) {
+        return {
+          farGoal: roundPt(q.farGoal),
+          farEdge: roundPt(q.farEdge),
+          nearEdge: roundPt(q.nearEdge),
+          nearGoal: roundPt(q.nearGoal),
+        };
+      }
+
+      function ingestAreas(raw, fallback) {
+        return {
+          home: G.normalizeAreaQuad(raw?.home, state.fieldCorners) || G.cloneQuad(fallback.home),
+          away: G.normalizeAreaQuad(raw?.away, state.fieldCorners) || G.cloneQuad(fallback.away),
+        };
+      }
+
+      function buildExport() {
+        const awayFormation = state.homeFormation.map((p) => ({
+          role: p.role,
+          u: roundUV(1 - p.u),
+          v: roundUV(p.v),
+        }));
+        const payload = {
+          baseResolution: { width: BASE_W, height: BASE_H },
+          fieldCorners: {
+            farLeft:  { x: round(state.fieldCorners.farLeft.x),  y: round(state.fieldCorners.farLeft.y) },
+            farRight: { x: round(state.fieldCorners.farRight.x), y: round(state.fieldCorners.farRight.y) },
+            nearLeft: { x: round(state.fieldCorners.nearLeft.x), y: round(state.fieldCorners.nearLeft.y) },
+            nearRight:{ x: round(state.fieldCorners.nearRight.x), y: round(state.fieldCorners.nearRight.y) },
+          },
+          fieldCornersPercent: Object.fromEntries(
+            Object.entries(state.fieldCorners).map(([k, p]) => [
+              k,
+              { x: round((p.x / BASE_W) * 100, 3), y: round((p.y / BASE_H) * 100, 3) },
+            ])
+          ),
+          scoreboard: (() => {
+            const sb = state.scoreboard;
+            const part = (p) => ({
+              left: round(p.left, 2),
+              top: round(p.top, 2),
+              width: round(p.width, 2),
+              height: round(p.height, 2),
+            });
+            return {
+              left: round(sb.left, 3),
+              top: round(sb.top, 3),
+              width: round(sb.width, 3),
+              height: round(sb.height, 3),
+              crestHome: part(sb.crestHome),
+              crestAway: part(sb.crestAway),
+              score: part(sb.score),
+              timer: part(sb.timer),
+              divider: part(sb.divider),
+              sponsor: {
+                ...part(sb.sponsor),
+                rotateMs: sb.sponsor.rotateMs || 4000,
+              },
+            };
+          })(),
+          penaltyAreas: {
+            home: exportQuad(state.penaltyAreas.home),
+            away: exportQuad(state.penaltyAreas.away),
+          },
+          sixYardAreas: {
+            home: exportQuad(state.sixYardAreas.home),
+            away: exportQuad(state.sixYardAreas.away),
+          },
+          halfwayLine: {
+            far: roundPt(state.halfwayLine.far),
+            near: roundPt(state.halfwayLine.near),
+          },
+          spots: Object.fromEntries(
+            SPOT_KEYS.map((key) => [
+              key,
+              {
+                u: roundUV(state.spots[key].u),
+                v: roundUV(state.spots[key].v),
+              },
+            ])
+          ),
+          homeFormation: state.homeFormation.map((p) => ({
+            role: p.role,
+            u: roundUV(p.u),
+            v: roundUV(p.v),
+          })),
+          awayFormation,
+          ball: {
+            u: roundUV(state.ball.u),
+            v: roundUV(state.ball.v),
+            note: "Centro de campo (kickoff)",
+          },
+        };
+        return payload;
+      }
+
+      function refreshExport() {
+        exportOut.value = JSON.stringify(buildExport(), null, 2);
+      }
+
+      function persist() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (_) { /* ignore */ }
+        refreshExport();
+      }
+
+      function loadPersisted() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return;
+          const data = JSON.parse(raw);
+          if (data.fieldCorners) state.fieldCorners = data.fieldCorners;
+          if (data.penaltyAreas) state.penaltyAreas = ingestAreas(data.penaltyAreas, DEFAULT.penaltyAreas);
+          if (data.sixYardAreas) state.sixYardAreas = ingestAreas(data.sixYardAreas, DEFAULT.sixYardAreas);
+          if (data.halfwayLine) {
+            state.halfwayLine = {
+              far: { ...DEFAULT.halfwayLine.far, ...data.halfwayLine.far },
+              near: { ...DEFAULT.halfwayLine.near, ...data.halfwayLine.near },
+            };
+          }
+          if (data.spots) {
+            state.spots = mergeSpots(data.spots, DEFAULT.spots);
+            // legado: centro era marcador → vira bola
+            if (data.spots.center && !data.ball) {
+              state.ball = { u: data.spots.center.u, v: data.spots.center.v };
+            }
+          }
+          if (data.scoreboard) {
+            state.scoreboard = G.normalizeScoreboard(data.scoreboard, DEFAULT.scoreboard);
+          }
+          if (data.homeFormation) state.homeFormation = data.homeFormation;
+          if (data.ball) state.ball = { u: data.ball.u, v: data.ball.v };
+        } catch (_) { /* ignore */ }
+      }
+
+      function applyLayersVisibility() {
+        const showPen = document.getElementById("togPenalty").checked;
+        const showSix = document.getElementById("togSix").checked;
+        const showHalfway = document.getElementById("togHalfway").checked;
+        const showSpots = document.getElementById("togSpots").checked;
+        document.getElementById("layerField").classList.toggle(
+          "hidden",
+          !document.getElementById("togField").checked
+        );
+        document.getElementById("layerPenalty").classList.toggle(
+          "hidden",
+          !showPen && !showSix && !showHalfway && !showSpots
+        );
+        document.getElementById("penHome").classList.toggle("hidden", !showPen);
+        document.getElementById("penAway").classList.toggle("hidden", !showPen);
+        document.getElementById("penaltyHandles").classList.toggle("hidden", !showPen);
+        document.getElementById("sixHome").classList.toggle("hidden", !showSix);
+        document.getElementById("sixAway").classList.toggle("hidden", !showSix);
+        document.getElementById("sixHandles").classList.toggle("hidden", !showSix);
+        document.getElementById("halfwayLine").classList.toggle("hidden", !showHalfway);
+        document.getElementById("halfwayHandles").classList.toggle("hidden", !showHalfway);
+        document.getElementById("spotHandles").classList.toggle("hidden", !showSpots);
+        document.getElementById("layerPlayers").classList.toggle(
+          "hidden",
+          !document.getElementById("togPlayers").checked
+        );
+        document.getElementById("layerScoreboard").classList.toggle(
+          "hidden",
+          !document.getElementById("togScoreboard").checked
+        );
+      }
+
+      function renderCorners() {
+        const c = state.fieldCorners;
+        pitchPoly.setAttribute(
+          "points",
+          `${c.farLeft.x},${c.farLeft.y} ${c.farRight.x},${c.farRight.y} ${c.nearRight.x},${c.nearRight.y} ${c.nearLeft.x},${c.nearLeft.y}`
+        );
+        for (const el of document.querySelectorAll(".handle[data-corner]")) {
+          const key = el.dataset.corner;
+          const p = c[key];
+          el.style.left = `${(p.x / BASE_W) * 100}%`;
+          el.style.top = `${(p.y / BASE_H) * 100}%`;
+        }
+      }
+
+      function makeAreaHandles(root, kind, className, onDown, onSelect) {
+        if (root.dataset.ready === "1") return;
+        root.dataset.ready = "1";
+        for (const side of ["home", "away"]) {
+          for (const key of PEN_CORNER_KEYS) {
+            const el = document.createElement("div");
+            el.className = `handle ${className} ${side}`;
+            el.dataset.areaKind = kind;
+            el.dataset.penSide = side;
+            el.dataset.penCorner = key;
+            const prefix = kind === "six" ? "6" : side === "home" ? "A" : "B";
+            el.innerHTML = `<span class="tag">${prefix}-${key}</span>`;
+            el.addEventListener("pointerdown", (ev) => onDown(ev, side, key));
+            el.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              onSelect(side, key);
+            });
+            root.appendChild(el);
+          }
+        }
+      }
+
+      function ensureAreaHandles() {
+        makeAreaHandles(
+          document.getElementById("penaltyHandles"),
+          "penalty",
+          "pen",
+          (ev, side, key) => startDragArea(ev, "penalty", side, key),
+          (side, key) => select({ type: "penalty", side, key })
+        );
+        makeAreaHandles(
+          document.getElementById("sixHandles"),
+          "six",
+          "six",
+          (ev, side, key) => startDragArea(ev, "six", side, key),
+          (side, key) => select({ type: "six", side, key })
+        );
+
+        const hwRoot = document.getElementById("halfwayHandles");
+        if (hwRoot.dataset.ready !== "1") {
+          hwRoot.dataset.ready = "1";
+          for (const key of ["far", "near"]) {
+            const el = document.createElement("div");
+            el.className = "handle halfway";
+            el.dataset.halfway = key;
+            el.innerHTML = `<span class="tag">meio-${key}</span>`;
+            el.addEventListener("pointerdown", (ev) => startDragHalfway(ev, key));
+            el.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              select({ type: "halfway", key });
+            });
+            hwRoot.appendChild(el);
+          }
+        }
+
+        const spotsRoot = document.getElementById("spotHandles");
+        for (const key of SPOT_KEYS) {
+          let el = spotsRoot.querySelector(`[data-spot="${key}"]`);
+          if (el) continue;
+          el = document.createElement("div");
+          el.className = `spot ${spotClass(key)}`.trim();
+          el.dataset.spot = key;
+          el.innerHTML = `<span class="tag">${SPOT_LABELS[key]}</span>`;
+          el.addEventListener("pointerdown", (ev) => startDragSpot(ev, key));
+          el.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            select({ type: "spot", key });
+          });
+          spotsRoot.appendChild(el);
+        }
+      }
+
+      function placeAreaHandles(selector, areas) {
+        for (const el of document.querySelectorAll(selector)) {
+          const side = el.dataset.penSide;
+          const key = el.dataset.penCorner;
+          const p = areas[side][key];
+          el.style.left = `${(p.x / BASE_W) * 100}%`;
+          el.style.top = `${(p.y / BASE_H) * 100}%`;
+        }
+      }
+
+      function renderPenaltyAreas() {
+        ensureAreaHandles();
+        document.getElementById("penHome").setAttribute(
+          "points",
+          G.areaPointsAttr(state.penaltyAreas.home)
+        );
+        document.getElementById("penAway").setAttribute(
+          "points",
+          G.areaPointsAttr(state.penaltyAreas.away)
+        );
+        document.getElementById("sixHome").setAttribute(
+          "points",
+          G.areaPointsAttr(state.sixYardAreas.home)
+        );
+        document.getElementById("sixAway").setAttribute(
+          "points",
+          G.areaPointsAttr(state.sixYardAreas.away)
+        );
+
+        const hw = state.halfwayLine;
+        const line = document.getElementById("halfwayLine");
+        line.setAttribute("x1", String(hw.far.x));
+        line.setAttribute("y1", String(hw.far.y));
+        line.setAttribute("x2", String(hw.near.x));
+        line.setAttribute("y2", String(hw.near.y));
+
+        placeAreaHandles(".handle.pen", state.penaltyAreas);
+        placeAreaHandles(".handle.six", state.sixYardAreas);
+
+        for (const el of document.querySelectorAll(".handle.halfway")) {
+          const key = el.dataset.halfway;
+          const p = state.halfwayLine[key];
+          el.style.left = `${(p.x / BASE_W) * 100}%`;
+          el.style.top = `${(p.y / BASE_H) * 100}%`;
+        }
+
+        for (const el of document.querySelectorAll(".spot[data-spot]")) {
+          const key = el.dataset.spot;
+          const uv = state.spots[key] || DEFAULT.spots[key];
+          if (!uv) continue;
+          const p = mapToField(uv.u, uv.v);
+          el.style.left = `${(p.x / BASE_W) * 100}%`;
+          el.style.top = `${(p.y / BASE_H) * 100}%`;
+        }
+      }
+
+      /** Move canto de área em px-base (livre, igual aos cantos do campo). */
+      function reclampGoalkeepers() {
+        for (const p of players) {
+          if (p.kind === "player" && p.role === "GK") {
+            const c = clampPlayerUV(p, p.u, p.v);
+            p.u = c.u;
+            p.v = c.v;
+          }
+        }
+        syncFormationFromPlayers();
+      }
+
+      function applyAreaCornerPx(kind, side, key, x, y) {
+        const areas = kind === "six" ? state.sixYardAreas : state.penaltyAreas;
+        areas[side][key] = {
+          x: clamp(x, 0, BASE_W),
+          y: clamp(y, 0, BASE_H),
+        };
+        if (kind === "six") reclampGoalkeepers();
+      }
+
+      function applyHalfwayPx(key, x, y) {
+        state.halfwayLine[key] = {
+          x: clamp(x, 0, BASE_W),
+          y: clamp(y, 0, BASE_H),
+        };
+      }
+
+      function applySpot(key, u, v) {
+        state.spots[key] = { u: clamp(u, 0, 1), v: clamp(v, 0, 1) };
+        // pênaltis espelhados; escanteios são independentes (perspectiva)
+        if (key === "penaltyHome") {
+          state.spots.penaltyAway = {
+            u: 1 - state.spots.penaltyHome.u,
+            v: state.spots.penaltyHome.v,
+          };
+        } else if (key === "penaltyAway") {
+          state.spots.penaltyHome = {
+            u: 1 - state.spots.penaltyAway.u,
+            v: state.spots.penaltyAway.v,
+          };
+        }
+      }
+
+      function renderScoreboard() {
+        const sb = state.scoreboard;
+        sbBox.style.left = `${sb.left}%`;
+        sbBox.style.top = `${sb.top}%`;
+        sbBox.style.width = `${sb.width}%`;
+        sbBox.style.height = `${sb.height}%`;
+
+        for (const key of SB_PARTS) {
+          const el = document.querySelector(`[data-sb-part="${key}"]`);
+          const p = sb[key];
+          if (!el || !p) continue;
+          el.style.left = `${p.left}%`;
+          el.style.top = `${p.top}%`;
+          el.style.width = `${p.width}%`;
+          el.style.height = `${p.height}%`;
+        }
+      }
+
+      function rebuildPlayers() {
+        layerPlayers.innerHTML = "";
+        players = [];
+        const counters = { DF: 0, MF: 0, FW: 0 };
+
+        const addPlayer = (team, slot, idx) => {
+          let num = slot.role === "GK" ? 1 : (NUMS[slot.role] || [])[counters[slot.role] || 0];
+          if (slot.role !== "GK") counters[slot.role] = (counters[slot.role] || 0) + 1;
+          const id = `${team}-${idx}`;
+          const shadow = document.createElement("div");
+          shadow.className = "entity-shadow";
+          const el = document.createElement("div");
+          el.className = "entity";
+          el.dataset.id = id;
+          const img = document.createElement("img");
+          img.src = slot.role === "GK" ? ASSETS[team].gk : ASSETS[team].outfield;
+          img.alt = "";
+          const badge = document.createElement("div");
+          badge.className = "badge";
+          badge.textContent = `${team === "home" ? "A" : "B"} ${num} ${slot.role}`;
+          el.append(img, badge);
+          layerPlayers.append(shadow, el);
+          const entity = {
+            id,
+            kind: "player",
+            team,
+            role: slot.role,
+            idx,
+            u: slot.u,
+            v: slot.v,
+            num,
+            el,
+            shadow,
+          };
+          players.push(entity);
+          el.addEventListener("pointerdown", (ev) => startDragEntity(ev, entity));
+          el.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            select({ type: "player", id });
+          });
+        };
+
+        state.homeFormation.forEach((slot, i) => addPlayer("home", slot, i));
+        counters.DF = counters.MF = counters.FW = 0;
+        state.homeFormation.forEach((slot, i) => {
+          addPlayer("away", { role: slot.role, u: 1 - slot.u, v: slot.v }, i);
+        });
+
+        const ballShadow = document.createElement("div");
+        ballShadow.className = "entity-shadow is-ball";
+        const ballEl = document.createElement("div");
+        ballEl.className = "entity is-ball";
+        ballEl.dataset.id = "ball";
+        const ballImg = document.createElement("img");
+        ballImg.src = ASSETS.ball;
+        ballImg.alt = "Bola";
+        const ballBadge = document.createElement("div");
+        ballBadge.className = "badge";
+        ballBadge.textContent = "BOLA";
+        ballEl.append(ballImg, ballBadge);
+        layerPlayers.append(ballShadow, ballEl);
+        const ball = {
+          id: "ball",
+          kind: "ball",
+          u: state.ball.u,
+          v: state.ball.v,
+          el: ballEl,
+          shadow: ballShadow,
+        };
+        players.push(ball);
+        ballEl.addEventListener("pointerdown", (ev) => startDragEntity(ev, ball));
+        ballEl.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          select({ type: "ball" });
+        });
+
+        renderPlayers();
+      }
+
+      function syncFormationFromPlayers() {
+        for (const p of players) {
+          if (p.kind === "ball") {
+            state.ball = { u: p.u, v: p.v };
+            continue;
+          }
+          if (p.team === "home") {
+            state.homeFormation[p.idx] = { role: p.role, u: p.u, v: p.v };
+          }
+        }
+        // away is mirrored from home in export; while editing away, write back mirrored
+        for (const p of players) {
+          if (p.kind !== "player" || p.team !== "away") continue;
+          const home = state.homeFormation[p.idx];
+          if (!home) continue;
+          // Keep home as source of truth unless user dragged away — then update home mirror
+          // Actually: if user moves away player, store absolute away and derive home? Spec says away = mirror.
+          // For editor flexibility, moving away updates home as mirror of away.
+          state.homeFormation[p.idx] = {
+            role: p.role,
+            u: clamp(1 - p.u, 0, 1),
+            v: p.v,
+          };
+        }
+      }
+
+      function renderPlayers() {
+        const sorted = players.slice().sort((a, b) => {
+          const ay = mapToField(a.u, a.v).y;
+          const by = mapToField(b.u, b.v).y;
+          return ay - by;
+        });
+        sorted.forEach((p, i) => {
+          const z = 10 + i;
+          p.shadow.style.zIndex = String(z);
+          p.el.style.zIndex = String(z + 1);
+        });
+
+        for (const p of players) {
+          const mapped = mapToField(p.u, p.v);
+          const persp = getPerspectiveScale(p.v);
+          const base = p.kind === "ball" ? BALL_BASE : (p.role === "GK" ? PLAYER_BASE * GK_SCALE : PLAYER_BASE);
+          const size = base * persp * ((view.sx + view.sy) / 2);
+          const x = mapped.x * view.sx;
+          const y = mapped.y * view.sy;
+          p.el.style.left = `${x}px`;
+          p.el.style.top = `${y}px`;
+          p.el.style.width = `${size}px`;
+          p.el.style.height = `${size}px`;
+          p.el.classList.toggle("selected",
+            (selection?.type === "player" && selection.id === p.id) ||
+            (selection?.type === "ball" && p.kind === "ball")
+          );
+          const sw = (p.kind === "ball" ? 14 : 22) * persp * view.sx;
+          const sh = (p.kind === "ball" ? 5 : 8) * persp * view.sy;
+          p.shadow.style.left = `${x}px`;
+          p.shadow.style.top = `${y}px`;
+          p.shadow.style.width = `${sw}px`;
+          p.shadow.style.height = `${sh}px`;
+        }
+      }
+
+      function renderAll() {
+        updateView();
+        renderCorners();
+        renderPenaltyAreas();
+        renderScoreboard();
+        renderPlayers();
+        renderSelectionPanel();
+        persist();
+      }
+
+      function select(sel) {
+        selection = sel;
+        renderPlayers();
+        renderSelectionPanel();
+      }
+
+      function renderSelectionPanel() {
+        selFields.innerHTML = "";
+        if (!selection) {
+          selTitle.textContent = "Nada selecionado";
+          return;
+        }
+
+        const addNum = (label, value, onChange, step = 1) => {
+          const lab = document.createElement("label");
+          lab.textContent = label;
+          const input = document.createElement("input");
+          input.type = "number";
+          input.step = String(step);
+          input.value = String(value);
+          input.addEventListener("change", () => onChange(Number(input.value)));
+          selFields.append(lab, input);
+        };
+
+        if (selection.type === "corner") {
+          const key = selection.key;
+          const p = state.fieldCorners[key];
+          selTitle.textContent = `Canto: ${key}`;
+          addNum("x (px)", round(p.x), (v) => {
+            state.fieldCorners[key].x = clamp(v, 0, BASE_W);
+            renderAll();
+          });
+          addNum("y (px)", round(p.y), (v) => {
+            state.fieldCorners[key].y = clamp(v, 0, BASE_H);
+            renderAll();
+          });
+          return;
+        }
+
+        if (selection.type === "penalty" || selection.type === "six") {
+          const areas = selection.type === "six" ? state.sixYardAreas : state.penaltyAreas;
+          const p = areas[selection.side][selection.key];
+          selTitle.textContent = `${selection.type === "six" ? "Pequena área" : "Grande área"} ${selection.side.toUpperCase()} (${selection.key})`;
+          addNum("x (px)", round(p.x), (v) => {
+            applyAreaCornerPx(selection.type, selection.side, selection.key, v, p.y);
+            renderAll();
+          });
+          addNum("y (px)", round(p.y), (v) => {
+            applyAreaCornerPx(selection.type, selection.side, selection.key, p.x, v);
+            renderAll();
+          });
+          return;
+        }
+
+        if (selection.type === "halfway") {
+          const p = state.halfwayLine[selection.key];
+          selTitle.textContent = `Meio-campo (${selection.key})`;
+          addNum("x (px)", round(p.x), (v) => {
+            applyHalfwayPx(selection.key, v, p.y);
+            renderAll();
+          });
+          addNum("y (px)", round(p.y), (v) => {
+            applyHalfwayPx(selection.key, p.x, v);
+            renderAll();
+          });
+          return;
+        }
+
+        if (selection.type === "spot") {
+          const spot = state.spots[selection.key];
+          selTitle.textContent = `Marca: ${SPOT_LABELS[selection.key]}`;
+          addNum("u", roundUV(spot.u), (v) => {
+            applySpot(selection.key, v, spot.v);
+            renderAll();
+          }, 0.005);
+          addNum("v", roundUV(spot.v), (v) => {
+            applySpot(selection.key, spot.u, v);
+            renderAll();
+          }, 0.005);
+          return;
+        }
+
+        if (selection.type === "scoreboard") {
+          const sb = state.scoreboard;
+          selTitle.textContent = "Moldura do placar";
+          addNum("left %", sb.left, (v) => { sb.left = v; G.enforceSquareScoreboardSlots(sb); renderAll(); }, 0.1);
+          addNum("top %", sb.top, (v) => { sb.top = v; G.enforceSquareScoreboardSlots(sb); renderAll(); }, 0.1);
+          addNum("width %", sb.width, (v) => { sb.width = v; G.enforceSquareScoreboardSlots(sb); renderAll(); }, 0.1);
+          addNum("height %", sb.height, (v) => { sb.height = v; G.enforceSquareScoreboardSlots(sb); renderAll(); }, 0.1);
+          return;
+        }
+
+        if (selection.type === "sbPart") {
+          const p = state.scoreboard[selection.key];
+          selTitle.textContent = SB_PART_LABELS[selection.key] || selection.key;
+          addNum("left %", p.left, (v) => { p.left = clamp(v, 0, 98); renderAll(); }, 0.5);
+          addNum("top %", p.top, (v) => {
+            p.top = clamp(v, 0, 98);
+            if (SQUARE_PARTS.has(selection.key)) {
+              G.setSquarePartSize(state.scoreboard, p, p.width);
+              if (selection.key === "crestHome" || selection.key === "crestAway") {
+                G.enforceSquareScoreboardSlots(state.scoreboard, selection.key);
+              }
+            }
+            renderAll();
+          }, 0.5);
+          if (selection.key === "divider") {
+            addNum("comprimento %", p.height, (v) => { p.height = clamp(v, 4, 100 - p.top); renderAll(); }, 0.5);
+            addNum("espessura %", p.width, (v) => { p.width = clamp(v, 0.4, 10); renderAll(); }, 0.25);
+          } else if (SQUARE_PARTS.has(selection.key)) {
+            addNum("tamanho % (quadrado)", p.width, (v) => {
+              G.setSquarePartSize(state.scoreboard, p, v);
+              if (selection.key === "crestHome" || selection.key === "crestAway") {
+                G.enforceSquareScoreboardSlots(state.scoreboard, selection.key);
+              }
+              renderAll();
+            }, 0.5);
+            if (selection.key === "sponsor") {
+              addNum("rotateMs", p.rotateMs || 4000, (v) => { p.rotateMs = Math.max(1000, v); persist(); }, 500);
+            }
+          } else {
+            addNum("width %", p.width, (v) => { p.width = clamp(v, 4, 100 - p.left); renderAll(); }, 0.5);
+            addNum("height %", p.height, (v) => { p.height = clamp(v, 4, 100 - p.top); renderAll(); }, 0.5);
+          }
+          return;
+        }
+
+        if (selection.type === "ball") {
+          const b = players.find((p) => p.kind === "ball");
+          selTitle.textContent = "Bola";
+          addNum("u", roundUV(b.u), (v) => { b.u = clamp(v, 0, 1); syncFormationFromPlayers(); renderAll(); }, 0.01);
+          addNum("v", roundUV(b.v), (v) => { b.v = clamp(v, 0, 1); syncFormationFromPlayers(); renderAll(); }, 0.01);
+          return;
+        }
+
+        if (selection.type === "player") {
+          const p = players.find((x) => x.id === selection.id);
+          if (!p) return;
+          selTitle.textContent = `Jogador ${p.team.toUpperCase()} #${p.num} (${p.role})`;
+          addNum("u", roundUV(p.u), (v) => {
+            p.u = clamp(v, 0, 1);
+            syncFormationFromPlayers();
+            // refresh mirrored partner
+            rebuildPlayers();
+            select({ type: "player", id: p.id });
+            renderAll();
+          }, 0.01);
+          addNum("v", roundUV(p.v), (v) => {
+            p.v = clamp(v, 0, 1);
+            syncFormationFromPlayers();
+            rebuildPlayers();
+            select({ type: "player", id: p.id });
+            renderAll();
+          }, 0.01);
+        }
+      }
+
+      /* ---------- dragging ---------- */
+      let drag = null;
+
+      function pointerPos(ev) {
+        const r = stage.getBoundingClientRect();
+        return {
+          x: clamp(ev.clientX - r.left, 0, r.width),
+          y: clamp(ev.clientY - r.top, 0, r.height),
+        };
+      }
+
+      function startDragCorner(ev, key) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        updateView();
+        select({ type: "corner", key });
+        const pos = pointerPos(ev);
+        drag = {
+          mode: "corner",
+          key,
+          ox: pos.x - state.fieldCorners[key].x * view.sx,
+          oy: pos.y - state.fieldCorners[key].y * view.sy,
+          pointerId: ev.pointerId,
+        };
+      }
+
+      function startDragEntity(ev, entity) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        updateView();
+        select(entity.kind === "ball" ? { type: "ball" } : { type: "player", id: entity.id });
+        drag = { mode: "entity", entity, pointerId: ev.pointerId };
+      }
+
+      function startDragArea(ev, kind, side, key) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        updateView();
+        select({ type: kind, side, key });
+        const areas = kind === "six" ? state.sixYardAreas : state.penaltyAreas;
+        const p = areas[side][key];
+        const pos = pointerPos(ev);
+        drag = {
+          mode: kind,
+          side,
+          key,
+          ox: pos.x - p.x * view.sx,
+          oy: pos.y - p.y * view.sy,
+          pointerId: ev.pointerId,
+        };
+      }
+
+      function startDragHalfway(ev, key) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        updateView();
+        select({ type: "halfway", key });
+        const p = state.halfwayLine[key];
+        const pos = pointerPos(ev);
+        drag = {
+          mode: "halfway",
+          key,
+          ox: pos.x - p.x * view.sx,
+          oy: pos.y - p.y * view.sy,
+          pointerId: ev.pointerId,
+        };
+      }
+
+      function startDragSpot(ev, key) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        updateView();
+        select({ type: "spot", key });
+        drag = { mode: "spot", key, pointerId: ev.pointerId };
+      }
+
+      function startDragScoreboard(ev) {
+        if (ev.target.id === "sbResize") return;
+        if (ev.target.closest(".sb-part")) return;
+        ev.preventDefault();
+        updateView();
+        select({ type: "scoreboard" });
+        const pos = pointerPos(ev);
+        drag = {
+          mode: "sb-move",
+          ox: pos.x - (state.scoreboard.left / 100) * view.w,
+          oy: pos.y - (state.scoreboard.top / 100) * view.h,
+          pointerId: ev.pointerId,
+        };
+      }
+
+      function sbFrame() {
+        return {
+          left: (state.scoreboard.left / 100) * view.w,
+          top: (state.scoreboard.top / 100) * view.h,
+          w: (state.scoreboard.width / 100) * view.w,
+          h: (state.scoreboard.height / 100) * view.h,
+        };
+      }
+
+      function startDragSbPart(ev, key) {
+        if (ev.target.dataset.resize) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        updateView();
+        select({ type: "sbPart", key });
+        const p = state.scoreboard[key];
+        const f = sbFrame();
+        const pos = pointerPos(ev);
+        drag = {
+          mode: "sb-part-move",
+          key,
+          ox: pos.x - (f.left + (p.left / 100) * f.w),
+          oy: pos.y - (f.top + (p.top / 100) * f.h),
+          pointerId: ev.pointerId,
+        };
+      }
+
+      function startResizeSbPart(ev, key) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        updateView();
+        select({ type: "sbPart", key });
+        drag = { mode: "sb-part-resize", key, pointerId: ev.pointerId };
+      }
+
+      function startResizeScoreboard(ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        updateView();
+        select({ type: "scoreboard" });
+        drag = { mode: "sb-resize", pointerId: ev.pointerId };
+      }
+
+      function onPointerMove(ev) {
+        if (!drag) return;
+        if (drag.pointerId != null && ev.pointerId !== drag.pointerId) return;
+        const pos = pointerPos(ev);
+
+        if (drag.mode === "corner") {
+          state.fieldCorners[drag.key] = {
+            x: clamp((pos.x - drag.ox) / view.sx, 0, BASE_W),
+            y: clamp((pos.y - drag.oy) / view.sy, 0, BASE_H),
+          };
+          renderCorners();
+          renderPlayers();
+          renderSelectionPanel();
+          persist();
+          return;
+        }
+
+        if (drag.mode === "penalty" || drag.mode === "six") {
+          applyAreaCornerPx(
+            drag.mode,
+            drag.side,
+            drag.key,
+            (pos.x - drag.ox) / view.sx,
+            (pos.y - drag.oy) / view.sy
+          );
+          renderPenaltyAreas();
+          renderPlayers();
+          renderSelectionPanel();
+          persist();
+          return;
+        }
+
+        if (drag.mode === "halfway") {
+          applyHalfwayPx(
+            drag.key,
+            (pos.x - drag.ox) / view.sx,
+            (pos.y - drag.oy) / view.sy
+          );
+          renderPenaltyAreas();
+          renderSelectionPanel();
+          persist();
+          return;
+        }
+
+        if (drag.mode === "spot") {
+          const uv = screenToUV(pos.x, pos.y);
+          applySpot(drag.key, uv.u, uv.v);
+          renderPenaltyAreas();
+          renderSelectionPanel();
+          persist();
+          return;
+        }
+
+        if (drag.mode === "entity") {
+          const raw = screenToUV(pos.x, pos.y);
+          const uv = clampPlayerUV(drag.entity, raw.u, raw.v);
+          drag.entity.u = uv.u;
+          drag.entity.v = uv.v;
+          syncFormationFromPlayers();
+          if (drag.entity.kind === "player" && drag.entity.role !== "GK" && drag.entity.team === "home") {
+            const away = players.find((p) => p.team === "away" && p.idx === drag.entity.idx);
+            if (away) {
+              away.u = 1 - drag.entity.u;
+              away.v = drag.entity.v;
+            }
+          } else if (drag.entity.kind === "player" && drag.entity.role !== "GK" && drag.entity.team === "away") {
+            const home = players.find((p) => p.team === "home" && p.idx === drag.entity.idx);
+            if (home) {
+              home.u = 1 - drag.entity.u;
+              home.v = drag.entity.v;
+            }
+          } else if (drag.entity.kind === "player" && drag.entity.role === "GK") {
+            const other = players.find(
+              (p) => p.kind === "player" && p.role === "GK" && p.team !== drag.entity.team
+            );
+            if (other) {
+              const mirrored = clampPlayerUV(other, 1 - drag.entity.u, drag.entity.v);
+              other.u = mirrored.u;
+              other.v = mirrored.v;
+            }
+          }
+          renderPlayers();
+          renderSelectionPanel();
+          persist();
+          return;
+        }
+
+        if (drag.mode === "sb-move") {
+          const left = ((pos.x - drag.ox) / view.w) * 100;
+          const top = ((pos.y - drag.oy) / view.h) * 100;
+          state.scoreboard.left = clamp(left, 0, 100 - state.scoreboard.width);
+          state.scoreboard.top = clamp(top, 0, 100 - state.scoreboard.height);
+          renderScoreboard();
+          renderSelectionPanel();
+          persist();
+          return;
+        }
+
+        if (drag.mode === "sb-resize") {
+          const leftPx = (state.scoreboard.left / 100) * view.w;
+          const topPx = (state.scoreboard.top / 100) * view.h;
+          state.scoreboard.width = clamp(((pos.x - leftPx) / view.w) * 100, 10, 100 - state.scoreboard.left);
+          state.scoreboard.height = clamp(((pos.y - topPx) / view.h) * 100, 4, 100 - state.scoreboard.top);
+          G.enforceSquareScoreboardSlots(state.scoreboard);
+          renderScoreboard();
+          renderSelectionPanel();
+          persist();
+          return;
+        }
+
+        if (drag.mode === "sb-part-move") {
+          const f = sbFrame();
+          const p = state.scoreboard[drag.key];
+          p.left = clamp(((pos.x - drag.ox - f.left) / f.w) * 100, 0, 100 - p.width);
+          p.top = clamp(((pos.y - drag.oy - f.top) / f.h) * 100, 0, 100 - p.height);
+          if (drag.key === "crestHome" || drag.key === "crestAway") {
+            // move vertical alinhado; horizontal continua livre
+            G.enforceSquareScoreboardSlots(state.scoreboard, drag.key);
+          } else if (SQUARE_PARTS.has(drag.key)) {
+            G.setSquarePartSize(state.scoreboard, p, p.width);
+          }
+          renderScoreboard();
+          renderSelectionPanel();
+          persist();
+          return;
+        }
+
+        if (drag.mode === "sb-part-resize") {
+          const f = sbFrame();
+          const p = state.scoreboard[drag.key];
+          const partLeft = f.left + (p.left / 100) * f.w;
+          const partTop = f.top + (p.top / 100) * f.h;
+          if (drag.key === "divider") {
+            // vertical: height = comprimento, width = espessura
+            p.height = clamp(((pos.y - partTop) / f.h) * 100, 4, 100 - p.top);
+            p.width = clamp(((pos.x - partLeft) / f.w) * 100, 0.4, 10);
+          } else if (SQUARE_PARTS.has(drag.key)) {
+            // lado em px → width/height % mantêm quadrado no telão
+            const sidePx = Math.max(pos.x - partLeft, pos.y - partTop);
+            const widthPct = clamp((sidePx / f.w) * 100, 4, 100 - p.left);
+            G.setSquarePartSize(state.scoreboard, p, widthPct);
+            if (drag.key === "crestHome" || drag.key === "crestAway") {
+              G.enforceSquareScoreboardSlots(state.scoreboard, drag.key);
+            }
+          } else {
+            p.width = clamp(((pos.x - partLeft) / f.w) * 100, 4, 100 - p.left);
+            p.height = clamp(((pos.y - partTop) / f.h) * 100, 4, 100 - p.top);
+          }
+          renderScoreboard();
+          renderSelectionPanel();
+          persist();
+        }
+      }
+
+      function endDrag(ev) {
+        if (!drag) return;
+        if (ev && drag.pointerId != null && ev.pointerId !== drag.pointerId) return;
+        drag = null;
+      }
+
+      document.addEventListener("pointermove", onPointerMove);
+      document.addEventListener("pointerup", endDrag);
+      document.addEventListener("pointercancel", endDrag);
+
+      for (const el of document.querySelectorAll(".handle[data-corner]")) {
+        el.addEventListener("pointerdown", (ev) => startDragCorner(ev, el.dataset.corner));
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          select({ type: "corner", key: el.dataset.corner });
+        });
+      }
+
+      sbBox.addEventListener("pointerdown", startDragScoreboard);
+      document.getElementById("sbResize").addEventListener("pointerdown", startResizeScoreboard);
+      for (const el of document.querySelectorAll("[data-sb-part]")) {
+        const key = el.dataset.sbPart;
+        el.addEventListener("pointerdown", (ev) => startDragSbPart(ev, key));
+        el.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          select({ type: "sbPart", key });
+        });
+      }
+      for (const el of document.querySelectorAll("[data-resize]")) {
+        el.addEventListener("pointerdown", (ev) => startResizeSbPart(ev, el.dataset.resize));
+      }
+
+      document.getElementById("togField").addEventListener("change", applyLayersVisibility);
+      document.getElementById("togPenalty").addEventListener("change", applyLayersVisibility);
+      document.getElementById("togSix").addEventListener("change", applyLayersVisibility);
+      document.getElementById("togHalfway").addEventListener("change", applyLayersVisibility);
+      document.getElementById("togSpots").addEventListener("change", applyLayersVisibility);
+      document.getElementById("togPlayers").addEventListener("change", applyLayersVisibility);
+      document.getElementById("togScoreboard").addEventListener("change", applyLayersVisibility);
+
+      document.getElementById("btnReset").addEventListener("click", () => {
+        if (!confirm("Resetar layout para o padrão?")) return;
+        state = structuredClone(DEFAULT);
+        localStorage.removeItem(STORAGE_KEY);
+        rebuildPlayers();
+        renderAll();
+        toastMsg("Resetado");
+      });
+
+      document.getElementById("btnKickoff").addEventListener("click", () => {
+        state.homeFormation = structuredClone(DEFAULT.homeFormation);
+        state.ball = { ...G.BALL_KICKOFF };
+        rebuildPlayers();
+        renderAll();
+        toastMsg("Formação 4-3-3 · bola no centro");
+      });
+
+      document.getElementById("btnCopy").addEventListener("click", async () => {
+        refreshExport();
+        try {
+          await navigator.clipboard.writeText(exportOut.value);
+          toastMsg("JSON copiado — cole no chat");
+        } catch {
+          exportOut.select();
+          document.execCommand("copy");
+          toastMsg("JSON copiado");
+        }
+      });
+
+      document.getElementById("btnDownload").addEventListener("click", () => {
+        refreshExport();
+        const blob = new Blob([exportOut.value], { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "match-view-layout.json";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+
+      document.getElementById("fileImport").addEventListener("change", async (ev) => {
+        const file = ev.target.files?.[0];
+        if (!file) return;
+        try {
+          const data = JSON.parse(await file.text());
+          if (data.fieldCorners) state.fieldCorners = data.fieldCorners;
+          if (data.penaltyAreas) state.penaltyAreas = ingestAreas(data.penaltyAreas, DEFAULT.penaltyAreas);
+          if (data.sixYardAreas) state.sixYardAreas = ingestAreas(data.sixYardAreas, DEFAULT.sixYardAreas);
+          if (data.halfwayLine) {
+            state.halfwayLine = {
+              far: { ...DEFAULT.halfwayLine.far, ...data.halfwayLine.far },
+              near: { ...DEFAULT.halfwayLine.near, ...data.halfwayLine.near },
+            };
+          }
+          if (data.spots) {
+            state.spots = mergeSpots(data.spots, DEFAULT.spots);
+            if (data.spots.center && !data.ball) {
+              state.ball = { u: data.spots.center.u, v: data.spots.center.v };
+            }
+          }
+          if (data.scoreboard) {
+            state.scoreboard = G.normalizeScoreboard(data.scoreboard, DEFAULT.scoreboard);
+          }
+          if (data.homeFormation) state.homeFormation = data.homeFormation;
+          if (data.ball) state.ball = { u: data.ball.u, v: data.ball.v };
+          rebuildPlayers();
+          renderAll();
+          toastMsg("Importado");
+        } catch {
+          toastMsg("JSON inválido");
+        }
+        ev.target.value = "";
+      });
+
+      window.addEventListener("keydown", (ev) => {
+        if (!selection || ["INPUT", "TEXTAREA"].includes(ev.target.tagName)) return;
+        const step = ev.shiftKey ? 5 : 1;
+        const map = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+        const d = map[ev.key];
+        if (!d) return;
+        ev.preventDefault();
+
+        if (selection.type === "corner") {
+          const p = state.fieldCorners[selection.key];
+          p.x = clamp(p.x + d[0] / view.sx, 0, BASE_W);
+          p.y = clamp(p.y + d[1] / view.sy, 0, BASE_H);
+          renderAll();
+          return;
+        }
+        if (selection.type === "scoreboard") {
+          state.scoreboard.left += (d[0] / view.w) * 100;
+          state.scoreboard.top += (d[1] / view.h) * 100;
+          renderAll();
+          return;
+        }
+        if (selection.type === "spot") {
+          const spot = state.spots[selection.key];
+          const mapped = mapToField(spot.u, spot.v);
+          const uv = screenToUV(mapped.x * view.sx + d[0], mapped.y * view.sy + d[1]);
+          applySpot(selection.key, uv.u, uv.v);
+          renderAll();
+          return;
+        }
+        if (selection.type === "penalty" || selection.type === "six") {
+          const areas = selection.type === "six" ? state.sixYardAreas : state.penaltyAreas;
+          const p = areas[selection.side][selection.key];
+          applyAreaCornerPx(
+            selection.type,
+            selection.side,
+            selection.key,
+            p.x + d[0] / view.sx,
+            p.y + d[1] / view.sy
+          );
+          renderAll();
+          return;
+        }
+        if (selection.type === "halfway") {
+          const p = state.halfwayLine[selection.key];
+          applyHalfwayPx(selection.key, p.x + d[0] / view.sx, p.y + d[1] / view.sy);
+          renderAll();
+          return;
+        }
+        if (selection.type === "player" || selection.type === "ball") {
+          const p = selection.type === "ball"
+            ? players.find((x) => x.kind === "ball")
+            : players.find((x) => x.id === selection.id);
+          if (!p) return;
+          const mapped = mapToField(p.u, p.v);
+          const uv = screenToUV(mapped.x * view.sx + d[0], mapped.y * view.sy + d[1]);
+          p.u = uv.u;
+          p.v = uv.v;
+          syncFormationFromPlayers();
+          if (p.kind === "player") {
+            const other = players.find((x) => x.kind === "player" && x.team !== p.team && x.idx === p.idx);
+            if (other) {
+              other.u = 1 - p.u;
+              other.v = p.v;
+            }
+          }
+          renderPlayers();
+          renderSelectionPanel();
+          persist();
+        }
+      });
+
+      new ResizeObserver(() => renderAll()).observe(stage);
+
+      loadPersisted();
+      applyLayersVisibility();
+      rebuildPlayers();
+      renderAll();
+    })();
+  </script>
+</body>
+</html>
