@@ -494,7 +494,7 @@ export function createTransfersFeature(deps) {
           const canLoan = !!p.loanListed;
           return `<tr>
           <td class="col-name">${escapeHtml(p.name)}${canLoan ? ' <small class="transfers-loan-tag">EMPR.</small>' : ''}</td>
-          <td class="col-club" title="${escapeHtml(row.clubName)}">${escapeHtml(row.clubName)}</td>
+          <td class="col-club" title="${escapeHtml(row.clubName)}"><span class="club-link" data-club="${escapeHtml(row.clubName)}" role="button" tabindex="0">${escapeHtml(row.clubName)}</span></td>
           <td>${escapeHtml(p.pos)}</td>
           <td>${escapeHtml(sideLetter(p))}</td>
           <td class="col-force">${escapeHtml(p.overall)}</td>
@@ -543,7 +543,9 @@ export function createTransfersFeature(deps) {
           const price = row.listed && row.askingPrice > 0 ? row.askingPrice : row.value;
           const onLoan = !!row.onLoan;
           const loanTag = onLoan
-            ? ` <small class="transfers-loan-tag">← ${escapeHtml(row.loanFrom || 'emp.')}</small>`
+            ? row.loanFrom
+              ? ` <small class="transfers-loan-tag">← <span class="club-link" data-club="${escapeHtml(row.loanFrom)}" role="button" tabindex="0">${escapeHtml(row.loanFrom)}</span></small>`
+              : ' <small class="transfers-loan-tag">← emp.</small>'
             : row.loanListed
               ? ' <small class="transfers-loan-tag">EMPR.</small>'
               : '';

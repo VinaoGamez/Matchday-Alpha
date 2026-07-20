@@ -1,6 +1,20 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.25',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T05:05:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Mercado',
+        items: [
+          'Na busca de jogadores, clicar no nome do clube abre a análise do time.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.20',
     date: '2026-07-20',
     publishedAt: '2026-07-20T05:00:00-03:00',

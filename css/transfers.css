@@ -418,6 +418,17 @@ body.transfers-col-resizing * {
   color: #a8c9cd;
 }
 
+.transfers-table .col-club .club-link {
+  color: inherit;
+  cursor: pointer;
+}
+
+.transfers-table .col-club .club-link:hover,
+.transfers-table .col-club .club-link:focus-visible {
+  color: #b6ff38;
+  text-decoration: underline;
+}
+
 .transfers-table .col-force {
   font: 800 15px 'Barlow Condensed', sans-serif;
   color: #b6ff38;
