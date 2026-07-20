@@ -1,0 +1,205 @@
+/* Informativo contínuo (ticker) + orçamento em destaque */
+main > header.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 56px;
+  height: auto;
+  padding: 8px 22px;
+  border-bottom: 1px solid #1e4a5c;
+  background: #07111c;
+  overflow: hidden;
+}
+
+.header-news {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.header-news-kicker {
+  flex: 0 0 auto;
+  color: #2abee9;
+  font: 700 9px 'DM Sans', sans-serif;
+  letter-spacing: 1.1px;
+}
+
+.header-news-viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  mask-image: linear-gradient(90deg, transparent 0, #000 3%, #000 97%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 3%, #000 97%, transparent 100%);
+}
+
+.header-news-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.header-news-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  max-width: none;
+  gap: 0;
+  will-change: transform;
+  animation-name: headerNewsMarquee;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-duration: 48s;
+  animation-play-state: running;
+}
+
+.header-news-track:hover {
+  animation-play-state: paused;
+}
+
+.header-news-seq {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 10px;
+  flex: 0 0 auto;
+}
+
+.header-news-item {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border: 1px solid #234650;
+  border-radius: 5px;
+  background: #0c1e28;
+  color: #d8ebe8;
+  font: 600 11px 'DM Sans', sans-serif;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.header-news-item > i {
+  flex: 0 0 auto;
+  font-style: normal;
+  color: #75cde3;
+  font: 700 8px 'DM Sans', sans-serif;
+  letter-spacing: 0.55px;
+}
+
+.header-news-item > b {
+  color: #edf8f5;
+  font-weight: 700;
+}
+
+.header-news-item > em {
+  color: #8fb0b4;
+  font-style: normal;
+  font-size: 10px;
+}
+
+.header-news-item.is-user {
+  border-color: #6a9a2a;
+  background: linear-gradient(90deg, #1a2e14, #0c1e28 55%);
+  box-shadow: inset 3px 0 0 #bbeb27;
+}
+
+.header-news-item.is-user > i {
+  color: #bbeb27;
+}
+
+.header-news-item.kind-venda .header-news-fee,
+.header-news-fee {
+  color: #bbeb27;
+  font: 700 12px 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.2px;
+}
+
+/* -50% = uma sequência completa (track = seq + seq) */
+@keyframes headerNewsMarquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Mantém o ticker, só mais lento — sem barra de rolagem manual */
+  .header-news-track {
+    animation-duration: 90s !important;
+  }
+}
+
+.header-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-date {
+  color: #8fb0b4;
+  font: 600 11px 'DM Sans', sans-serif;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+}
+
+.header-date:empty {
+  display: none;
+}
+
+.header-budget-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-budget-icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 8px #b6ff3844);
+}
+
+.header-budget-icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  /* mesmo filtro lima do orçamento em Transferências */
+  filter: invert(86%) sepia(42%) saturate(650%) hue-rotate(28deg) brightness(104%) contrast(98%);
+}
+
+.header-budget {
+  color: #bbeb27 !important;
+  font: 700 18px 'Barlow Condensed', sans-serif !important;
+  letter-spacing: 0.35px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  main > header.app-header {
+    flex-wrap: wrap;
+    padding: 8px 14px;
+    gap: 8px;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .header-budget {
+    font-size: 17px !important;
+  }
+}

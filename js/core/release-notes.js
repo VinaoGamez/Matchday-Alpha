@@ -1,6 +1,29 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-32',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T00:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Central',
+        items: [
+          'Cabeçalho vira informativo em ticker contínuo (próximo jogo, rodada, mercado e vendas).',
+          'Orçamento do clube com ícone de moedas e destaque visual.',
+          'Após fechar a janela de transferências, o botão Avançar Semana continua no Dashboard.',
+          'Card da próxima partida com escudos e nomes maiores; nomes de clubes abrem o scout.',
+        ],
+      },
+      {
+        label: 'Mercado',
+        items: [
+          'No GitHub Pages o mercado permanece desligado; no build local de testers continua ativo.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-31',
     date: '2026-07-20',
     publishedAt: '2026-07-20T00:00:00-03:00',

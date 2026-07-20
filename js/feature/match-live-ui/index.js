@@ -251,10 +251,24 @@ export function createMatchLiveUiFeature(deps) {
     awayCrest.textContent = clubCrestInitials(awayClub);
     homeCrest.classList.remove('away');
     awayCrest.classList.add('away');
-    $('#liveHomeName').textContent = homeClub.toUpperCase();
-    $('#liveAwayName').textContent = awayClub.toUpperCase();
-    $('#liveHomeName').classList.toggle('user-club-live', userHome);
-    $('#liveAwayName').classList.toggle('user-club-live', !userHome);
+    const homeNameEl = $('#liveHomeName');
+    const awayNameEl = $('#liveAwayName');
+    if (homeNameEl) {
+      homeNameEl.textContent = homeClub.toUpperCase();
+      homeNameEl.classList.add('club-link');
+      homeNameEl.dataset.club = homeClub;
+      homeNameEl.setAttribute('role', 'button');
+      homeNameEl.tabIndex = 0;
+      homeNameEl.classList.toggle('user-club-live', userHome);
+    }
+    if (awayNameEl) {
+      awayNameEl.textContent = awayClub.toUpperCase();
+      awayNameEl.classList.add('club-link');
+      awayNameEl.dataset.club = awayClub;
+      awayNameEl.setAttribute('role', 'button');
+      awayNameEl.tabIndex = 0;
+      awayNameEl.classList.toggle('user-club-live', !userHome);
+    }
     const volHome = $('#liveVolumeHomeCrest');
     const volAway = $('#liveVolumeAwayCrest');
     if (volHome) volHome.textContent = clubCrestInitials(homeClub);
@@ -634,7 +648,14 @@ export function createMatchLiveUiFeature(deps) {
       awayTactics.mentality > 65 ? 'Ofensiva' : awayTactics.mentality < 35 ? 'Defensiva' : club.mentality || 'Equilibrada';
     const styleLabel =
       awayTactics.possession > 65 ? 'Posse de bola' : awayTactics.possession < 35 ? 'Contra-ataque' : club.style || 'Misto';
-    $('#liveOpponentName').textContent = club.name;
+    const oppName = $('#liveOpponentName');
+    if (oppName) {
+      oppName.textContent = club.name;
+      oppName.classList.add('club-link');
+      oppName.dataset.club = club.name;
+      oppName.setAttribute('role', 'button');
+      oppName.tabIndex = 0;
+    }
     $('#liveOpponentMeta').textContent = `${club.formation} · ${styleLabel} · Mentalidade ${mentalityLabel} · Atualizado aos ${getMinute() || 0}'`;
     const managerStrong = $('#liveOpponentManager strong');
     if (managerStrong) managerStrong.textContent = getClubManagerName?.(club.name) || club.managerName || '—';

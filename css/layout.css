@@ -200,6 +200,70 @@ main > .view.active {
   letter-spacing: 0.5px;
   color: inherit;
 }
+
+/* Próxima partida: blocos centralizados, escudo/nome/posição maiores */
+.view#dashboard .match .teams {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 260px) minmax(0, 1fr);
+  align-items: center;
+  justify-items: center;
+  column-gap: 20px;
+  row-gap: 10px;
+  margin: 20px 4px 16px !important;
+  width: 100%;
+}
+.view#dashboard .match .teams > div {
+  display: grid !important;
+  justify-items: center;
+  align-content: center;
+  gap: 9px !important;
+  width: 100%;
+  max-width: 240px;
+  text-align: center;
+}
+.view#dashboard .match .teams > div > i {
+  width: 76px !important;
+  height: 76px !important;
+  font-size: 24px !important;
+  border: 2px solid #3a6b77;
+  box-shadow: 0 4px 14px #00000033;
+}
+.view#dashboard .match .teams > div > b,
+.view#dashboard .match .teams > div > b.club-link {
+  font: 700 23px 'Barlow Condensed', sans-serif !important;
+  letter-spacing: 0.3px;
+  line-height: 1.15;
+  color: #edf8f5 !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.view#dashboard .match .teams > div > small {
+  font: 600 13px 'DM Sans', sans-serif !important;
+  color: #9fcfd8 !important;
+  letter-spacing: 0.2px;
+}
+.view#dashboard .match .teams > strong.match-vs-block {
+  width: 100%;
+  max-width: 260px;
+  gap: 8px;
+  font-size: 26px !important;
+}
+.view#dashboard .match .match-meta {
+  max-width: 260px !important;
+  margin-top: 4px !important;
+  justify-items: center;
+}
+@media (max-width: 700px) {
+  .view#dashboard .match .teams {
+    grid-template-columns: 1fr;
+    row-gap: 16px;
+  }
+  .view#dashboard .match .teams > strong.match-vs-block {
+    order: -1;
+  }
+}
 .match-competition {
   display: inline-flex;
   align-items: center;

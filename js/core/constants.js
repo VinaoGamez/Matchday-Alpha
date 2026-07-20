@@ -1,5 +1,5 @@
 /** Build e versões de save — contrato estável entre módulos. */
-export const BUILD_VERSION = 'alpha-02-tester-31';
+export const BUILD_VERSION = 'alpha-02-tester-32';
 
 export const SAVE_KEYS = {
   career: 'matchday-new-game',

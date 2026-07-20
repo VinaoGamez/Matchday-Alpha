@@ -52,6 +52,7 @@ export function createDashboardFeature(deps) {
     getTransferWindowPhase,
     isTransferMarketOpen,
     advanceTransferCalendar,
+    advanceCalendarWeek,
     showTransferWindowReport,
   } = deps;
 
@@ -279,7 +280,7 @@ export function createDashboardFeature(deps) {
     board.innerHTML = `
       <div class="season-review-club">
         <div class="season-review-crest-wrap"><i aria-hidden="true">${clubCrestInitials(userClub)}</i></div>
-        <b>${userClub}</b>
+        <b class="club-link" data-club="${userClub}" role="button" tabindex="0">${userClub}</b>
         <small>${careerSeason ? `Temporada ${careerSeason}` : 'Campanha encerrada'}${hasGames ? ` · ${stats.gameCount} jogos` : ''}</small>
       </div>
       <div class="season-review-stats">
@@ -359,6 +360,25 @@ export function createDashboardFeature(deps) {
     pendingUserSchedule().slice(0, CLUB_UPCOMING_ROWS).map(entry => entry.game);
   };
 
+  /** Nome clicável → abre scout/elenco (handler global `[data-club]`). */
+  const bindClubLink = (el, clubName, { label } = {}) => {
+    if (!el) return;
+    const clubs = getClubs();
+    const valid = !!(clubName && clubs?.[clubName]);
+    el.textContent = label ?? clubName ?? '—';
+    if (valid) {
+      el.classList.add('club-link');
+      el.dataset.club = clubName;
+      el.setAttribute('role', 'button');
+      el.tabIndex = 0;
+    } else {
+      el.classList.remove('club-link');
+      delete el.dataset.club;
+      el.removeAttribute('role');
+      el.removeAttribute('tabindex');
+    }
+  };
+
   const renderUserMatchPresentation = () => {
     refreshUserFixtures();
     const userClub = getUserClub();
@@ -419,8 +439,8 @@ export function createDashboardFeature(deps) {
     if (idle) {
       $('#nextMatchRound').textContent = `SEM JOGOS · RODADA NACIONAL ${currentRound}`;
       setNextMatchCompetition(null, userDivision, { kindOverride: 'idle' });
-      $('#nextMatchHome').textContent = userClub;
-      $('#nextMatchAway').textContent = 'Calendário nacional';
+      bindClubLink($('#nextMatchHome'), userClub);
+      bindClubLink($('#nextMatchAway'), null, { label: 'Calendário nacional' });
       $('#nextMatchHomePosition').textContent = `${displayedClubPosition(userClub)}º na série`;
       $('#nextMatchAwayPosition').textContent = 'Aguardando fechamento';
       $('#nextMatchHome').previousElementSibling.textContent = userClub
@@ -442,8 +462,10 @@ export function createDashboardFeature(deps) {
       const leagueNext = leagueUserGameForRound(currentRound);
       const onMatchDay = sameCalendarDay(details.date, careerCalendarDate);
       const todayLabel = `HOJE · ${formatDashboardDate(careerCalendarDate)}`;
-      const showTransferAdvance =
-        !idle && !fullyComplete && !sponsorPending && !livePostMatch && !onMatchDay && transferOpen;
+      // Entre jogos: botão de avanço fica no Dashboard (janela aberta OU fechada).
+      // Antes só aparecia com mercado aberto — após o fechamento da janela o save ficava preso.
+      const showCalendarAdvance =
+        !idle && !fullyComplete && !sponsorPending && !livePostMatch && !onMatchDay;
       const showMatchDayBtn =
         !idle && !fullyComplete && !sponsorPending && !livePostMatch && onMatchDay;
 
@@ -451,21 +473,26 @@ export function createDashboardFeature(deps) {
         playBtn.disabled = !onMatchDay;
         playBtn.title = onMatchDay
           ? 'Disputar a partida agendada para hoje'
-          : showTransferAdvance
-            ? 'Avance a janela de transferências no Dashboard até o dia do jogo'
-            : 'Avance no calendário até o dia do jogo para disputar a partida';
+          : 'Avance no calendário até o dia do jogo para disputar a partida';
       }
       if (transferAdvanceBtn) {
-        transferAdvanceBtn.classList.toggle('hidden', !showTransferAdvance);
-        if (showTransferAdvance) {
+        transferAdvanceBtn.classList.toggle('hidden', !showCalendarAdvance);
+        if (showCalendarAdvance) {
           transferAdvanceBtn.textContent =
-            transferPhase?.mode === 'day' ? 'AVANÇAR DIA' : 'AVANÇAR SEMANA';
-          transferAdvanceBtn.classList.toggle('is-deadline', !!transferPhase?.isDeadlineWeek);
-          transferAdvanceBtn.title = transferPhase?.isDeadlineDay
-            ? 'Último dia da janela — avance para encerrar e ver o relatório'
-            : transferPhase?.isDeadlineWeek
-              ? `Deadline Day · ${transferPhase.daysLeft} dia(s) restantes`
-              : `${transferPhase?.label || 'Janela'} · ${transferPhase?.daysLeft ?? '—'} dias restantes`;
+            transferOpen && transferPhase?.mode === 'day' ? 'AVANÇAR DIA' : 'AVANÇAR SEMANA';
+          transferAdvanceBtn.classList.toggle('is-deadline', !!(transferOpen && transferPhase?.isDeadlineWeek));
+          if (transferOpen) {
+            transferAdvanceBtn.title = transferPhase?.isDeadlineDay
+              ? 'Último dia da janela — avance para encerrar e ver o relatório'
+              : transferPhase?.isDeadlineWeek
+                ? `Deadline Day · ${transferPhase.daysLeft} dia(s) restantes`
+                : `${transferPhase?.label || 'Janela'} · ${transferPhase?.daysLeft ?? '—'} dias restantes`;
+          } else {
+            transferAdvanceBtn.title =
+              daysUntil > 0
+                ? `Avançar até o dia do jogo (${daysUntil} ${daysUntil === 1 ? 'dia' : 'dias'})`
+                : 'Avançar no calendário até o próximo jogo';
+          }
         }
       }
       if (calendarBtn) {
@@ -480,8 +507,8 @@ export function createDashboardFeature(deps) {
         : isKnockoutShootoutCompetition(game)
           ? `${game.leg || 'Eliminatórias'}${game.phase ? ` · ${game.phase}` : ''}`
           : `RODADA ${game.round}${userDivision === 'D' && !isKnockoutShootoutCompetition(game) ? ` · GRUPO A${deps.getUserSerieDGroupIndex() + 1}` : ''}`;
-      $('#nextMatchHome').textContent = game.home;
-      $('#nextMatchAway').textContent = game.away;
+      bindClubLink($('#nextMatchHome'), game.home);
+      bindClubLink($('#nextMatchAway'), game.away);
       $('#nextMatchHomePosition').textContent = `${displayedClubPosition(homeClub.name)}º colocado`;
       $('#nextMatchAwayPosition').textContent = `${displayedClubPosition(awayClub.name)}º colocado`;
       $('#nextMatchHome').previousElementSibling.textContent = game.home
@@ -506,13 +533,9 @@ export function createDashboardFeature(deps) {
           : [
               `Calendário · ${formatDashboardDate(careerCalendarDate)}`,
               `Próximo jogo · ${details.display} · ${details.time}`,
-              showTransferAdvance
-                ? daysUntil > 0
-                  ? `Use Avançar Semana/Dia na janela (${daysUntil} ${daysUntil === 1 ? 'dia' : 'dias'} até o jogo)`
-                  : 'Use Avançar Semana/Dia na janela de transferências'
-                : daysUntil > 0
-                  ? `Avance no calendário (${daysUntil} ${daysUntil === 1 ? 'dia' : 'dias'} até o jogo)`
-                  : 'Avance no calendário até o dia do jogo',
+              daysUntil > 0
+                ? `Use Avançar Semana (${daysUntil} ${daysUntil === 1 ? 'dia' : 'dias'} até o jogo)`
+                : 'Use Avançar Semana até o dia do jogo',
             ]
       );
     } else if (fullyComplete) {
@@ -744,9 +767,12 @@ export function createDashboardFeature(deps) {
       if (report) openCalendarMatchReport(report);
     });
     onClick('#advanceTransferCalendar', () => {
-      if (typeof advanceTransferCalendar !== 'function') return;
-      // Relatório de janela e propostas urgentes são apresentados pelo motor.
-      advanceTransferCalendar();
+      // advanceCalendarWeek cobre janela aberta (delega) e fechada (+7 / para no jogo).
+      if (typeof advanceCalendarWeek === 'function') {
+        advanceCalendarWeek();
+        return;
+      }
+      if (typeof advanceTransferCalendar === 'function') advanceTransferCalendar();
     });
   };
 
