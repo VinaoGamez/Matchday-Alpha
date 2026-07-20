@@ -15,8 +15,6 @@ import { createTransfersFeature } from '../feature/transfers/index.js';
 import {
   normalizeDevelopmentState,
   emptyDevelopmentState,
-  rollPotential,
-  rollSquadAge,
   ensureCalendarDevelopmentPulses,
   runDevelopmentPulse,
   advancePlayerAges,
@@ -24,6 +22,12 @@ import {
   OVR_MARK_WEEKS,
   PULSE_IDS,
 } from '../engine/player-development.js';
+import {
+  generatePlayer as generatePlayerCore,
+  GENERIC_SQUAD_ROLES,
+  DIVISION_CLUB_POWER,
+  pickStarterFlags,
+} from '../engine/player-generation.js';
 import { resolvePlayerId } from '../engine/player-identity.js';
 import { playerKey as historyPlayerKey } from '../engine/player-match-stats.js';
 import {
@@ -402,42 +406,23 @@ export async function bootEngine({ bus } = {}) {
   const lastNames=['Almeida','Alves','Amaral','Andrade','Araújo','Barbosa','Batista','Cardoso','Carvalho','Castro','Correia','Costa','Cunha','Dias','Duarte','Esteves','Ferreira','Freitas','Garcia','Gomes','Henrique','Leite','Lima','Lopes','Machado','Marques','Martins','Mendes','Monteiro','Moreira','Moura','Nascimento','Neves','Nunes','Oliveira','Pereira','Pires','Ramos','Reis','Ribeiro','Rocha','Rodrigues','Santos','Silva','Soares','Souza','Teixeira','Vieira'];
   const formationsForClubs=['4-3-3','4-4-2','3-5-2','4-2-3-1','4-1-4-1','5-3-2','4-3-1-2','3-4-3'];
   const divisionRules={
-    A:{name:'Série A',clubs:20,power:[76,84],format:'38 rodadas em turno e returno',promotion:0,relegation:4},
-    B:{name:'Série B',clubs:20,power:[70,78],format:'38 rodadas; 1º e 2º sobem, 3º–6º disputam playoffs',promotion:4,relegation:4},
-    C:{name:'Série C',clubs:serieCClubsForSeason(careerSeason),power:[64,73],format:'pontos corridos em turno e returno',promotion:4,relegation:serieCRelegationSlots(careerSeason)},
-    D:{name:'Série D',clubs:SERIE_D_CLUBS,power:[56,68],format:'16 grupos de 6; 10 rodadas; 4 avançam por grupo; mata-mata e playoffs em ida e volta',promotion:SERIE_D_PROMOTIONS,relegation:0}
+    A:{name:'Série A',clubs:20,power:DIVISION_CLUB_POWER.A,format:'38 rodadas em turno e returno',promotion:0,relegation:4},
+    B:{name:'Série B',clubs:20,power:DIVISION_CLUB_POWER.B,format:'38 rodadas; 1º e 2º sobem, 3º–6º disputam playoffs',promotion:4,relegation:4},
+    C:{name:'Série C',clubs:serieCClubsForSeason(careerSeason),power:DIVISION_CLUB_POWER.C,format:'pontos corridos em turno e returno',promotion:4,relegation:serieCRelegationSlots(careerSeason)},
+    D:{name:'Série D',clubs:SERIE_D_CLUBS,power:DIVISION_CLUB_POWER.D,format:'16 grupos de 6; 10 rodadas; 4 avançam por grupo; mata-mata e playoffs em ida e volta',promotion:SERIE_D_PROMOTIONS,relegation:0}
   };
   const specialistChance={A:{freeKick:.024,penalty:.030},B:{freeKick:.017,penalty:.022},C:{freeKick:.0085,penalty:.0115},D:{freeKick:.003,penalty:.005}};
-  const generationFormationRoles={
-    '4-3-3':['GOL','LAT','ZAG','ZAG','LAT','VOL','MC','MC','PE','ATA','PD'],'4-4-2':['GOL','LAT','ZAG','ZAG','LAT','PE','MC','MC','PD','ATA','ATA'],
-    '3-5-2':['GOL','ZAG','ZAG','ZAG','LAT','VOL','MC','MEI','LAT','ATA','ATA'],'4-2-3-1':['GOL','LAT','ZAG','ZAG','LAT','VOL','VOL','PE','MEI','PD','ATA'],
-    '4-1-4-1':['GOL','LAT','ZAG','ZAG','LAT','VOL','PE','MC','MC','PD','ATA'],'5-3-2':['GOL','LAT','ZAG','ZAG','ZAG','LAT','MC','VOL','MC','ATA','ATA'],
-    '4-3-1-2':['GOL','LAT','ZAG','ZAG','LAT','VOL','MC','MC','MEI','ATA','ATA'],'3-4-3':['GOL','ZAG','ZAG','ZAG','LAT','MC','MC','LAT','PE','ATA','PD']
-  };
-  const formationBenchExtras={'4-3-3':['ZAG','LAT','MC','PE','PD'],'4-4-2':['ZAG','LAT','VOL','PE','ATA'],'3-5-2':['ZAG','ZAG','LAT','MC','ATA'],'4-2-3-1':['ZAG','LAT','VOL','MEI','PD'],'4-1-4-1':['ZAG','LAT','MC','PE','ATA'],'5-3-2':['ZAG','LAT','VOL','MC','ATA'],'4-3-1-2':['ZAG','LAT','MC','MEI','ATA'],'3-4-3':['ZAG','LAT','MC','PE','PD']};
-  const generatedSquadRoles=formation=>[...(generationFormationRoles[formation]||generationFormationRoles['4-3-3']),'GOL','ZAG','LAT','VOL','MC','MEI','ATA',...(formationBenchExtras[formation]||formationBenchExtras['4-3-3'])];
-  const generatedOverall=(role,a)=>{
-    const weighted={
-      GOL:a.positioning*.29+a.reflexes*.34+a.penaltySaving*.16+a.passing*.08+a.speed*.05+a.heading*.04+a.overallBase*.04,
-      ZAG:a.marking*.25+a.tackling*.25+a.heading*.18+a.speed*.10+a.passing*.09+a.dribble*.04+a.overallBase*.09,
-      LAT:a.speed*.22+a.marking*.17+a.tackling*.17+a.passing*.14+a.dribble*.13+a.heading*.05+a.finishing*.04+a.overallBase*.08,
-      VOL:a.tackling*.20+a.marking*.18+a.passing*.18+a.heading*.11+a.speed*.08+a.dribble*.07+a.finishing*.05+a.overallBase*.13,
-      MC:a.passing*.24+a.dribble*.15+a.tackling*.12+a.finishing*.11+a.speed*.10+a.marking*.08+a.heading*.05+a.overallBase*.15,
-      MEI:a.passing*.23+a.dribble*.22+a.finishing*.16+a.speed*.12+a.heading*.05+a.marking*.03+a.tackling*.03+a.overallBase*.16,
-      PE:a.dribble*.23+a.speed*.22+a.finishing*.20+a.passing*.13+a.heading*.05+a.marking*.03+a.tackling*.02+a.overallBase*.12,
-      PD:a.dribble*.23+a.speed*.22+a.finishing*.20+a.passing*.13+a.heading*.05+a.marking*.03+a.tackling*.02+a.overallBase*.12,
-      ATA:a.finishing*.29+a.heading*.18+a.speed*.16+a.dribble*.14+a.passing*.07+a.marking*.02+a.tackling*.02+a.overallBase*.12
-    };
-    return Math.round(weighted[role]??a.overallBase);
-  };
-  function generatedPlayer(role,index,clubPower,division='A'){
-    const limits={A:[64,92],B:[58,86],C:[52,80],D:[45,75]}[division],age=rollSquadAge(gameRandom),ageModifier=age<=19?-4:age<=21?-2:age<=26?1:age<=29?2:age<=32?0:age<=34?-2:-5,overallBase=clamp(int(clubPower-6,clubPower+6)+ageModifier,...limits),attacking=['PE','PD','ATA','MEI','MC'].includes(role),defensive=['ZAG','LAT','VOL'].includes(role),keeper=role==='GOL',value=(base,spread=8)=>clamp(int(base-spread,base+spread),5,99);
-    const first=firstNames[(index+int(0,firstNames.length-1))%firstNames.length],last=lastNames[(index*3+int(0,lastNames.length-1))%lastNames.length],secondLast=gameRandom()<.16?` ${lastNames[(index*7+int(0,lastNames.length-1))%lastNames.length]}`:'';
-    const attributes={overallBase,dribble:value(attacking?overallBase+3:overallBase-15),speed:value(['LAT','PE','PD','ATA'].includes(role)?overallBase+7:overallBase-2),marking:value(defensive?overallBase+5:overallBase-18),tackling:value(defensive?overallBase+5:overallBase-19),finishing:value(attacking?overallBase+5:overallBase-21),passing:value(['MC','MEI','VOL','LAT'].includes(role)?overallBase+3:overallBase-8),heading:value(['ZAG','ATA','VOL'].includes(role)?overallBase+3:overallBase-9),positioning:keeper?value(overallBase+4):0,penaltySaving:keeper?value(overallBase):0,reflexes:keeper?value(overallBase+5):0};
-    const signatureOptions={GOL:['reflexes','positioning','penaltySaving'],ZAG:['marking','tackling','heading'],LAT:['speed','tackling','passing','dribble'],VOL:['tackling','marking','passing'],MC:['passing','dribble','tackling','finishing'],MEI:['passing','dribble','finishing'],PE:['speed','dribble','finishing'],PD:['speed','dribble','finishing'],ATA:['finishing','heading','speed']}[role],signature=signatureOptions[int(0,signatureOptions.length-1)];attributes[signature]=clamp(attributes[signature]+int(4,9),5,99);
-    const overall=clamp(generatedOverall(role,attributes),...limits),potential=rollPotential(overall,age,division,gameRandom),attackAverage=(attributes.dribble+attributes.speed+attributes.finishing+attributes.passing+attributes.heading)/5,rolePlaymaking=role==='GOL'||role==='ZAG'?Math.min(40,overall-28):role==='VOL'?overall-4:role==='LAT'||role==='ATA'?overall-10:overall+5,creationMultiplier=1+rnd(.005,.015)*(attackAverage>=75?1:-1),heightRanges={GOL:[184,199],ZAG:[180,196],LAT:[168,187],VOL:[174,191],MC:[168,188],MEI:[165,185],PE:[164,184],PD:[164,184],ATA:[174,194]},height=int(...heightRanges[role]),footDraw=gameRandom(),preferredFoot=footDraw<.055?'Ambidestro':role==='PE'?(footDraw<.62?'Esquerdo':'Direito'):role==='PD'?(footDraw<.18?'Esquerdo':'Direito'):(footDraw<.18?'Esquerdo':'Direito'),personalities=['Disciplinado','Determinado','Equilibrado','Líder','Competitivo','Tranquilo'];
-    // `index` é só seed de nome/RNG — a camisa é atribuída depois com assignSquadJerseyNumbers.
-    const p={name:`${first} ${last}${secondLast}`,pos:role,age,overall,potential,height,preferredFoot,personality:personalities[int(0,personalities.length-1)],injuryProneness:clamp(int(5,25)+(age>=31?int(3,10):0),5,38),injuryHistory:[],workload:{minutesLast7Days:0,minutesLast14Days:0,matchesLast14Days:0,consecutiveStarts:0,highIntensityLoad:0,lastMatchRound:0},dribble:attributes.dribble,speed:attributes.speed,marking:attributes.marking,tackling:attributes.tackling,finishing:attributes.finishing,passing:attributes.passing,heading:attributes.heading,positioning:attributes.positioning,penaltySaving:attributes.penaltySaving,reflexes:attributes.reflexes,freeKick:Math.min(85,value(['MC','MEI','PE','PD'].includes(role)?overall-24:overall-38,10)),penaltyTaking:Math.min(85,value(['MC','MEI','PE','PD','ATA'].includes(role)?overall-7:overall-25,10)),playmaking:clamp(Math.round(rolePlaymaking*creationMultiplier),5,role==='GOL'||role==='ZAG'?40:role==='VOL'||role==='LAT'||role==='ATA'?90:100),fatigue:100,number:0};
+  function generatedPlayer(role,index,clubPower,division='A',starterBoost=true){
+    const p=generatePlayerCore({
+      role,
+      index,
+      clubPower,
+      division,
+      random:gameRandom,
+      firstNames,
+      lastNames,
+      starterBoost,
+    });
     const chance=specialistChance[division];
     if(['MC','MEI','PE','PD','ATA'].includes(role)&&gameRandom()<chance.freeKick)p.freeKick=int(86,97);
     if(['MC','MEI','PE','PD','ATA'].includes(role)&&gameRandom()<chance.penalty)p.penaltyTaking=int(86,97);
@@ -513,8 +498,25 @@ export async function bootEngine({ bus } = {}) {
     }
   }
   const clubs={};
-  const fullBenchRoles=['GOL','ZAG','ZAG','LAT','LAT','VOL','MC','MC','MEI','PE','PD','ATA'];
-  const createClub=(club,division,index)=>{const rule=divisionRules[division],basePower=int(rule.power[0],rule.power[1]),formation=club===userClub?'4-3-3':formationsForClubs[int(0,formationsForClubs.length-1)],roles=savedNewGame?generatedSquadRoles(formation):[...starterRoles,...benchRoles],roster=roles.map((role,playerIndex)=>generatedPlayer(role,playerIndex+index*29,basePower+(playerIndex<11?2:-1),division)),names=new Map(),environmentRange=initialEnvironmentRanges[division];roster.forEach(player=>{const count=names.get(player.name)||0;names.set(player.name,count+1);if(count)player.name=`${player.name} ${count+1}`;});assignSquadJerseyNumbers(roster);const power=Math.round(roster.slice(0,11).reduce((sum,player)=>sum+player.overall,0)/11);return{name:club,division,power,roster,formation,style:['Posse de bola','Contra-ataque','Pressão alta'][int(0,2)],mentality:['Defensiva','Equilibrada','Ofensiva'][int(0,2)],position:index+1,environment:int(...environmentRange),support:int(38,94),board:int(38,94),finances:int(35,96)};};
+  const createClub=(club,division,index)=>{
+    const rule=divisionRules[division];
+    const basePower=int(rule.power[0],rule.power[1]);
+    const formation=club===userClub?'4-3-3':formationsForClubs[int(0,formationsForClubs.length-1)];
+    const roles=savedNewGame?[...GENERIC_SQUAD_ROLES]:[...starterRoles,...benchRoles];
+    const starterFlags=pickStarterFlags(roles.length,gameRandom);
+    const roster=roles.map((role,playerIndex)=>generatedPlayer(role,playerIndex+index*29,basePower,division,starterFlags[playerIndex]));
+    const names=new Map();
+    const environmentRange=initialEnvironmentRanges[division];
+    roster.forEach(player=>{
+      const count=names.get(player.name)||0;
+      names.set(player.name,count+1);
+      if(count)player.name=`${player.name} ${count+1}`;
+    });
+    assignSquadJerseyNumbers(roster);
+    const top11=[...roster].sort((a,b)=>b.overall-a.overall).slice(0,11);
+    const power=Math.round(top11.reduce((sum,player)=>sum+player.overall,0)/11);
+    return{name:club,division,power,roster,formation,style:['Posse de bola','Contra-ataque','Pressão alta'][int(0,2)],mentality:['Defensiva','Equilibrada','Ofensiva'][int(0,2)],position:index+1,environment:int(...environmentRange),support:int(38,94),board:int(38,94),finances:int(35,96)};
+  };
   if(savedNewGame){
     Object.entries(divisionTeams).forEach(([division,names])=>names.forEach((club,index)=>{clubs[club]=createClub(club,division,index);}));
     // Elencos do mundo (IA + usuário) — base do mercado de transferências.
@@ -548,7 +550,28 @@ export async function bootEngine({ bus } = {}) {
     user.budget=Math.max(0,Number(initialStatus.budget??initialBudget(userDivision)));
     ensureBudget(user,userDivision);
   }
-  else teams.forEach((club,index)=>{if(club===userClub){clubs[club]={name:club,division:'A',roster:squad,formation:'4-3-3',style:'Posse de bola',mentality:'Equilibrada',position:4};return;}const power=clamp(78-index*.45+int(-3,3),68,82),roster=assignSquadJerseyNumbers([...starterRoles,...benchRoles].map((role,i)=>generatedPlayer(role,i+index*5,power)));clubs[club]={name:club,division:'A',roster,formation:formationsForClubs[int(0,formationsForClubs.length-1)],style:['Posse de bola','Contra-ataque','Pressão alta'][int(0,2)],mentality:['Defensiva','Equilibrada','Ofensiva'][int(0,2)],position:index+1};});
+  else teams.forEach((club,index)=>{
+    if(club===userClub){
+      clubs[club]={name:club,division:'A',roster:squad,formation:'4-3-3',style:'Posse de bola',mentality:'Equilibrada',position:4};
+      return;
+    }
+    const power=int(...DIVISION_CLUB_POWER.A);
+    const starterFlags=pickStarterFlags(GENERIC_SQUAD_ROLES.length,gameRandom);
+    const roster=assignSquadJerseyNumbers(
+      GENERIC_SQUAD_ROLES.map((role,i)=>generatedPlayer(role,i+index*5,power,'A',starterFlags[i])),
+    );
+    const top11=[...roster].sort((a,b)=>b.overall-a.overall).slice(0,11);
+    clubs[club]={
+      name:club,
+      division:'A',
+      power:Math.round(top11.reduce((sum,p)=>sum+p.overall,0)/11),
+      roster,
+      formation:formationsForClubs[int(0,formationsForClubs.length-1)],
+      style:['Posse de bola','Contra-ataque','Pressão alta'][int(0,2)],
+      mentality:['Defensiva','Equilibrada','Ofensiva'][int(0,2)],
+      position:index+1,
+    };
+  });
   stampWorldPlayers(clubs,{seed:savedNewGame?.seed||0,season:careerSeason});
   if(savedNewGame){
     // Primeira gravação ou migração de snapshot gordo (estourava cota do localStorage).

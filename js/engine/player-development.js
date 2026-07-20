@@ -15,7 +15,7 @@ export const PULSE_IDS = {
   seasonEnd: 'seasonEnd',
 };
 
-const HARD_YEAR_MAX = 5;
+const HARD_YEAR_MAX = 3;
 const HARD_YEAR_MIN = -2;
 const MIN_PERIOD_MINUTES = 180;
 /** Quantas semanas de calendário a seta de OVR fica no Elenco após o pulso. */
@@ -34,7 +34,8 @@ const ATTR_BY_POS = {
   ATA: ['finishing', 'heading', 'speed', 'dribble'],
 };
 
-const POT_CAPS = { A: 97, B: 92, C: 87, D: 83 };
+/** Caps Campanha Longa — alinhado com player-generation. */
+export const POT_CAPS = { A: 92, B: 84, C: 72, D: 58 };
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
@@ -143,11 +144,11 @@ export function rollPotential(overall, age, division = 'A', random = Math.random
   let gap = 0;
   if (years <= 18) {
     // Jóia no profissional: teto alto (base ficará para a categoria de base).
-    gap = 16 + Math.floor(r * 12);
-    if (r > 0.82) gap = Math.max(gap, cap - ovr);
+    gap = 18 + Math.floor(r * 12);
+    if (r > 0.78) gap = Math.max(gap, cap - ovr);
   } else if (years <= 19) {
-    gap = 13 + Math.floor(r * 10);
-    if (r > 0.9) gap = Math.max(gap, Math.floor((cap - ovr) * 0.85));
+    gap = 15 + Math.floor(r * 11);
+    if (r > 0.86) gap = Math.max(gap, Math.floor((cap - ovr) * 0.92));
   } else if (years <= 22) gap = 5 + Math.floor(r * 6);
   else if (years <= 25) gap = 2 + Math.floor(r * 5);
   else if (years <= 28) gap = Math.floor(r * 4);
@@ -156,15 +157,16 @@ export function rollPotential(overall, age, division = 'A', random = Math.random
   return clamp(ovr + gap, ovr, cap);
 }
 
+/** Faixas anuais Campanha Longa (pico ~27–29; GOL mais tarde). */
 function ageBand(age) {
   const a = Number(age) || 25;
-  if (a <= 20) return { yMin: 0, yMax: 5 };
-  if (a <= 24) return { yMin: -0.5, yMax: 4 };
-  if (a <= 28) return { yMin: -0.5, yMax: 2.5 };
-  if (a <= 32) return { yMin: -0.5, yMax: 2 };
-  if (a <= 35) return { yMin: -1, yMax: 2, needElite: true };
-  if (a <= 38) return { yMin: -1.5, yMax: 0.5 };
-  return { yMin: -2, yMax: 0.5 };
+  if (a <= 22) return { yMin: 0, yMax: 3 };
+  if (a <= 25) return { yMin: 0, yMax: 2 };
+  if (a <= 28) return { yMin: -0.5, yMax: 1 };
+  if (a <= 32) return { yMin: -0.5, yMax: 1 };
+  if (a <= 34) return { yMin: -1, yMax: 0 };
+  if (a <= 36) return { yMin: -2, yMax: 0 };
+  return { yMin: -2, yMax: -0.5 };
 }
 
 function readSeasonTotals(bucket) {

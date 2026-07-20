@@ -1,4 +1,5 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
+import { traitCodes } from '../../engine/player-generation.js';
 
 const POSITIONS = ['GOL', 'ZAG', 'LAT', 'VOL', 'MC', 'MEI', 'PE', 'PD', 'ATA'];
 const DIVISIONS = ['A', 'B', 'C', 'D'];
@@ -25,19 +26,6 @@ const sideLetter = player => {
   if (pos === 'PE') return 'E';
   if (pos === 'PD') return 'D';
   return 'A';
-};
-
-const traitCodes = player => {
-  const scores = [
-    ['Fin', Number(player?.finishing) || 0],
-    ['Pas', Number(player?.passing) || 0],
-    ['Vel', Number(player?.speed) || 0],
-    ['Mar', Number(player?.marking) || 0],
-    ['Des', Number(player?.dribble) || 0],
-    ['Cab', Number(player?.heading) || 0],
-  ];
-  scores.sort((a, b) => b[1] - a[1]);
-  return `${scores[0][0]}/${scores[1][0]}`;
 };
 
 const listedMark = listed =>
