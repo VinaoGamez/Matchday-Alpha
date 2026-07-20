@@ -18,6 +18,9 @@ export const PULSE_IDS = {
 const HARD_YEAR_MAX = 5;
 const HARD_YEAR_MIN = -2;
 const MIN_PERIOD_MINUTES = 180;
+/** Quantas semanas de calendário a seta de OVR fica no Elenco após o pulso. */
+export const OVR_MARK_WEEKS = 3;
+const MS_PER_DAY = 86400000;
 
 const ATTR_BY_POS = {
   GOL: ['reflexes', 'positioning', 'penaltySaving', 'passing'],
@@ -41,7 +44,54 @@ export function emptyDevelopmentState(season = null) {
     pulsesDone: [],
     yearDeltaByPlayer: {},
     snapByPlayer: {},
+    /** Última variação de OVR por jogador: { [id]: { delta, at } } — `at` = YYYY-MM-DD. */
+    ovrMarkByPlayer: {},
   };
+}
+
+const careerDayKey = date => {
+  const d = date instanceof Date ? date : date != null ? new Date(date) : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const parseCareerDayKey = key => {
+  if (!key || typeof key !== 'string') return null;
+  const parts = key.split('-').map(Number);
+  if (parts.length < 3 || !parts[0] || !parts[1] || !parts[2]) return null;
+  return new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
+};
+
+const normalizeOvrMarkMap = raw => {
+  if (!raw || typeof raw !== 'object') return {};
+  const out = {};
+  Object.entries(raw).forEach(([id, mark]) => {
+    if (!id || !mark || typeof mark !== 'object') return;
+    const at = typeof mark.at === 'string' ? mark.at : '';
+    if (!at) return;
+    out[id] = { delta: Math.round(Number(mark.delta) || 0), at };
+  });
+  return out;
+};
+
+/**
+ * Marcação ativa no Elenco (↑ / ↓ / −) se ainda dentro da janela de semanas.
+ * @returns {{ delta: number, tone: 'up'|'down'|'flat' }|null}
+ */
+export function getActiveOvrMark(state, playerId, careerDate, { weeks = OVR_MARK_WEEKS } = {}) {
+  if (!playerId) return null;
+  const mark = state?.ovrMarkByPlayer?.[playerId];
+  if (!mark) return null;
+  const at = parseCareerDayKey(mark.at);
+  const now = careerDate instanceof Date ? careerDate : careerDate != null ? new Date(careerDate) : null;
+  if (!at || !now || Number.isNaN(now.getTime())) return null;
+  const ageMs = now.getTime() - at.getTime();
+  if (ageMs < -MS_PER_DAY) return null;
+  if (ageMs > Math.max(1, Number(weeks) || OVR_MARK_WEEKS) * 7 * MS_PER_DAY) return null;
+  const delta = Math.round(Number(mark.delta) || 0);
+  if (delta > 0) return { delta, tone: 'up' };
+  if (delta < 0) return { delta, tone: 'down' };
+  return { delta: 0, tone: 'flat' };
 }
 
 export function normalizeDevelopmentState(raw, season) {
@@ -59,6 +109,7 @@ export function normalizeDevelopmentState(raw, season) {
       sameSeason && raw.snapByPlayer && typeof raw.snapByPlayer === 'object'
         ? { ...raw.snapByPlayer }
         : {},
+    ovrMarkByPlayer: sameSeason ? normalizeOvrMarkMap(raw.ovrMarkByPlayer) : {},
   };
 }
 
@@ -263,12 +314,15 @@ export function runDevelopmentPulse({
   season,
   state,
   getSeasonBucket,
+  date = null,
 } = {}) {
   const st = state || emptyDevelopmentState(season);
+  if (!st.ovrMarkByPlayer || typeof st.ovrMarkByPlayer !== 'object') st.ovrMarkByPlayer = {};
   if (st.pulsesDone.includes(pulseId)) {
     return { pulseId, changed: 0, skipped: true, state: st };
   }
 
+  const dayKey = careerDayKey(date) || careerDayKey(new Date());
   let changed = 0;
   Object.values(clubs || {}).forEach(club => {
     const roster = Array.isArray(club?.roster) ? club.roster : [];
@@ -282,10 +336,15 @@ export function runDevelopmentPulse({
       const period = periodFromSnap(totals, st.snapByPlayer[id]);
       const yearUsed = Number(st.yearDeltaByPlayer[id]) || 0;
       const delta = computePulseDelta(player, period, yearUsed);
+      const before = Number(player.overall) || 0;
+      let applied = 0;
       if (delta && applyOverallDelta(player, delta)) {
-        st.yearDeltaByPlayer[id] = yearUsed + delta;
+        applied = (Number(player.overall) || 0) - before;
+        st.yearDeltaByPlayer[id] = yearUsed + applied;
         changed += 1;
       }
+      // Mesmo neutro (0): marca no Elenco por algumas semanas.
+      st.ovrMarkByPlayer[id] = { delta: applied, at: dayKey };
       st.snapByPlayer[id] = { ...totals };
     });
   });
@@ -330,6 +389,7 @@ export function ensureCalendarDevelopmentPulses({
       season,
       state: next,
       getSeasonBucket,
+      date,
     });
     next = result.state;
     results.push(result);

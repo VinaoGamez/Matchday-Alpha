@@ -1,6 +1,21 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.15',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T04:55:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Elenco',
+        items: [
+          'Após pulsos de evolução, o Overall no Elenco mostra ↑ verde, ↓ vermelho ou − laranja (estável).',
+          'A marcação permanece por 3 semanas no calendário do jogo.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.10',
     date: '2026-07-20',
     publishedAt: '2026-07-20T04:30:00-03:00',

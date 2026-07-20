@@ -20,8 +20,11 @@ import {
   ensureCalendarDevelopmentPulses,
   runDevelopmentPulse,
   advancePlayerAges,
+  getActiveOvrMark,
+  OVR_MARK_WEEKS,
   PULSE_IDS,
 } from '../engine/player-development.js';
+import { resolvePlayerId } from '../engine/player-identity.js';
 import { playerKey as historyPlayerKey } from '../engine/player-match-stats.js';
 import {
   loadCareerSave,
@@ -1866,6 +1869,8 @@ export async function bootEngine({ bus } = {}) {
     const top=topKeys.has(key);
     return `<span class="${groupClass}${top?' is-top-attr':''}">${display}</span>`;
   };
+  /** HTML da seta de OVR — preenchido após init de playerDevelopment. */
+  let rosterOvrMarkHtml=()=> '';
   const renderRoster=()=>{
     const list=$('#playerList');
     if(!list)return;
@@ -1889,7 +1894,7 @@ export async function bootEngine({ bus } = {}) {
       <span>${playerNameCell(p.name,p,{allCompetitions:true})}</span>
       <span class="badge">${p.pos}</span>
       <span>${p.age}</span>
-      <span>${p.overall}</span>
+      <span class="roster-ovr">${p.overall}${rosterOvrMarkHtml(p)}</span>
       <span>${p.height?`${p.height} cm`:'—'}</span>
       <span>${p.preferredFoot||'—'}</span>
       <span>${p.personality||'—'}</span>
@@ -3603,6 +3608,18 @@ export async function bootEngine({ bus } = {}) {
     validSavedSeason?savedSeason?.playerDevelopment:null,
     careerSeason,
   );
+  rosterOvrMarkHtml=player=>{
+    const id=resolvePlayerId(player)||playerKey(player)||historyPlayerKey(player);
+    const mark=getActiveOvrMark(playerDevelopment,id,careerCalendarDate,{weeks:OVR_MARK_WEEKS});
+    if(!mark)return '';
+    const symbol=mark.tone==='up'?'↑':mark.tone==='down'?'↓':'−';
+    const label=mark.tone==='up'
+      ?`Overall +${mark.delta} (últimas ${OVR_MARK_WEEKS} semanas)`
+      :mark.tone==='down'
+        ?`Overall ${mark.delta} (últimas ${OVR_MARK_WEEKS} semanas)`
+        :`Overall estável no último pulso (${OVR_MARK_WEEKS} semanas)`;
+    return `<i class="roster-ovr-mark is-${mark.tone}" title="${label}" aria-label="${label}">${symbol}</i>`;
+  };
   const getDevelopmentSeasonBucket=player=>{
     const key=historyPlayerKey(player);
     if(!key)return null;
@@ -3615,6 +3632,7 @@ export async function bootEngine({ bus } = {}) {
       squad.splice(0,squad.length,...clubs[userClub].roster);
       try{syncCareerRosters();}catch{/* boot */}
     }
+    try{renderRoster();}catch{/* boot */}
     return true;
   };
   const syncCalendarDevelopmentPulses=()=>{
@@ -3632,6 +3650,7 @@ export async function bootEngine({ bus } = {}) {
         squad.splice(0,squad.length,...clubs[userClub].roster);
         try{syncCareerRosters();}catch{/* boot */}
       }
+      try{renderRoster();}catch{/* boot */}
     }
   };
   const runSeasonEndDevelopmentPulse=()=>{
@@ -3642,11 +3661,13 @@ export async function bootEngine({ bus } = {}) {
       season:careerSeason,
       state:playerDevelopment,
       getSeasonBucket:getDevelopmentSeasonBucket,
+      date:careerCalendarDate,
     });
     applyDevelopmentPulseResult(result);
   };
   onCareerCalendarAdvanced=syncCalendarDevelopmentPulses;
   syncCalendarDevelopmentPulses();
+  try{renderRoster();}catch{/* boot */}
   const liveSideMapsToFixture=game=>{
     if(!liveMatchGame||!game)return {swap:false};
     if(game.home!==liveMatchGame.home||game.away!==liveMatchGame.away)return {swap:false};
@@ -5199,6 +5220,7 @@ export async function bootEngine({ bus } = {}) {
         season:playerDevelopment?.season??careerSeason,
         pulsesDone:Array.isArray(playerDevelopment?.pulsesDone)?[...playerDevelopment.pulsesDone]:[],
         yearDeltaByPlayer:{...(playerDevelopment?.yearDeltaByPlayer||{})},
+        ovrMarkByPlayer:{...(playerDevelopment?.ovrMarkByPlayer||{})},
         // snapByPlayer é regenerável — não inchamos o save a cada rodada.
         snapByPlayer:{},
       },
