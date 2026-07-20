@@ -296,21 +296,23 @@ Arquivo: `js/engine/match-tuning.js`
 
 | Parâmetro | Valor | Uso |
 |-----------|-------|-----|
-| `creationBase` | 0,47 | Chance base de boa construção |
-| `actionRateBase` | 0,60 | Densidade de jogadas na sim |
-| `actionRateMin` / `Max` | 0,56 / 0,76 | Faixa da densidade |
+| `creationBase` | 0,445 | Chance base de boa construção (v4c) |
+| `actionRateBase` | 0,585 | Densidade de jogadas na sim |
+| `actionRateMin` / `Max` | 0,545 / 0,71 | Faixa da densidade |
 | `foulRiskBase` | 0,54 | Base de falta no duelo |
 | `progressiveFoulBase` | 0,26 | Falta após boa construção |
 | `bookingBase` | 0,055 | Base de cartão |
-| `blowoutGapStart` | 6 | Início do amortecimento de gol |
-| `blowoutDampMin` | 0,78 | Piso do amortecimento |
+| `blowoutGapStart` | 2 | Início do amortecimento por OVR |
+| `blowoutDampMin` | 0,42 | Piso do amortecimento por OVR |
+| `scoreGapStart` | 1 | Freio por placar (vantagem &gt; 1) |
+| `xgOpenBase` / divisor / teto | 0,118 / 210 / 0,27 | xG de chute aberto |
 | `subWindows` | 55, 58, 70, 78, 82 | Janelas de substituição CPU |
 
 ---
 
 ## 12. Frase-resumo
 
-> O Matchday avança o relógio em blocos de 1–3 minutos; a posse (força + tática + mando + momento) escolhe quem ataca; cada ataque é um duelo de atributos com chance base ~47% de virar boa jogada; o desfecho vira chute, escanteio, falta ou impedimento. O **ritmo das Opções** só define quão rápido você assiste a esse ciclo na tela — as pausas e decisões continuam com o treinador.
+> O Matchday avança o relógio em blocos de 1–3 minutos; a posse (força + tática + mando + momento) escolhe quem ataca; cada ataque é um duelo de atributos com chance base ~44,5% de virar boa jogada; o desfecho vira chute, escanteio, falta ou impedimento. Freios de OVR e de placar limitam goleadas extremas. O **ritmo das Opções** só define quão rápido você assiste a esse ciclo na tela — as pausas e decisões continuam com o treinador.
 
 ---
 

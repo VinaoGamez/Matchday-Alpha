@@ -27,6 +27,7 @@ export function createLiveMatchActions(deps) {
     influencePossession,
     engineTuning,
     engineBlowoutDamp,
+    engineScoreDamp = () => 1,
     engineFoulRisk,
     engineProgressiveFoulRisk,
     tacticFor,
@@ -153,8 +154,13 @@ export function createLiveMatchActions(deps) {
       );
       return;
     }
-    let goalChance=options.penalty || options.shootout ? penaltyGoalChance(options.penaltySkill, keeperData.penaltySaving, penaltySpecialist) : options.freeKick ? (freeKickSpecialist ? clamp(.20+(attackerData.freeKick-60)/220+(attackerData.freeKick-keeperData.positioning)/500+(current.attack-other.defense)/900,.18,.34) : clamp(.11+(attackerData.freeKick-65)/600+(attackerData.freeKick-keeperData.positioning)/650,.115,.15)) : (()=>{const xg=clamp(.128+(finishing+current.attack-keeperData.reflexes-other.defense)/115+(current.overall-other.overall)/520+rnd(-.028,.028),.072,.36);return clamp(xg/onTarget,.15,.68);})();
-    if(!options.penalty&&!options.freeKick&&!options.corner&&!options.shootout){const gap=current.overall-other.overall;if(gap>engineTuning.blowoutGapStart)goalChance*=engineBlowoutDamp(gap);}
+    let goalChance=options.penalty || options.shootout ? penaltyGoalChance(options.penaltySkill, keeperData.penaltySaving, penaltySpecialist) : options.freeKick ? (freeKickSpecialist ? clamp(.20+(attackerData.freeKick-60)/220+(attackerData.freeKick-keeperData.positioning)/500+(current.attack-other.defense)/900,.18,.34) : clamp(.11+(attackerData.freeKick-65)/600+(attackerData.freeKick-keeperData.positioning)/650,.115,.15)) : (()=>{const xgBase=engineTuning.xgOpenBase??.118,xgDiv=engineTuning.xgOpenDivisor??210,xgCeil=engineTuning.xgOpenCeil??.27,xgFloor=engineTuning.xgOpenFloor??.062,ovrDiv=engineTuning.xgOverallGapDivisor??720;const xg=clamp(xgBase+(finishing+current.attack-keeperData.reflexes-other.defense)/xgDiv+(current.overall-other.overall)/ovrDiv+rnd(-.028,.028),xgFloor,xgCeil);return clamp(xg/(onTarget?1:.45),.15,.55);})();
+    if(!options.penalty&&!options.freeKick&&!options.corner&&!options.shootout){
+      const gap=current.overall-other.overall;
+      const hg=(getGoals()?.home||[]).length, ag=(getGoals()?.away||[]).length;
+      const lead=side==='home'?hg-ag:ag-hg;
+      goalChance*=engineBlowoutDamp(gap)*engineScoreDamp(lead);
+    }
     const scores = forcedOutcome
       ? forcedOutcome === 'goal'
       : random() < goalChance;
@@ -239,11 +245,13 @@ export function createLiveMatchActions(deps) {
       return;
     }
     const end=random();
-    if(end < .53) shot(side,{...current,attack:current.attack+32+creation*24},other);
+    const shotBoost=engineTuning.liveShotAttackBoost??8, shotCreate=engineTuning.liveShotCreationBoost??8;
+    const cornerBoost=engineTuning.liveCornerAttackBoost??10, cornerCreate=engineTuning.liveCornerCreationBoost??8;
+    if(end < .53) shot(side,{...current,attack:current.attack+shotBoost+creation*shotCreate},other);
     else if(end < .73){
       s.corners++; influencePossession(side,1.25);
       log(`${attackerName} força o escanteio para o ${team}.`);
-      if(random()<.58) shot(side,{...current,attack:current.attack+28+creation*20},other,{corner:true});
+      if(random()<.58) shot(side,{...current,attack:current.attack+cornerBoost+creation*cornerCreate},other,{corner:true});
     } else if(end < .93) {
       const defender=playerFor(otherSide,'foul',{lastLine:true});
       log(`${defender} para ${attackerName} perto da área.`);

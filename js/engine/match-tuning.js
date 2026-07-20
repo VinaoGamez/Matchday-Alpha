@@ -8,10 +8,10 @@ export const ENGINE_TUNING = {
   progressiveFoulBase: 0.26,
   progressiveFoulMin: 0.24,
   progressiveFoulMax: 0.42,
-  creationBase: 0.47,
-  actionRateBase: 0.6,
-  actionRateMin: 0.56,
-  actionRateMax: 0.76,
+  creationBase: 0.445,
+  actionRateBase: 0.585,
+  actionRateMin: 0.545,
+  actionRateMax: 0.71,
   bookingBase: 0.055,
   /**
    * Pênalti por tick (live ~55 advances): base rara; combatividade soma
@@ -32,9 +32,22 @@ export const ENGINE_TUNING = {
   penaltyChanceOnGoodAttackBase: 0.00155,
   penaltyChanceOnGoodAttackMin: 0.0007,
   penaltyChanceOnGoodAttackMax: 0.012,
-  blowoutGapStart: 6,
-  blowoutDampPerPoint: 0.045,
-  blowoutDampMin: 0.78,
+  /** Calibração v4c — alvo Brasileirão (~2.5 GPM), freio forte a goleadas 8+. */
+  blowoutGapStart: 2,
+  blowoutDampPerPoint: 0.085,
+  blowoutDampMin: 0.42,
+  scoreGapStart: 1,
+  scoreDampPerGoal: 0.15,
+  scoreDampMin: 0.38,
+  xgOpenBase: 0.118,
+  xgOpenDivisor: 210,
+  xgOpenCeil: 0.27,
+  xgOpenFloor: 0.062,
+  xgOverallGapDivisor: 720,
+  liveShotAttackBoost: 8,
+  liveShotCreationBoost: 8,
+  liveCornerAttackBoost: 10,
+  liveCornerCreationBoost: 8,
   subWindows: [55, 58, 70, 78, 82],
   subChaseWindows: [72, 78],
 };
@@ -73,6 +86,17 @@ export const engineBlowoutDamp = gap =>
         1,
       )
     : 1;
+
+/** Amortece finalizações do time que já lidera (vantagem > scoreGapStart). */
+export const engineScoreDamp = lead => {
+  const start = ENGINE_TUNING.scoreGapStart ?? 1;
+  if (!(lead > start)) return 1;
+  return clamp(
+    1 - (lead - start) * (ENGINE_TUNING.scoreDampPerGoal ?? 0.15),
+    ENGINE_TUNING.scoreDampMin ?? 0.38,
+    1,
+  );
+};
 
 /**
  * Chance de pênalti no momento — sobe com combatividade, sem limite rígido.

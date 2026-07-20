@@ -1,6 +1,22 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-33',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T01:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Motor de partida',
+        items: [
+          'Calibração v4c: média de gols mais próxima do Brasileirão e bem menos goleadas extremas (8×0).',
+          'Novo freio por placar: quem já lidera por 2+ gols perde conversão nas finalizações.',
+          'Ao vivo alinhado à simulação (menos boost artificial de ataque no chute).',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-32',
     date: '2026-07-20',
     publishedAt: '2026-07-20T00:30:00-03:00',
