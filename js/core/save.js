@@ -5,7 +5,11 @@ export const MEMORY_LIMITS = {
   injuryHistory: 5,
   rankingTitles: 12,
   liveTimeline: 40,
-  persistDebounceMs: 300,
+  persistDebounceMs: 400,
+  /** Mensagens gravadas no save da temporada (inbox já tem teto próprio). */
+  seasonMessages: 80,
+  /** Deals de mercado mantidos no save. */
+  seasonTransferDeals: 40,
 };
 
 export function readJson(key, fallback = null) {
@@ -172,11 +176,22 @@ export function compactMatchResult(game, { keepData = false } = {}) {
     away: game.away,
     homeGoals: game.homeGoals,
     awayGoals: game.awayGoals,
-    data: keepData && game.data ? { ...game.data } : null,
-    goals: game.goals
-      ? { home: [...(game.goals.home || [])], away: [...(game.goals.away || [])] }
-      : null,
   };
+  if (keepData && game.data) compact.data = { ...game.data };
+  const homeGoalsList = game.goals?.home || [];
+  const awayGoalsList = game.goals?.away || [];
+  if (homeGoalsList.length || awayGoalsList.length) {
+    compact.goals = { home: [...homeGoalsList], away: [...awayGoalsList] };
+  }
+  // Metadados de mata-mata — necessários para reabrir confrontos.
+  if (game.competition) compact.competition = game.competition;
+  if (game.leg) compact.leg = game.leg;
+  if (game.tieId) compact.tieId = game.tieId;
+  if (game.penalties) compact.penalties = game.penalties;
+  if (game.shootoutWinner) compact.shootoutWinner = game.shootoutWinner;
+  if (game.shootoutPenalties) compact.shootoutPenalties = game.shootoutPenalties;
+  if (game.winner) compact.winner = game.winner;
+  if (game.completed) compact.completed = true;
   // Público/bilheteria: necessário para resumo de temporada (ledger/mensagens são podados).
   if (Number.isFinite(Number(game.attendance))) {
     compact.attendance = Math.round(Number(game.attendance));
@@ -233,33 +248,100 @@ export function slimLeaderboard(rows, metric) {
     }));
 }
 
-/** Snapshot magro de disponibilidade nacional. */
-export function slimAvailabilitySnapshot(clubs, userClub) {
-  return Object.fromEntries(
-    Object.entries(clubs).map(([clubName, club]) => [
-      clubName,
-      Object.fromEntries(
-        (club.roster || []).map(player => {
-          const history =
-            clubName === userClub || (Array.isArray(player.injuryHistory) && player.injuryHistory.length)
-              ? pruneInjuryHistory(player.injuryHistory)
-              : [];
-          return [
-            player.name,
-            {
-              injury: player.injury ? { ...player.injury } : null,
-              injuryHistory: history,
-              workload: player.workload ? { ...player.workload } : null,
-              discipline: player.discipline ? { ...player.discipline } : null,
-            },
-          ];
-        })
-      ),
-    ])
+const workloadIsActive = workload => {
+  if (!workload || typeof workload !== 'object') return false;
+  return (
+    Number(workload.minutesLast7Days) > 0 ||
+    Number(workload.minutesLast14Days) > 0 ||
+    Number(workload.matchesLast14Days) > 0 ||
+    Number(workload.consecutiveStarts) > 0 ||
+    Number(workload.highIntensityLoad) > 0 ||
+    Number(workload.lastMatchRound) > 0
   );
+};
+
+const disciplineIsActive = discipline => {
+  if (!discipline || typeof discipline !== 'object') return false;
+  if (Number(discipline.suspendedGames) > 0) return true;
+  if (discipline.competitionCards && Object.keys(discipline.competitionCards).length) return true;
+  return Number(discipline.yellow) > 0 || Number(discipline.red) > 0;
+};
+
+/** Fadiga esparsa: só jogadores abaixo de 100 (fresh = omitido). */
+export function slimFatigueSnapshot(clubs) {
+  const out = {};
+  Object.entries(clubs || {}).forEach(([clubName, club]) => {
+    const tired = {};
+    (club.roster || []).forEach(player => {
+      const value = Math.round((Number(player.fatigue) || 100) * 10) / 10;
+      if (value < 99.5) tired[player.name] = value;
+    });
+    if (Object.keys(tired).length) out[clubName] = tired;
+  });
+  return out;
 }
 
-/** Compacta fixture de copa no save (data só do clube do usuário). */
+/**
+ * Disponibilidade esparsa.
+ * - Clube do usuário: só campos ativos (sem nulls).
+ * - IA: só jogadores com lesão/disciplina/carga relevante.
+ */
+export function slimAvailabilitySnapshot(clubs, userClub) {
+  const out = {};
+  Object.entries(clubs || {}).forEach(([clubName, club]) => {
+    const isUser = clubName === userClub;
+    const players = {};
+    (club.roster || []).forEach(player => {
+      const injury = player.injury ? { ...player.injury } : null;
+      const history =
+        isUser || (Array.isArray(player.injuryHistory) && player.injuryHistory.length)
+          ? pruneInjuryHistory(player.injuryHistory)
+          : [];
+      const workload = workloadIsActive(player.workload) ? { ...player.workload } : null;
+      const discipline = disciplineIsActive(player.discipline) ? { ...player.discipline } : null;
+      if (!isUser && !injury && !history.length && !workload && !discipline) return;
+      const entry = {};
+      if (injury) entry.injury = injury;
+      if (history.length) entry.injuryHistory = history;
+      if (workload) entry.workload = workload;
+      if (discipline) entry.discipline = discipline;
+      if (Object.keys(entry).length) players[player.name] = entry;
+    });
+    if (Object.keys(players).length) out[clubName] = players;
+  });
+  return out;
+}
+
+/** Remove blobs pesados das fixtures da Série D (data/events de sim). */
+export function slimSerieDFixturesForSave(fixtures) {
+  if (!Array.isArray(fixtures)) return [];
+  return fixtures.map(round => {
+    if (!Array.isArray(round)) return round;
+    return round.map(game => {
+      if (!game || typeof game !== 'object') return game;
+      const slim = {
+        home: game.home,
+        away: game.away,
+        round: game.round,
+        competition: game.competition,
+        tieId: game.tieId,
+        leg: game.leg,
+        knockoutRound: game.knockoutRound,
+        twoLegged: game.twoLegged,
+        completed: !!game.completed,
+      };
+      if (game.homeGoals != null) slim.homeGoals = game.homeGoals;
+      if (game.awayGoals != null) slim.awayGoals = game.awayGoals;
+      if (game.penalties) slim.penalties = game.penalties;
+      if (game.shootoutWinner) slim.shootoutWinner = game.shootoutWinner;
+      if (game.shootoutPenalties) slim.shootoutPenalties = game.shootoutPenalties;
+      if (game.winner) slim.winner = game.winner;
+      return slim;
+    });
+  });
+}
+
+/** Compacta fixture de copa no save (stats só do clube do usuário). */
 export function compactCupFixture(game, userClub) {
   if (!game) return null;
   const keepData = involvesClub(game, userClub);
@@ -274,16 +356,20 @@ export function compactCupFixture(game, userClub) {
     time: game.time,
     gameNumber: game.gameNumber,
     tieId: game.tieId,
-    completed: game.completed,
-    homeGoals: game.homeGoals,
-    awayGoals: game.awayGoals,
-    penalties: game.penalties,
-    winner: game.winner,
-    data: keepData && game.data ? { ...game.data } : null,
-    goals: game.goals
-      ? { home: [...(game.goals.home || [])], away: [...(game.goals.away || [])] }
-      : null,
+    completed: !!game.completed,
   };
+  if (game.homeGoals != null) compact.homeGoals = game.homeGoals;
+  if (game.awayGoals != null) compact.awayGoals = game.awayGoals;
+  if (game.penalties) compact.penalties = game.penalties;
+  if (game.winner) compact.winner = game.winner;
+  if (game.shootoutWinner) compact.shootoutWinner = game.shootoutWinner;
+  if (game.shootoutPenalties) compact.shootoutPenalties = game.shootoutPenalties;
+  if (keepData && game.data) compact.data = { ...game.data };
+  const homeGoalsList = game.goals?.home || [];
+  const awayGoalsList = game.goals?.away || [];
+  if (keepData && (homeGoalsList.length || awayGoalsList.length)) {
+    compact.goals = { home: [...homeGoalsList], away: [...awayGoalsList] };
+  }
   if (keepData && Number.isFinite(Number(game.attendance))) {
     compact.attendance = Math.round(Number(game.attendance));
     if (Number.isFinite(Number(game.fillRate))) compact.fillRate = Number(game.fillRate);

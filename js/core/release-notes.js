@@ -1,6 +1,22 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.05',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T03:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Calendário / Save',
+        items: [
+          'Save da temporada bem mais leve: fadiga/disponibilidade esparsas, sem duplicar o AO VIVO, históricos compactos.',
+          'Avanço do calendário não faz mais reschedule pesado em loop (menos travadas na UI).',
+          'Se a cota do navegador estourar, o jogo corta históricos extras e tenta gravar de novo.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.00',
     date: '2026-07-20',
     publishedAt: '2026-07-20T03:15:00-03:00',

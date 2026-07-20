@@ -39,6 +39,8 @@ import {
   compactCupFixture,
   slimLeaderboard,
   slimAvailabilitySnapshot,
+  slimFatigueSnapshot,
+  slimSerieDFixturesForSave,
   pruneInjuryHistory,
   pruneRankingTitles,
   pruneClubMemory,
@@ -1760,12 +1762,12 @@ export async function bootEngine({ bus } = {}) {
     advanceCareerCalendarTo(target);
     return true;
   };
-  /** Repara Copa atrasada e, se ainda houver atraso (liga), volta o calendário ao dia do jogo. */
+  /** Repara atraso de calendário sem reschedule pesado em loop (evita travar a UI). */
   const ensureCalendarMatchConsistency=()=>{
     const next=nextPendingUserEntry();
     if(!next||!isPendingFixtureOverdue(next))return false;
-    rescheduleAllCupFixtures();
-    syncUserCalendarSpacing();
+    // Copa: remarca datas atrasadas uma vez. Liga: só snap no dia do jogo.
+    if(next.game?.competition==='COPA DO BRASIL')rescheduleAllCupFixtures();
     return normalizeCalendarBeforeNextMatch();
   };
   if(validSavedSeason){
@@ -5006,7 +5008,7 @@ export async function bootEngine({ bus } = {}) {
     const activeCrisis=opts.managerJobCrisis!==undefined?opts.managerJobCrisis:managerJobCrisis;
     pruneClubMemory(clubs,nationalRankingEntries);
     const standings=Object.fromEntries(Object.entries(nationalCompetitions).map(([division,competition])=>[division,competition.standings.map(row=>({...row}))]));
-    const fatigue=Object.fromEntries(Object.entries(clubs).map(([clubName,club])=>[clubName,Object.fromEntries(club.roster.map(player=>[player.name,Math.round(player.fatigue*10)/10]))]));
+    const fatigue=slimFatigueSnapshot(clubs);
     const compactCompetitions=compactCompetitionHistories(competitionRoundHistory,activeUserClub);
     const compactCup={
       currentPhase:cupCompetition.currentPhase,
@@ -5085,7 +5087,25 @@ export async function bootEngine({ bus } = {}) {
     const seasonLedger=opts.resetUserEconomy
       ?[]
       :Array.isArray(userClubState?.budgetLedger)?userClubState.budgetLedger.map(entry=>({...entry})):[];
-    const ok=writeJson(SAVE_KEYS.season,{
+    const savedMessages=messages.getMessages()
+      .slice(0,MEMORY_LIMITS.seasonMessages)
+      .map(message=>{
+        const slim={...message};
+        // Corpo longo de ofertas/relatórios: mantém o essencial.
+        if(typeof slim.body==='string'&&slim.body.length>600)slim.body=`${slim.body.slice(0,600)}…`;
+        return slim;
+      });
+    const transferDealsRaw=FEATURES.transfers&&transfersEngine?.snapshotSeasonDeals
+      ?transfersEngine.snapshotSeasonDeals()
+      :(validSavedSeason&&Array.isArray(savedSeason?.seasonTransferDeals)
+        ?savedSeason.seasonTransferDeals.map(item=>({...item}))
+        :[]);
+    const transferOffersRaw=FEATURES.transfers&&transfersEngine?.snapshotPendingOffers
+      ?transfersEngine.snapshotPendingOffers()
+      :(validSavedSeason&&Array.isArray(savedSeason?.pendingTransferOffers)
+        ?savedSeason.pendingTransferOffers.map(item=>({...item}))
+        :[]);
+    const seasonPayload={
       seed:savedNewGame.seed,
       userClubName:activeUserClub,
       currentRound,
@@ -5125,21 +5145,13 @@ export async function bootEngine({ bus } = {}) {
       userTactics:{...tactics.getTacticalValues()},
       userFormation:formation,
       userLineupOrder:clubs[activeUserClub]?.roster?.map(player=>player.name)||[],
-      careerMessages:messages.getMessages().map(message=>({...message})),
-      pendingTransferOffers:FEATURES.transfers&&transfersEngine?.snapshotPendingOffers
-        ?transfersEngine.snapshotPendingOffers()
-        :(validSavedSeason&&Array.isArray(savedSeason?.pendingTransferOffers)
-          ?savedSeason.pendingTransferOffers.map(item=>({...item}))
-          :[]),
-      seasonTransferDeals:FEATURES.transfers&&transfersEngine?.snapshotSeasonDeals
-        ?transfersEngine.snapshotSeasonDeals()
-        :(validSavedSeason&&Array.isArray(savedSeason?.seasonTransferDeals)
-          ?savedSeason.seasonTransferDeals.map(item=>({...item}))
-          :[]),
+      careerMessages:savedMessages,
+      pendingTransferOffers:transferOffersRaw,
+      seasonTransferDeals:Array.isArray(transferDealsRaw)?transferDealsRaw.slice(-MEMORY_LIMITS.seasonTransferDeals):[],
       scorers:slimLeaderboard(allScorers,'goals'),
       assistants:slimLeaderboard(allAssistants,'assists'),
       serieDGroups,
-      dFixtures:nationalCompetitions.D.fixtures,
+      dFixtures:slimSerieDFixturesForSave(nationalCompetitions.D.fixtures),
       dKnockout:nationalCompetitions.D.knockout,
       cupCompetition:compactCup,
       nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:rankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},
@@ -5168,7 +5180,8 @@ export async function bootEngine({ bus } = {}) {
         season:playerDevelopment?.season??careerSeason,
         pulsesDone:Array.isArray(playerDevelopment?.pulsesDone)?[...playerDevelopment.pulsesDone]:[],
         yearDeltaByPlayer:{...(playerDevelopment?.yearDeltaByPlayer||{})},
-        snapByPlayer:{...(playerDevelopment?.snapByPlayer||{})},
+        // snapByPlayer é regenerável — não inchamos o save a cada rodada.
+        snapByPlayer:{},
       },
       pendingDivisionTeams:pendingDivisionTeams?{
         A:[...(pendingDivisionTeams.A||[])],
@@ -5184,40 +5197,67 @@ export async function bootEngine({ bus } = {}) {
         competition:liveMatchGame.competition||null,
         round:liveMatchGame.round??currentRound,
       }:null,
-      liveMatchSnapshot:(()=>{
-        if(!(matchStarted&&liveMatchGame&&!roundCommitted))return null;
-        const snap=latestLiveMatchSnapshot||buildLiveMatchSnapshot({
-          seed:savedNewGame.seed,
-          liveMatchGame,
-          minute,home,away,pauses,halftimeShown,matchStarted,matchFinished,preMatchPreparation,
-          activePreparationTitle,substitutions,awaySubstitutions,awaySubWindows,substitutedOut,
-          disciplineEvents,availabilityCommitted,roundResultMessagePushed,stats,cards,goals,matchFactors,
-          liveInjuries,liveDeferredInjuries,liveOpeningLineup,liveMinutesPlayed,matchDiscipline,
-          liveVolumeSamples,liveVolumePrev,liveVolumePulse,liveVolumeIncidents,postMatchMedicalQueue,
-          shootoutState,pendingPenalty,preMatchTacticSnapshot,
-          stoppageFirst,stoppageSecond,stoppageElapsed,stoppageActive,stoppageHalfSnap,
-          userFormation:formation,
-          userLineupOrder:squad.map(player=>player.name),
-          awayFormation:matchClub()?.formation,
-          awayLineupOrder:matchClub()?.roster?.map(player=>player.name)||[],
-          liveClockSeconds:matchLiveUi.getLiveClockSeconds?.()||0,
-          timelineHtml:timeline?.innerHTML||'',
-          matchStatusText:$('#matchStatus')?.textContent||'',
-          ui:{
-            pauseOpen:!!$('#pausePanel')&&!$('#pausePanel').classList.contains('hidden'),
-            statsOpen:!!$('#stats')&&!$('#stats').classList.contains('hidden'),
-            penaltyOpen:typeof isPenaltyDuelOpen==='function'?isPenaltyDuelOpen():!!$('#penaltyChoice')&&!$('#penaltyChoice').classList.contains('hidden'),
-            shootoutOpen:!!$('#shootoutPanel')&&!$('#shootoutPanel').classList.contains('hidden'),
-          },
-        });
-        if(snap){
-          latestLiveMatchSnapshot=snap;
-          saveLiveMatchSave(snap);
-        }
-        return snap;
-      })(),
+      // Snapshot AO VIVO fica só em matchday-live-match (evita duplicar no season).
+      liveMatchSnapshot:null,
       updatedAt:new Date().toISOString(),
-    });
+    };
+    // Persiste AO VIVO na chave própria (não embute no season).
+    if(matchStarted&&liveMatchGame&&!roundCommitted){
+      const snap=latestLiveMatchSnapshot||buildLiveMatchSnapshot({
+        seed:savedNewGame.seed,
+        liveMatchGame,
+        minute,home,away,pauses,halftimeShown,matchStarted,matchFinished,preMatchPreparation,
+        activePreparationTitle,substitutions,awaySubstitutions,awaySubWindows,substitutedOut,
+        disciplineEvents,availabilityCommitted,roundResultMessagePushed,stats,cards,goals,matchFactors,
+        liveInjuries,liveDeferredInjuries,liveOpeningLineup,liveMinutesPlayed,matchDiscipline,
+        liveVolumeSamples,liveVolumePrev,liveVolumePulse,liveVolumeIncidents,postMatchMedicalQueue,
+        shootoutState,pendingPenalty,preMatchTacticSnapshot,
+        stoppageFirst,stoppageSecond,stoppageElapsed,stoppageActive,stoppageHalfSnap,
+        userFormation:formation,
+        userLineupOrder:squad.map(player=>player.name),
+        awayFormation:matchClub()?.formation,
+        awayLineupOrder:matchClub()?.roster?.map(player=>player.name)||[],
+        liveClockSeconds:matchLiveUi.getLiveClockSeconds?.()||0,
+        timelineHtml:timeline?.innerHTML||'',
+        matchStatusText:$('#matchStatus')?.textContent||'',
+        ui:{
+          pauseOpen:!!$('#pausePanel')&&!$('#pausePanel').classList.contains('hidden'),
+          statsOpen:!!$('#stats')&&!$('#stats').classList.contains('hidden'),
+          penaltyOpen:typeof isPenaltyDuelOpen==='function'?isPenaltyDuelOpen():!!$('#penaltyChoice')&&!$('#penaltyChoice').classList.contains('hidden'),
+          shootoutOpen:!!$('#shootoutPanel')&&!$('#shootoutPanel').classList.contains('hidden'),
+        },
+      });
+      if(snap){
+        latestLiveMatchSnapshot=snap;
+        saveLiveMatchSave(snap);
+      }
+    }
+    let ok=writeJson(SAVE_KEYS.season,seasonPayload);
+    // Cota: corta históricos nacionais (placar basta) e tenta de novo.
+    if(!ok){
+      try{
+        localStorage.removeItem(SAVE_KEYS.playerHistory);
+        localStorage.removeItem(SAVE_KEYS.liveMatch);
+      }catch{/* ignore */}
+      seasonPayload.competitionRoundHistory=Object.fromEntries(
+        Object.entries(compactCompetitions).map(([division,history])=>[
+          division,
+          (history||[]).map(item=>({
+            round:item.round,
+            games:(item.games||[]).map(game=>({
+              home:game.home,away:game.away,homeGoals:game.homeGoals,awayGoals:game.awayGoals,
+              ...(game.penalties?{penalties:game.penalties}:{}),
+              ...(game.winner?{winner:game.winner}:{}),
+            })),
+            userStats:null,
+          })),
+        ]),
+      );
+      seasonPayload.careerMessages=savedMessages.slice(0,40);
+      seasonPayload.seasonTransferDeals=[];
+      seasonPayload.userSeasonCrowds=[];
+      ok=writeJson(SAVE_KEYS.season,seasonPayload);
+    }
     if(!ok&&!saveQuotaWarned){
       saveQuotaWarned=true;
       console.warn('[matchday] Não foi possível salvar a temporada (memória do navegador cheia).');
