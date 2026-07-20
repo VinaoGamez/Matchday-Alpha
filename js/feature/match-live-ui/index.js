@@ -2,6 +2,7 @@ import { MEMORY_LIMITS } from '../../core/save.js';
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { applyCompetitionBadge } from '../../ui/competition-badge.js';
 import { setHumanBadgeOnCrest } from '../../ui/human-badge.js';
+import { bindBoardRosterHover } from '../../ui/board-roster-hover.js';
 import {
   formatLiveClockParts,
   formatMatchMinuteLabel,
@@ -646,6 +647,7 @@ export function createMatchLiveUiFeature(deps) {
     timeline.scrollTop = timeline.scrollHeight;
   };
 
+  let liveOpponentHoverBound = false;
   const renderLiveOpponent = () => {
     if (!getStats() || $('#liveOpponentModal').classList.contains('hidden')) return;
     const club = getMatchClub();
@@ -680,7 +682,7 @@ export function createMatchLiveUiFeature(deps) {
         : null;
       const liveState =
         overlay && (overlay.yellow || overlay.red || overlay.injured || overlay.playThroughRisk) ? overlay : null;
-      return `<div class="live-opponent-player">${playerNameCell(player.name, player, { prefix: isStarter ? `${index + 1}. ` : '', liveState })}<span>${player.pos}</span><span>${player.overall}</span>${fatigueCell(player)}</div>`;
+      return `<div class="live-opponent-player" data-slot="${index}" tabindex="0">${playerNameCell(player.name, player, { prefix: isStarter ? `${index + 1}. ` : '', liveState })}<span>${player.pos}</span><span>${player.overall}</span>${fatigueCell(player)}</div>`;
     };
     $('#liveOpponentRoster').innerHTML = `<h3>TITULARES</h3>${headers}${club.roster
       .slice(0, 11)
@@ -710,9 +712,17 @@ export function createMatchLiveUiFeature(deps) {
           const injured = !!card.injured;
           const label = vacant ? 'EXPULSO' : labelOf(player?.name || '—');
           const title = vacant ? 'Expulso' : `${player.name}${card.yellow ? ' · Advertido' : ''}${injured ? ' · Lesionado' : ''}`;
-          return `<div class="board-player ${vacant ? 'vacant' : ''}" title="${title}" style="left:${point[0]}%;top:${top}%"><i style="--energy:${energy}%"><span>${vacant ? '×' : index + 1}</span></i>${badgesOf({ yellow: card.yellow, injured, atRisk: !!card.playThroughRisk })}<small>${label}</small></div>`;
+          return `<div class="board-player ${vacant ? 'vacant' : ''}" data-slot="${index}" title="${title}" style="left:${point[0]}%;top:${top}%"><i style="--energy:${energy}%"><span>${vacant ? '×' : index + 1}</span></i>${badgesOf({ yellow: card.yellow, injured, atRisk: !!card.playThroughRisk })}<small>${label}</small></div>`;
         })
         .join('');
+    }
+    if (!liveOpponentHoverBound) {
+      liveOpponentHoverBound = true;
+      bindBoardRosterHover({
+        rosterRoot: $('#liveOpponentRoster'),
+        pitchRoot: () => $('#liveOpponentPitch'),
+        rowSelector: '.live-opponent-player[data-slot]',
+      });
     }
   };
 

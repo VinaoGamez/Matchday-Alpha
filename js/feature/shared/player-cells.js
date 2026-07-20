@@ -122,6 +122,13 @@ export function createPlayerCells({
       }
     }
 
+    if (player?.onLoan) {
+      const from = player.loanFrom ? ` de ${player.loanFrom}` : '';
+      parts.push(
+        `<small class="player-loan-tag" title="Emprestado${from} até o fim da temporada">EMPR.</small>`,
+      );
+    }
+
     return parts.length ? `<span class="player-status-badges">${parts.join('')}</span>` : '';
   };
 

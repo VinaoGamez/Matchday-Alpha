@@ -1015,7 +1015,21 @@ export function createTransfersFeature(deps) {
     if (!ok) return;
     const result = api.loanPlayer(playerId);
     if (!result.ok) {
-      setStatus(reasonLabel(result.reason));
+      const msg = reasonLabel(result.reason, result);
+      setStatus(msg);
+      pushMessage?.({
+        category: 'transfer',
+        type: 'offer-rejected',
+        title: 'Empréstimo recusado',
+        body: `${found.player.name} (${found.clubName}): ${msg}`,
+        round: getCurrentRound?.() || 1,
+        meta: {
+          competition: 'Mercado',
+          playerId: found.player.playerId || playerId,
+          loan: true,
+          actionResult: 'rejected',
+        },
+      });
       render();
       return;
     }

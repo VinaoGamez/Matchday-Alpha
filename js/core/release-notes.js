@@ -1,6 +1,28 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.10',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T04:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Elenco / Prancheta',
+        items: [
+          'Hover na lista de titulares/reservas destaca o jogador na prancheta (scout, adversário ao vivo e táticas).',
+          'Jogadores emprestados mostram a tag EMPR. ao lado do nome no elenco e listagens.',
+        ],
+      },
+      {
+        label: 'Mercado',
+        items: [
+          'Recusar proposta de empréstimo agora atualiza a mensagem para “Proposta recusada” e mantém o leitor aberto.',
+          'Falha ao pedir empréstimo no mercado gera mensagem na caixa de entrada.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.05',
     date: '2026-07-20',
     publishedAt: '2026-07-20T03:30:00-03:00',

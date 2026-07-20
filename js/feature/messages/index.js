@@ -406,10 +406,13 @@ export function createMessagesFeature(deps) {
       }
     }
     if (title) {
-      if (offerMessage && isLoanOfferMessage(message)) {
+      // Título especial só enquanto a proposta ainda exige resposta.
+      // Após aceitar/recusar, mostra o resultado (ex.: "Proposta recusada").
+      const pendingOffer = offerMessage && isTransferActionRequired(message);
+      if (pendingOffer && isLoanOfferMessage(message)) {
         title.classList.add('is-loan-title');
         title.innerHTML = '<span>PROPOSTA DE</span><span>EMPRÉSTIMO</span>';
-      } else if (offerMessage) {
+      } else if (pendingOffer) {
         title.classList.remove('is-loan-title');
         title.textContent = transferOfferReaderTitle(message);
       } else if (matchdayMessage) {
@@ -626,13 +629,8 @@ export function createMessagesFeature(deps) {
     if (readerIndex >= 0) {
       const openId = filteredMessages()[readerIndex]?.id;
       if (openId === message.id) {
-        const title = $('#messageReaderTitle');
-        const body = $('#messageReaderBody');
-        const time = $('#messageReaderTime');
-        if (title) title.textContent = message.title;
-        if (body) body.innerHTML = bodyToHtml(message.body);
-        if (time) time.textContent = formatMessageTime(message.at);
-        syncTransferOfferActions(message);
+        // Reabre com o renderer completo (título de resultado, sem botões de oferta).
+        openMessageReader(message.id);
       }
     }
     return message;

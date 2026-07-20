@@ -1,5 +1,6 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { clamp, on, onClick } from '../../ui/dom.js';
+import { bindBoardRosterHover, setBoardSlotHighlight } from '../../ui/board-roster-hover.js';
 
 const TACTIC_SLIDER_KEYS = ['mentality', 'possession', 'press', 'offsideLine'];
 const DEFAULT_USER_TACTICS = { mentality: 50, possession: 50, press: 50, offsideLine: 50 };
@@ -278,13 +279,10 @@ export function createTacticsFeature(deps) {
     });
   };
 
+  const tacticsPitchRoots = () => [$('#pitchPlayers'), $('#pausePitchPlayers')].filter(Boolean);
   const setTacticsPitchHighlight = slot => {
-    const pitch = $('#pitchPlayers');
-    if (!pitch) return;
-    pitch.querySelectorAll('.pitch-player').forEach(el => {
-      const match = slot != null && Number(el.dataset.slot) === Number(slot);
-      el.classList.toggle('sub-highlight', match);
-    });
+    // Táticas (pitch-player) + pausa ao vivo / prancheta (board-player).
+    setBoardSlotHighlight(tacticsPitchRoots(), slot);
   };
 
   const renderTacticRoster = () => {
@@ -563,7 +561,7 @@ export function createTacticsFeature(deps) {
       .map(({ player, index }) =>
         substitutionPlayerRow(
           player,
-          `data-substitution-out="${index}"`,
+          `data-substitution-out="${index}" data-slot="${index}"`,
           outSelected && String(index) === outgoing.value,
           liveCardState(index),
         ),
@@ -770,6 +768,11 @@ export function createTacticsFeature(deps) {
       });
     });
     onClick('#makeSubstitution', makeSubstitution);
+    bindBoardRosterHover({
+      rosterRoot: $('#substitutionOutList'),
+      pitchRoot: tacticsPitchRoots,
+      rowSelector: '[data-substitution-out][data-slot]',
+    });
     onClick('#substitutionOutList', event => {
       const row = event.target.closest('[data-substitution-out]');
       if (!row) return;

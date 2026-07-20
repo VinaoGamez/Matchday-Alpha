@@ -3,6 +3,7 @@
 .player-name-prefix,.starter-number{color:#63d9ff;font-weight:700;flex-shrink:0}
 .player-name-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .player-status-badges{display:inline-flex;align-items:center;gap:5px;flex-shrink:0;margin-left:2px}
+.player-loan-tag{display:inline-block;padding:1px 5px;border-radius:3px;border:1px solid #3a7080;background:#143440;color:#9edff0;font:800 9px 'DM Sans',sans-serif;letter-spacing:.35px;line-height:1.25;vertical-align:middle}
 .player-yellow-group{display:inline-flex;align-items:center;gap:3px}
 .player-yellow-group+.player-yellow-group{margin-left:2px;padding-left:5px;border-left:1px solid #ffc94f66}
 .player-badge{display:inline-block;flex:none;vertical-align:middle}

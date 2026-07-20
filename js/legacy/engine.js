@@ -1,5 +1,6 @@
 import { $, $$, on, onClick, redirectGame, clamp, cleanCareerText } from '../ui/dom.js';
 import { clubLabelHtml, clubCrestTitleHtml } from '../ui/club-label.js';
+import { bindBoardRosterHover } from '../ui/board-roster-hover.js';
 import { createRouter } from '../ui/router.js';
 import { createMessagesFeature } from '../feature/messages/index.js';
 import { createDashboardFeature } from '../feature/dashboard/index.js';
@@ -2752,7 +2753,13 @@ export async function bootEngine({ bus } = {}) {
       });
     }
     if(accepted&&clubs[userClub])clubStatus.syncFinancesFromBudget(clubs[userClub],userDivision);
-    messages.closeMessageReader?.();
+    // Aceite: fecha o leitor. Recusa: mantém aberto com "Proposta recusada".
+    if(accepted)messages.closeMessageReader?.();
+    else{
+      const keepId=replaced?.id||offer.messageId;
+      if(keepId)messages.openMessageReader?.(keepId);
+      else messages.closeMessageReader?.();
+    }
     persistSeason(true);
     transfersUi?.render?.();
     renderEnvironmentCard();
@@ -3118,8 +3125,9 @@ export async function bootEngine({ bus } = {}) {
     const avg=bucket?.avgRating!=null?Number(bucket.avgRating):seasonAverageRating(bucket);
     return formatMatchRating(avg);
   };
-  const analysisTable=(title,players,numbered=false)=>`<section class="analysis-roster"><h3>${title}</h3><div class="analysis-head"><span>JOGADOR</span><span>POS.</span><span>OVR</span><span>MÉDIA</span><span>CANSAÇO</span></div>${players.map((player,index)=>`<div class="analysis-player">${playerNameCell(player.name,player,{prefix:numbered?(index+1)+'. ':''})}<span>${player.pos}</span><span>${player.overall}</span><span class="analysis-avg">${playerSeasonAvgLabel(player)}</span>${fatigueCell(player)}</div>`).join('')}</section>`;
+  const analysisTable=(title,players,{numbered=false,slotOffset=0}={})=>`<section class="analysis-roster"><h3>${title}</h3><div class="analysis-head"><span>JOGADOR</span><span>POS.</span><span>OVR</span><span>MÉDIA</span><span>CANSAÇO</span></div>${players.map((player,index)=>`<div class="analysis-player" data-slot="${slotOffset+index}" tabindex="0">${playerNameCell(player.name,player,{prefix:numbered?(index+1)+'. ':''})}<span>${player.pos}</span><span>${player.overall}</span><span class="analysis-avg">${playerSeasonAvgLabel(player)}</span>${fatigueCell(player)}</div>`).join('')}</section>`;
   const clubManagerName=clubName=>managerRanking.byClub(clubName)?.name||clubs[clubName]?.managerName||(clubName===userClub?careerProfile.managerName:null)||'—';
+  let unbindScoutBoardHover=null;
   const openScout=name=>{
     const club=clubs[name], roster=club.roster, coords=formations[club.formation]||formations['4-3-3'], overall=Math.round(roster.slice(0,11).reduce((sum,p)=>sum+p.overall,0)/11), leaders=clubSeasonLeaders(name);
     $('#scoutClubName').innerHTML=clubCrestTitleHtml(club.name,{initialsFn:clubCrestInitials});
@@ -3132,8 +3140,8 @@ export async function bootEngine({ bus } = {}) {
     $('#scoutEnvironment strong').textContent=`${club.environment}%`;
     $('#scoutScorer').textContent=leaders.scorer.name;$('#scoutGoals').textContent=`${leaders.goals} G`;
     $('#scoutAssistant').textContent=leaders.assistant.name;$('#scoutAssists').textContent=`${leaders.assists} A`;
-    $('#scoutStarters').innerHTML=analysisTable('TITULARES',roster.slice(0,11),true);
-    $('#scoutBench').innerHTML=analysisTable('RESERVAS',roster.slice(11));
+    $('#scoutStarters').innerHTML=analysisTable('TITULARES',roster.slice(0,11),{numbered:true,slotOffset:0});
+    $('#scoutBench').innerHTML=analysisTable('RESERVAS',roster.slice(11),{slotOffset:11});
     const labelOf=tactics?.boardPlayerLabel||(name=>{
       const parts=(name||'').split(' ').filter(Boolean);
       const short=parts.length>1?parts[parts.length-1]:parts[0]||name;
@@ -3144,8 +3152,15 @@ export async function bootEngine({ bus } = {}) {
       const label=labelOf(player?.name||'—',8);
       const title=player?.name||'—';
       const top=p[1]===91?90:p[1];
-      return `<div class="board-player" title="${title}" style="left:${p[0]}%;top:${top}%"><i style="--energy:${clamp(player?.fatigue??0,0,100)}%"><span>${i+1}</span></i><small>${label}</small></div>`;
+      return `<div class="board-player" data-slot="${i}" title="${title}" style="left:${p[0]}%;top:${top}%"><i style="--energy:${clamp(player?.fatigue??0,0,100)}%"><span>${i+1}</span></i><small>${label}</small></div>`;
     }).join('');
+    unbindScoutBoardHover?.();
+    const scoutRoster=$('#teamScoutModal .scout-roster');
+    unbindScoutBoardHover=bindBoardRosterHover({
+      rosterRoot:scoutRoster,
+      pitchRoot:()=>$('#scoutPitchPlayers'),
+      rowSelector:'.analysis-player[data-slot]',
+    });
     $('#teamScoutModal').classList.remove('hidden');
   };
   const openClubFromTable=target=>{const clubTarget=target.closest?.('[data-club]'),name=clubTarget?.dataset.club;if(!name||!clubs[name])return false;openScout(name);return true;};
@@ -3408,7 +3423,11 @@ export async function bootEngine({ bus } = {}) {
     }
   });
   onClick('#inspectOpponent',()=>openScout(matchClub().name));
-  onClick('#closeTeamScout',()=>$('#teamScoutModal').classList.add('hidden'));
+  onClick('#closeTeamScout',()=>{
+    unbindScoutBoardHover?.();
+    unbindScoutBoardHover=null;
+    $('#teamScoutModal').classList.add('hidden');
+  });
   onClick('#closeChampionship',()=>{closeCupBracket();$('#championshipModal').classList.add('hidden');});
 
   // A janela completa do campeonato mantém foco na classificação e na agenda.
