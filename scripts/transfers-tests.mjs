@@ -1066,13 +1066,85 @@ check('AI tick can create user offers with expiry', () => {
       getSeasonRoundCount: () => 38,
       getNationalRank: () => ({ position: 25, total: 100 }),
       getClubForm: () => ['W', 'W', 'D'],
+      userOfferChanceWeek: 1,
+      maxPendingUserOffers: 2,
+      userOffersPerTick: 1,
     }),
   );
-  const tick = engine.runAiMarketTick({ maxBuys: 0, maxLoanDeals: 0, maxUserOffers: 2 });
+  const tick = engine.runAiMarketTick({
+    maxBuys: 0,
+    maxLoanDeals: 0,
+    maxUserOffers: 1,
+    tickKind: 'week',
+  });
   assert(tick.ok, tick.reason || 'tick');
   assert(tick.offers.length >= 1, `offers=${tick.offers.length}`);
+  assert(tick.offers.length <= 1, `max one offer per tick=${tick.offers.length}`);
   assert(tick.offers[0].expiresRound === 4, `expires=${tick.offers[0].expiresRound}`);
+  assert(tick.offers[0].expiresDayKey, 'expiresDayKey set');
   assert(engine.listPendingOffers().length >= 1, 'pending list');
+});
+
+check('user offer funnel respects pending cap and miss chance', () => {
+  const clubs = {
+    'Meu Clube': {
+      name: 'Meu Clube',
+      division: 'C',
+      budget: 8_000_000,
+      roster: Array.from({ length: 22 }, (_, i) =>
+        makePlayer({
+          playerId: `funnel-me-${i}`,
+          pos: i % 3 === 0 ? 'ATA' : i % 3 === 1 ? 'MC' : 'ZAG',
+          overall: 68 + (i % 4),
+          listed: i < 2,
+        }),
+      ),
+    },
+    ...Object.fromEntries(
+      Array.from({ length: 6 }, (_, i) => [
+        `Buyer F${i}`,
+        {
+          name: `Buyer F${i}`,
+          division: 'C',
+          budget: 25_000_000,
+          power: 72,
+          environment: 55,
+          roster: Array.from({ length: 18 }, (_, j) =>
+            makePlayer({ playerId: `funnel-b${i}-${j}`, pos: 'VOL', overall: 64 }),
+          ),
+        },
+      ]),
+    ),
+  };
+  let day = new Date(2030, 0, 20, 12);
+  const closed = createTransfersEngine(
+    moneyEngineDeps(clubs, {
+      getCareerDate: () => day,
+      userOfferChanceWeek: 0,
+      userOffersPerTick: 1,
+    }),
+  );
+  const miss = closed.runAiMarketTick({ maxBuys: 0, maxLoanDeals: 0, maxUserOffers: 1, tickKind: 'week' });
+  assert(miss.ok, 'tick ok');
+  assert(miss.offers.length === 0, `miss chance blocks offers=${miss.offers.length}`);
+
+  const open = createTransfersEngine(
+    moneyEngineDeps(clubs, {
+      getCareerDate: () => day,
+      getCurrentRound: () => 3,
+      userOfferChanceWeek: 1,
+      maxPendingUserOffers: 2,
+      userOffersPerTick: 1,
+    }),
+  );
+  let created = 0;
+  for (let i = 0; i < 8; i++) {
+    day = new Date(2030, 0, 20 + i, 12);
+    const tick = open.runAiMarketTick({ maxBuys: 0, maxLoanDeals: 0, maxUserOffers: 1, tickKind: 'week' });
+    created += tick.offers?.length || 0;
+  }
+  assert(created <= 2, `pending cap caps created=${created}`);
+  assert(open.listPendingOffers().length <= 2, `pending=${open.listPendingOffers().length}`);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

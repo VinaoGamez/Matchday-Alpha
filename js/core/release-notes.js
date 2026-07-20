@@ -1,6 +1,23 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-34',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T01:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Mercado',
+        items: [
+          'Propostas da IA ao seu elenco bem menos frequentes (~4 por janela, pico de 2 pendentes).',
+          'Funil interesse → chance → no máximo 1 oferta por tick; 1 tick/semana (diário só no deadline).',
+          'Propostas expiram em 4 dias; recusa gera cooldown de 10 dias no mesmo jogador.',
+          'No GitHub Pages o mercado continua desligado; no build local de testers segue ativo.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-33',
     date: '2026-07-20',
     publishedAt: '2026-07-20T01:00:00-03:00',

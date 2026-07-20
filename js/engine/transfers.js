@@ -16,11 +16,27 @@ export const TRANSFER_LIMITS = {
   managerPullChance: 0.1,
   managerPullReputation: 70,
   managerPullDelta: -0.04,
-  /** Rodadas até a proposta da IA expirar sem resposta. */
+  /** Rodadas até a proposta da IA expirar sem resposta (backup do expiry por dias). */
   offerExpiryRounds: 2,
+  /** Dias de calendário até a proposta expirar. */
+  offerExpiryDays: 4,
+  /** Dias sem nova proposta no mesmo jogador após recusa. */
+  offerRejectCooldownDays: 10,
   aiBuyDealsPerTick: 5,
   aiLoanDealsPerTick: 2,
-  userOffersPerTick: 2,
+  /** Máx. ofertas novas por tick quando a rolagem passa (alvo-meio). */
+  userOffersPerTick: 1,
+  /** Teto de propostas pendentes no inbox do usuário. */
+  maxPendingUserOffers: 2,
+  /**
+   * Funil interesse→proposta (perfil alvo-meio).
+   * week: 1 tick/semana · deadline: 1/dia · postRound: após rodada.
+   */
+  userOfferChanceWeek: 0.3,
+  userOfferChanceDeadline: 0.14,
+  userOfferChancePostRound: 0.16,
+  /** Fração das ofertas geradas que tentam empréstimo. */
+  loanOfferShare: 0.2,
 };
 
 const DIV_BUDGET_FALLBACK = { A: 40_000_000, B: 20_000_000, C: 10_000_000, D: 4_000_000 };
@@ -225,9 +241,16 @@ export function createTransfersEngine(deps) {
     minAcceptRatio = TRANSFER_LIMITS.minAcceptRatio,
     maxAcceptRatio = TRANSFER_LIMITS.maxAcceptRatio,
     offerExpiryRounds = TRANSFER_LIMITS.offerExpiryRounds,
+    offerExpiryDays = TRANSFER_LIMITS.offerExpiryDays,
+    offerRejectCooldownDays = TRANSFER_LIMITS.offerRejectCooldownDays,
     aiBuyDealsPerTick = TRANSFER_LIMITS.aiBuyDealsPerTick,
     aiLoanDealsPerTick = TRANSFER_LIMITS.aiLoanDealsPerTick,
     userOffersPerTick = TRANSFER_LIMITS.userOffersPerTick,
+    maxPendingUserOffers = TRANSFER_LIMITS.maxPendingUserOffers,
+    userOfferChanceWeek = TRANSFER_LIMITS.userOfferChanceWeek,
+    userOfferChanceDeadline = TRANSFER_LIMITS.userOfferChanceDeadline,
+    userOfferChancePostRound = TRANSFER_LIMITS.userOfferChancePostRound,
+    loanOfferShare = TRANSFER_LIMITS.loanOfferShare,
   } = deps;
 
   let pendingOffers = Array.isArray(deps.initialPendingOffers)
@@ -237,6 +260,37 @@ export function createTransfersEngine(deps) {
   let seasonDealLog = Array.isArray(deps.initialSeasonDeals)
     ? deps.initialSeasonDeals.map(item => ({ ...item }))
     : [];
+  /** @type {Map<string, string>} playerId → dayKey até quando está em cooldown */
+  const rejectCooldownUntil = new Map(
+    Array.isArray(deps.initialOfferCooldowns)
+      ? deps.initialOfferCooldowns.map(([id, key]) => [id, key])
+      : [],
+  );
+
+  const DIV_RANK = { A: 4, B: 3, C: 2, D: 1 };
+  const addCareerDays = (date, days) => {
+    const d = toCareerDate(date) || careerDate();
+    if (!d) return null;
+    const next = new Date(d);
+    next.setDate(next.getDate() + days);
+    next.setHours(12, 0, 0, 0);
+    return next;
+  };
+  const offerChanceForTick = tickKind => {
+    if (tickKind === 'deadline') return userOfferChanceDeadline;
+    if (tickKind === 'postRound') return userOfferChancePostRound;
+    return userOfferChanceWeek;
+  };
+  const playerOnOfferCooldown = playerId => {
+    if (!playerId) return false;
+    const until = rejectCooldownUntil.get(playerId);
+    if (!until) return false;
+    const today = careerDayKey(careerDate());
+    if (!today) return false;
+    if (today <= until) return true;
+    rejectCooldownUntil.delete(playerId);
+    return false;
+  };
 
   const careerDayKey = date => {
     const d = toCareerDate(date);
@@ -470,6 +524,17 @@ export function createTransfersEngine(deps) {
     let h = 0;
     for (let i = 0; i < text.length; i += 1) h = (h * 31 + text.charCodeAt(i)) >>> 0;
     return (h % 1000) / 1000;
+  };
+
+  /** Rolagem ~uniforme em [0,1) (FNV-1a). Usar no funil de ofertas — hashRatio %1000 enviesa strings parecidas. */
+  const unitRoll = seed => {
+    let h = 2166136261 >>> 0;
+    const text = String(seed || '');
+    for (let i = 0; i < text.length; i += 1) {
+      h ^= text.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0) / 4294967296;
   };
 
   /**
@@ -1305,15 +1370,18 @@ export function createTransfersEngine(deps) {
   };
 
   /**
-   * Expira propostas pendentes cujo prazo passou (currentRound > expiresRound).
+   * Expira propostas pendentes por rodada OU por dias de calendário.
    */
   const expirePendingOffers = (round = currentRound()) => {
     const r = Math.max(1, Number(round) || 1);
+    const todayKey = careerDayKey(careerDate());
     const expired = [];
     pendingOffers.forEach(offer => {
       if (offer.status !== 'pending') return;
-      // Expira ao chegar na rodada-limite (created + 2).
-      if (r < Number(offer.expiresRound)) return;
+      const roundExpired = Number(offer.expiresRound) > 0 && r >= Number(offer.expiresRound);
+      const dayExpired =
+        offer.expiresDayKey && todayKey ? todayKey >= offer.expiresDayKey : false;
+      if (!roundExpired && !dayExpired) return;
       offer.status = 'expired';
       resolveOfferMessage(offer);
       expired.push({ ...offer });
@@ -1333,7 +1401,14 @@ export function createTransfersEngine(deps) {
     if (listPendingOffers().some(item => item.playerId === playerId)) {
       return { ok: false, reason: 'already_offered' };
     }
+    if (listPendingOffers().length >= maxPendingUserOffers) {
+      return { ok: false, reason: 'pending_cap' };
+    }
+    if (playerOnOfferCooldown(playerId)) {
+      return { ok: false, reason: 'cooldown' };
+    }
     const round = currentRound();
+    const expiresAt = addCareerDays(careerDate(), offerExpiryDays);
     const offer = {
       id: nextOfferId(),
       type: type === 'loan' ? 'loan' : 'buy',
@@ -1346,6 +1421,7 @@ export function createTransfersEngine(deps) {
       createdRound: round,
       createdAt: careerDate()?.toISOString?.() || new Date().toISOString(),
       expiresRound: round + offerExpiryRounds,
+      expiresDayKey: careerDayKey(expiresAt),
       messageId: null,
       status: 'pending',
     };
@@ -1365,6 +1441,11 @@ export function createTransfersEngine(deps) {
     if (!offer) return { ok: false, reason: 'not_found' };
     if (offer.status !== 'pending') return { ok: false, reason: 'not_pending', offer };
     offer.status = reason === 'expired' ? 'expired' : 'rejected';
+    if (offer.status === 'rejected' && offer.playerId) {
+      const until = addCareerDays(careerDate(), offerRejectCooldownDays);
+      const key = careerDayKey(until);
+      if (key) rejectCooldownUntil.set(offer.playerId, key);
+    }
     resolveOfferMessage(offer);
     return { ok: true, offer: { ...offer } };
   };
@@ -1422,11 +1503,14 @@ export function createTransfersEngine(deps) {
 
   /**
    * Tick de mercado da IA (janela aberta): negócios IA↔IA + propostas ao usuário.
+   * @param {'week'|'deadline'|'postRound'} [opts.tickKind]
    */
   const runAiMarketTick = ({
     maxBuys = aiBuyDealsPerTick,
     maxLoanDeals = aiLoanDealsPerTick,
     maxUserOffers = userOffersPerTick,
+    tickKind = 'week',
+    skipUserOffers = false,
   } = {}) => {
     const status = marketStatus();
     if (!status.open) {
@@ -1572,20 +1656,49 @@ export function createTransfersEngine(deps) {
       }
     }
 
-    // --- Propostas ao usuário ---
+    // --- Propostas ao usuário (funil interesse → rolagem → no máx. 1) ---
     const { club: userClub } = userClubState();
-    if (userClub?.roster?.length > minRoster) {
+    const pendingCount = listPendingOffers().length;
+    const offerChance = offerChanceForTick(tickKind);
+    const allowUserOffers =
+      !skipUserOffers &&
+      maxUserOffers > 0 &&
+      userClub?.roster?.length > minRoster &&
+      pendingCount < maxPendingUserOffers &&
+      unitRoll(
+        `user-offer:${season}:${round}:${careerDayKey(careerDate())}:${tickKind}`,
+      ) < offerChance;
+
+    if (allowUserOffers) {
+      const rosterOvr =
+        userClub.roster.reduce((sum, p) => sum + (Number(p.overall) || 70), 0) /
+        Math.max(1, userClub.roster.length);
+      const userDivRank = DIV_RANK[userClub.division] || 2;
       const targets = userClub.roster
         .filter(player => !player.onLoan)
-        .filter(player => !listPendingOffers().some(item => item.playerId === resolvePlayerId(player)))
+        .filter(player => {
+          const id = resolvePlayerId(player);
+          if (!id) return false;
+          if (playerOnOfferCooldown(id)) return false;
+          if (listPendingOffers().some(item => item.playerId === id)) return false;
+          return true;
+        })
         .map(player => {
           const posCount = userClub.roster.filter(item => item.pos === player.pos).length;
           const id = resolvePlayerId(player);
-          let score = (player.listed ? 20 : 0) + (posCount >= 3 ? 25 : 0);
-          score += hashRatio(`${id}:${round}:uo`) * 40;
-          score -= (Number(player.overall) || 70) * 0.15;
-          return { player, id, score, posCount };
+          const age = Number(player.age) || 26;
+          const ovr = Number(player.overall) || 70;
+          let score = (player.listed ? 28 : 0) + (player.loanListed ? 12 : 0);
+          score += posCount >= 4 ? 22 : posCount >= 3 ? 10 : 0;
+          score += age <= 23 ? 6 : 0;
+          score += hashRatio(`${id}:${round}:uo`) * 30;
+          score -= ovr * 0.18;
+          if (!player.listed && !player.loanListed && posCount <= 2 && ovr >= rosterOvr + 3) {
+            score -= 35;
+          }
+          return { player, id, score, posCount, age, ovr };
         })
+        .filter(item => item.score > -5)
         .sort((a, b) => b.score - a.score);
 
       let userOfferCount = 0;
@@ -1599,22 +1712,34 @@ export function createTransfersEngine(deps) {
           Number(target.player.marketValue) ||
           estimatePlayerValue(target.player, userClub.division);
         const wantLoan =
-          hashRatio(`${target.id}:${round}:kind`) < 0.35 &&
-          (target.player.loanListed || target.posCount >= 3);
+          hashRatio(`${target.id}:${round}:kind`) < loanOfferShare &&
+          (target.player.loanListed ||
+            (target.posCount >= 4 && (target.age <= 24 || target.ovr <= rosterOvr)));
 
         const buyers = aiEntries
           .filter(([, club]) => club.roster.length < maxRoster)
           .map(([name, club]) => {
             const meta = buyerAskCap(name, club, target.player, value);
-            return { name, club, ...meta };
+            const buyerRank = DIV_RANK[club.division] || 2;
+            const gap = buyerRank - userDivRank;
+            if (
+              !wantLoan &&
+              gap >= 2 &&
+              !target.player.listed &&
+              target.ovr < rosterOvr + 6
+            ) {
+              return null;
+            }
+            return { name, club, ...meta, gap };
           })
+          .filter(Boolean)
           .filter(entry => (wantLoan ? true : entry.cash >= value * 0.5))
           .sort((a, b) => b.score - a.score);
 
         const buyerEntry = buyers[0];
         if (!buyerEntry) continue;
         if (wantLoan) {
-          if (countOutgoingLoans(userName) >= maxLoans) continue;
+          if (countOutgoingLoans(userClub) >= maxLoans) continue;
           if (countIncomingLoans(buyerEntry.club) >= maxLoans) continue;
           const created = createIncomingOffer({
             type: 'loan',
@@ -1735,9 +1860,16 @@ export function createTransfersEngine(deps) {
       minAcceptRatio,
       maxAcceptRatio,
       offerExpiryRounds,
+      offerExpiryDays,
+      offerRejectCooldownDays,
       aiBuyDealsPerTick,
       aiLoanDealsPerTick,
       userOffersPerTick,
+      maxPendingUserOffers,
+      userOfferChanceWeek,
+      userOfferChanceDeadline,
+      userOfferChancePostRound,
+      loanOfferShare,
     },
     marketOpen,
     marketStatus,

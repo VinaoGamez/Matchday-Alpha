@@ -2408,7 +2408,7 @@ export async function bootEngine({ bus } = {}) {
       if(msg)transfersEngine?.attachOfferMessageId?.(offer.id,msg.id);
     });
   };
-  const processAiMarketTickCore=({quietDigest=false}={})=>{
+  const processAiMarketTickCore=({quietDigest=false,tickKind='week',skipUserOffers=false}={})=>{
     if(!transfersEngine)return null;
     const expired=transfersEngine.expirePendingOffers(currentRound)||[];
     expired.forEach(offer=>{
@@ -2436,7 +2436,7 @@ export async function bootEngine({ bus } = {}) {
       }
     });
     if(!transfersEngine.marketOpen())return { expired, tick: null };
-    const tick=transfersEngine.runAiMarketTick();
+    const tick=transfersEngine.runAiMarketTick({ tickKind, skipUserOffers });
     if(tick?.digest?.total&&!quietDigest){
       pushMessage({
         category:'transfer',
@@ -2465,7 +2465,7 @@ export async function bootEngine({ bus } = {}) {
   const processAiMarketAfterRound=()=>{
     if(!transfersEngine)return;
     try{
-      processAiMarketTickCore({quietDigest:false});
+      processAiMarketTickCore({quietDigest:false,tickKind:'postRound'});
       transfersUi?.render?.();
     }catch{/* mercado off / boot */}
   };
@@ -2507,10 +2507,29 @@ export async function bootEngine({ bus } = {}) {
         advanceCareerCalendarTo(nextDay);
         advanceCupThroughDate(nextDay);
         simulatedDays+=1;
+        // Expira propostas por calendário mesmo sem tick de oferta.
+        try{transfersEngine.expirePendingOffers?.(currentRound);}catch{/* */}
+        // Deadline: 1 tick/dia. Semana: só IA↔IA nos dias intermediários (sem spam ao usuário).
         try{
-          if(transfersEngine.marketOpen())processAiMarketTickCore({quietDigest:phaseBefore.mode==='week'});
+          if(transfersEngine.marketOpen()){
+            if(phaseBefore.mode==='day'){
+              processAiMarketTickCore({quietDigest:false,tickKind:'deadline'});
+            }else if(step<daysToAdvance-1){
+              processAiMarketTickCore({quietDigest:true,tickKind:'week',skipUserOffers:true});
+            }
+          }
         }catch{/* tick */}
       }
+      // Semana: 1 tick de propostas ao usuário no fim do avanço.
+      try{
+        if(
+          phaseBefore.mode==='week' &&
+          !stoppedMatch &&
+          transfersEngine.marketOpen()
+        ){
+          processAiMarketTickCore({quietDigest:false,tickKind:'week'});
+        }
+      }catch{/* tick */}
     }finally{
       suppressTransferOfferPopup=false;
     }
@@ -2655,6 +2674,21 @@ export async function bootEngine({ bus } = {}) {
     const text=String(name||'—');
     return text.length>20?`${text.slice(0,18)}…`:text;
   };
+  /** Rótulo do informativo: RODADA N ou MATA-MATA + fase/leg. */
+  const headerMatchContext=game=>{
+    if(!game)return { tag:'JOGO', stage:'' };
+    if(game.competition==='COPA DO BRASIL'){
+      const stage=[game.phase,game.leg].filter(Boolean).join(' · ');
+      return { tag:'MATA-MATA', stage:stage||'Copa do Brasil' };
+    }
+    if(typeof isKnockoutShootoutCompetition==='function'&&isKnockoutShootoutCompetition(game)){
+      const phaseLabel=game.phase||(game.knockoutRound!=null?`Fase ${game.knockoutRound}`:'Eliminatórias');
+      const stage=[phaseLabel,game.leg].filter(Boolean).join(' · ');
+      return { tag:'MATA-MATA', stage };
+    }
+    const round=game.round??currentRound;
+    return { tag:`RODADA ${round}`, stage:'' };
+  };
   renderHeaderGuide=()=>{
     const track=$('#headerNewsTrack');
     const dateEl=$('#headerDateLabel');
@@ -2667,24 +2701,27 @@ export async function bootEngine({ bus } = {}) {
     if(!track)return;
     const items=[];
     const pushItem=(kind,html,user=false)=>items.push({kind,html,user});
+    const headerMatchLine=(game,details,{userTag=null,withTime=false}={})=>{
+      const ctx=headerMatchContext(game);
+      const tag=userTag||ctx.tag;
+      const when=[ctx.stage,details.display,withTime?details.time:null].filter(Boolean).join(' · ');
+      return `<i>${escapeHeaderText(tag)}</i><b>${escapeHeaderText(shortHeaderClub(game.home))} × ${escapeHeaderText(shortHeaderClub(game.away))}</b><em>${escapeHeaderText(when)}</em>`;
+    };
     const next=typeof nextPendingUserEntry==='function'?nextPendingUserEntry():null;
     if(next?.game){
       const details=next.details||fixtureDetails(next.game);
-      pushItem(
-        'jogo',
-        `<i>SEU JOGO</i><b>${escapeHeaderText(shortHeaderClub(next.game.home))} × ${escapeHeaderText(shortHeaderClub(next.game.away))}</b><em>${escapeHeaderText(details.display)} · ${escapeHeaderText(details.time)}</em>`,
-        true,
-      );
+      const ctx=headerMatchContext(next.game);
+      const userTag=ctx.tag.startsWith('RODADA')||ctx.tag==='MATA-MATA'
+        ?`SEU JOGO · ${ctx.tag}`
+        :'SEU JOGO';
+      pushItem('jogo',headerMatchLine(next.game,details,{userTag,withTime:true}),true);
     }
     (futureMatches||[])
       .filter(game=>game&&!isUserFixture(game)&&!isFixtureCompleted(game))
       .slice(0,2)
       .forEach(game=>{
         const details=fixtureDetails(game);
-        pushItem(
-          'jogo',
-          `<i>RODADA</i><b>${escapeHeaderText(shortHeaderClub(game.home))} × ${escapeHeaderText(shortHeaderClub(game.away))}</b><em>${escapeHeaderText(details.display)}</em>`,
-        );
+        pushItem('jogo',headerMatchLine(game,details));
       });
     if(FEATURES.transfers&&transfersEngine){
       const phase=transfersEngine.getWindowPhase?.()||{};
