@@ -1,6 +1,7 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { formatKnockoutFixtureScore, isKnockoutShootoutCompetition as isKnockoutGame } from '../../engine/knockout-shootout.js';
 import { applyCompetitionBadge, competitionBadgeMarkup, resolveCompetitionBadge } from '../../ui/competition-badge.js';
+import { setHumanBadgeOnCrest } from '../../ui/human-badge.js';
 
 const DASHBOARD_TABLE_ROWS = 5;
 const CLUB_UPCOMING_ROWS = 5;
@@ -379,6 +380,32 @@ export function createDashboardFeature(deps) {
     }
   };
 
+  const resolveNextMatchCrest = nameEl => {
+    if (nameEl?.id === 'nextMatchAway') return $('#nextMatchAwayCrest');
+    const prev = nameEl?.previousElementSibling;
+    if (!prev) return null;
+    if (prev.classList.contains('human-badge-host')) return prev.querySelector('i');
+    return prev;
+  };
+
+  const syncNextMatchCrest = (nameEl, clubName, isHuman, { away = false, initials = null } = {}) => {
+    const crest = resolveNextMatchCrest(nameEl);
+    if (!crest) return;
+    const label =
+      initials ||
+      String(clubName || '')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(part => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() ||
+      '—';
+    crest.textContent = label;
+    crest.classList.toggle('away', !!away);
+    setHumanBadgeOnCrest(crest, !!isHuman);
+  };
+
   const renderUserMatchPresentation = () => {
     refreshUserFixtures();
     const userClub = getUserClub();
@@ -401,7 +428,7 @@ export function createDashboardFeature(deps) {
     if (cardTitle) cardTitle.textContent = fullyComplete ? 'RESUMO DA TEMPORADA' : 'PRÓXIMA PARTIDA';
 
     const sponsorPending = typeof isSponsorChoicePending === 'function' && isSponsorChoicePending();
-    // Só após fechar o resumo da partida recém-jogada (ainda sem SAIR / avançar rodada).
+    // Só após fechar o resumo da partida recém-jogada (ainda sem AVANÇAR / avançar rodada).
     const livePostMatch = typeof canReopenLivePostMatch === 'function' && canReopenLivePostMatch();
     const transferPhase =
       typeof getTransferWindowPhase === 'function' ? getTransferWindowPhase() : null;
@@ -443,13 +470,8 @@ export function createDashboardFeature(deps) {
       bindClubLink($('#nextMatchAway'), null, { label: 'Calendário nacional' });
       $('#nextMatchHomePosition').textContent = `${displayedClubPosition(userClub)}º na série`;
       $('#nextMatchAwayPosition').textContent = 'Aguardando fechamento';
-      $('#nextMatchHome').previousElementSibling.textContent = userClub
-        .split(' ')
-        .map(part => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
-      $('#nextMatchAwayCrest').textContent = 'NF';
+      syncNextMatchCrest($('#nextMatchHome'), userClub, true);
+      syncNextMatchCrest($('#nextMatchAway'), null, false, { away: true, initials: 'NF' });
       setNextMatchMeta(['Sem partidas pendentes', 'Simule o restante da temporada']);
     } else if (display) {
       const { game, details } = display;
@@ -460,8 +482,16 @@ export function createDashboardFeature(deps) {
       const daysUntil = daysUntilNextFixtureFromToday();
       const restDays = restDaysUntilNextFixture();
       const leagueNext = leagueUserGameForRound(currentRound);
-      const onMatchDay = sameCalendarDay(details.date, careerCalendarDate);
-      const todayLabel = `HOJE · ${formatDashboardDate(careerCalendarDate)}`;
+      const matchDay = new Date(details.date);
+      matchDay.setHours(12, 0, 0, 0);
+      const today = new Date(careerCalendarDate);
+      today.setHours(12, 0, 0, 0);
+      // Dia do jogo OU jogo atrasado (calendário passou da data sem disputar).
+      const onMatchDay = matchDay.getTime() <= today.getTime();
+      const overdueMatch = matchDay.getTime() < today.getTime();
+      const todayLabel = overdueMatch
+        ? `ATRASADO · ${formatDashboardDate(details.date)}`
+        : `HOJE · ${formatDashboardDate(careerCalendarDate)}`;
       // Entre jogos: botão de avanço fica no Dashboard (janela aberta OU fechada).
       // Antes só aparecia com mercado aberto — após o fechamento da janela o save ficava preso.
       const showCalendarAdvance =
@@ -472,7 +502,9 @@ export function createDashboardFeature(deps) {
       if (playBtn && !sponsorPending) {
         playBtn.disabled = !onMatchDay;
         playBtn.title = onMatchDay
-          ? 'Disputar a partida agendada para hoje'
+          ? overdueMatch
+            ? 'Partida atrasada — dispute agora para realinhar o calendário'
+            : 'Disputar a partida agendada para hoje'
           : 'Avance no calendário até o dia do jogo para disputar a partida';
       }
       if (transferAdvanceBtn) {
@@ -511,18 +543,8 @@ export function createDashboardFeature(deps) {
       bindClubLink($('#nextMatchAway'), game.away);
       $('#nextMatchHomePosition').textContent = `${displayedClubPosition(homeClub.name)}º colocado`;
       $('#nextMatchAwayPosition').textContent = `${displayedClubPosition(awayClub.name)}º colocado`;
-      $('#nextMatchHome').previousElementSibling.textContent = game.home
-        .split(' ')
-        .map(part => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
-      $('#nextMatchAwayCrest').textContent = game.away
-        .split(' ')
-        .map(part => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
+      syncNextMatchCrest($('#nextMatchHome'), game.home, game.home === userClub);
+      syncNextMatchCrest($('#nextMatchAway'), game.away, game.away === userClub, { away: true });
       setNextMatchMeta(
         onMatchDay
           ? [

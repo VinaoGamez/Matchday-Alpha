@@ -1,2 +1,197 @@
-/* from engine.js unifiedTablesCss */
-:root{--table-surface:#0b1a22;--table-head:#102b35;--table-section:#123843;--table-line:#234b55;--table-cyan:#63d9ff;--table-text:#eef9f7;--table-muted:#9ebfc2;--table-lime:#b6ff38}.roster,.league,.standings,.upcoming-dashboard,.recent-dashboard,.leaders-dashboard,.tactic-roster,.scout-roster,.live-opponent-roster,.championship-grid section,.championship-grid aside,.round-games,.final-goals,.final-basic{background:var(--table-surface)!important;border-color:#28505b!important;border-radius:7px!important;overflow:hidden}.roster-head,.league-head,.mini-table-head,.fixture-table-head,.leader-table-head,.champ-head,.live-opponent-head,.analysis-head,.round-games-head,.dashboard-results-head{background:var(--table-head)!important;color:var(--table-cyan)!important;border-color:#28505b!important;font:700 9px DM Sans!important;letter-spacing:.6px}.player-row,.league-row,.standing-row,.dashboard-fixture-row,.leader-row,.champ-row,.scorer-row,.fixture-row,.analysis-player,.live-opponent-player,.round-game-row{background:transparent!important;border-color:var(--table-line)!important;color:var(--table-text)!important}.player-row:hover,.league-row:hover,.standing-row:hover,.dashboard-fixture-row:hover,.leader-row:hover,.champ-row:hover,.scorer-row:hover,.fixture-row:hover,.analysis-player:hover,.live-opponent-player:hover,.round-game-row:hover{background:#102832!important}.tactic-roster h3,.analysis-roster h3,.live-opponent-roster h3,.championship-grid h3{background:var(--table-section)!important;color:var(--table-lime)!important;border-color:#28505b!important;font-family:Barlow Condensed!important;letter-spacing:.2px}.tactic-roster-head,.analysis-head,.live-opponent-head{background:var(--table-head)!important;color:var(--table-cyan)!important}.badge{background:#173e49!important;color:var(--table-cyan)!important;border:1px solid #397487}.club-link{color:var(--table-text)!important;font-weight:700}.standing-row.highlight,.league-row.highlight,.champ-row.highlight,.dashboard-fixture-row.involves-user,.round-game-row.user-game{background:#203b26!important;box-shadow:inset 3px 0 0 var(--table-lime)}.leader-row span:last-child,.scorer-row strong,.round-game-row strong{color:var(--table-lime)!important}.table-fatigue i,.tactic-player-row .tactic-fatigue i,.roster-fatigue i{background:#25424b!important;box-shadow:inset 0 0 0 1px #397487}.table-fatigue i b,.tactic-player-row .tactic-fatigue i b,.roster-fatigue i b{background:linear-gradient(90deg,var(--table-cyan),var(--table-lime))!important}.final-goals h3,.final-basic h3{background:var(--table-section)!important;color:var(--table-lime)!important;border-bottom:1px solid #28505b}.final-goals article{background:#102832!important;color:var(--table-text)!important}.final-goals article b{color:var(--table-cyan)!important}@media(max-width:700px){.roster-head,.player-row,.league-head,.league-row,.mini-table-head,.standing-row,.fixture-table-head,.dashboard-fixture-row,.round-games-head,.round-game-row{font-size:9px!important}}
+/* Padrão unificado de tabelas — azul predominante; verde só no destaque do usuário */
+:root {
+  --table-surface: #0b1a22;
+  --table-head: #102b35;
+  --table-section: #123843;
+  --table-line: #234b55;
+  --table-cyan: #63d9ff;
+  --table-text: #eef9f7;
+  --table-muted: #9ebfc2;
+  --table-lime: #b6ff38;
+}
+
+.roster,
+.league,
+.standings,
+.upcoming-dashboard,
+.recent-dashboard,
+.leaders-dashboard,
+.tactic-roster,
+.scout-roster,
+.live-opponent-roster,
+.championship-grid section,
+.championship-grid aside,
+.round-games,
+.final-goals,
+.final-basic,
+.d-group-card {
+  background: var(--table-surface) !important;
+  border-color: #28505b !important;
+  border-radius: 7px !important;
+  overflow: hidden;
+}
+
+.roster-head,
+.league-head,
+.mini-table-head,
+.fixture-table-head,
+.leader-table-head,
+.champ-head,
+.live-opponent-head,
+.analysis-head,
+.round-games-head,
+.dashboard-results-head,
+.d-group-head {
+  background: var(--table-head) !important;
+  color: var(--table-cyan) !important;
+  border-color: #28505b !important;
+  font: 700 9px DM Sans !important;
+  letter-spacing: 0.6px;
+}
+
+.player-row,
+.league-row,
+.standing-row,
+.dashboard-fixture-row,
+.leader-row,
+.champ-row,
+.scorer-row,
+.fixture-row,
+.analysis-player,
+.live-opponent-player,
+.round-game-row,
+.d-group-row {
+  background: transparent !important;
+  border-color: var(--table-line) !important;
+  color: var(--table-text) !important;
+}
+
+.player-row:hover,
+.league-row:hover,
+.standing-row:hover,
+.dashboard-fixture-row:hover,
+.leader-row:hover,
+.champ-row:hover,
+.scorer-row:hover,
+.fixture-row:hover,
+.analysis-player:hover,
+.live-opponent-player:hover,
+.round-game-row:hover,
+.d-group-row:hover {
+  background: #102832 !important;
+}
+
+.tactic-roster h3,
+.analysis-roster h3,
+.live-opponent-roster h3,
+.championship-grid h3 {
+  background: var(--table-section) !important;
+  color: var(--table-cyan) !important;
+  border-color: #28505b !important;
+  font-family: Barlow Condensed !important;
+  letter-spacing: 0.2px;
+}
+
+.tactic-roster-head,
+.analysis-head,
+.live-opponent-head {
+  background: var(--table-head) !important;
+  color: var(--table-cyan) !important;
+}
+
+.badge {
+  background: #173e49 !important;
+  color: var(--table-cyan) !important;
+  border: 1px solid #397487;
+}
+
+.club-link {
+  color: var(--table-text) !important;
+  font-weight: 700;
+}
+
+/* Zona de classificação / acesso — verde (padrão antigo) */
+.champ-row.promotion,
+.league-row.promotion,
+.d-group-row.qualified {
+  background: #173b2b !important;
+  box-shadow: inset 3px 0 0 #58e6a8 !important;
+}
+
+/* Destaque do usuário — verde mais marcado (vence a zona) */
+.standing-row.highlight,
+.league-row.highlight,
+.champ-row.highlight,
+.champ-row.promotion.highlight,
+.league-row.promotion.highlight,
+.dashboard-fixture-row.involves-user,
+.round-game-row.user-game,
+.d-group-row.user-club,
+.d-group-row.qualified.user-club,
+.fixture-row.user-round,
+.round-browser-row.user-round,
+.championship-leader-row.user-leader {
+  background: #1a3224 !important;
+  box-shadow: inset 3px 0 0 var(--table-lime) !important;
+  color: var(--table-text) !important;
+}
+
+.d-group-row.user-club .club-link,
+.standing-row.highlight .club-link,
+.league-row.highlight .club-link,
+.champ-row.highlight .club-link {
+  color: #f4fbf5 !important;
+  font-weight: 700;
+}
+
+.leader-row span:last-child,
+.scorer-row strong,
+.round-game-row strong,
+.round-score,
+.championship-leader-row span:last-child {
+  color: var(--table-cyan) !important;
+}
+
+.table-fatigue i,
+.tactic-player-row .tactic-fatigue i,
+.roster-fatigue i {
+  background: #25424b !important;
+  box-shadow: inset 0 0 0 1px #397487;
+}
+
+.table-fatigue i b,
+.tactic-player-row .tactic-fatigue i b,
+.roster-fatigue i b {
+  background: linear-gradient(90deg, var(--table-cyan), var(--table-lime)) !important;
+}
+
+.final-goals h3,
+.final-basic h3 {
+  background: var(--table-section) !important;
+  color: var(--table-cyan) !important;
+  border-bottom: 1px solid #28505b;
+}
+
+.final-goals article {
+  background: #102832 !important;
+  color: var(--table-text) !important;
+}
+
+.final-goals article b {
+  color: var(--table-cyan) !important;
+}
+
+@media (max-width: 700px) {
+  .roster-head,
+  .player-row,
+  .league-head,
+  .league-row,
+  .mini-table-head,
+  .standing-row,
+  .fixture-table-head,
+  .dashboard-fixture-row,
+  .round-games-head,
+  .round-game-row {
+    font-size: 9px !important;
+  }
+}

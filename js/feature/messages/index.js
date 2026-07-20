@@ -101,11 +101,94 @@ const escapeHtml = value =>
     .replace(/"/g, '&quot;');
 
 const bodyToHtml = body =>
-  escapeHtml(body)
+  String(body || '')
     .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
+    .map(line => escapeHtml(line.trim()))
     .join('<br>');
+
+const MONTH_ABBR_TO_NUM = {
+  JAN: '01',
+  FEV: '02',
+  MAR: '03',
+  ABR: '04',
+  MAI: '05',
+  JUN: '06',
+  JUL: '07',
+  AGO: '08',
+  SET: '09',
+  OUT: '10',
+  NOV: '11',
+  DEZ: '12',
+};
+
+const isMatchdayMessage = message =>
+  message?.type === 'matchday' || /^jogo do dia\b/i.test(message?.title || '');
+
+const isMatchResultMessage = message =>
+  message?.type === 'match-result' || /^resultado da partida\b/i.test(message?.title || '');
+
+const isDisciplineDigestMessage = message =>
+  message?.category === 'discipline' || /^disciplina\b/i.test(message?.title || '');
+
+/** Pré-jogo, resultado e disciplina: cabeçalho curto "Brasileirão D" / "Rodada X". */
+const usesCompetitionShortMeta = message =>
+  isMatchdayMessage(message) || isMatchResultMessage(message) || isDisciplineDigestMessage(message);
+
+/** Cabeçalho curto: "Brasileirão D" / "Rodada 4" (também reformata saves antigos). */
+const competitionShortReaderMeta = message => {
+  const short = message?.meta?.competition;
+  const roundLabel = message?.meta?.roundLabel;
+  if (short && roundLabel && !/^disciplina$/i.test(String(short)) && !/·/.test(String(short))) {
+    return { competition: String(short), roundLabel: String(roundLabel) };
+  }
+  const raw = String(message?.meta?.competition || '');
+  const body = String(message?.body || '');
+  const serie =
+    raw.match(/S[ée]rie\s*([A-D])/i)?.[1] ||
+    raw.match(/Brasileir[aã]o\s+([A-D])\b/i)?.[1] ||
+    body.match(/Brasileir[aã]o\s+S[ée]rie\s*([A-D])/i)?.[1] ||
+    body.match(/\bno\s+Brasileir[aã]o\s+S[ée]rie\s*([A-D])/i)?.[1];
+  const roundNum = raw.match(/Rodada\s*(\d+)/i)?.[1] || message?.round;
+  if (serie) {
+    return {
+      competition: `Brasileirão ${serie.toUpperCase()}`,
+      roundLabel: `Rodada ${roundNum}`,
+    };
+  }
+  if (/copa/i.test(raw) || /copa do brasil/i.test(body)) {
+    const parts = raw
+      .split('·')
+      .map(part => part.trim())
+      .filter(Boolean);
+    return {
+      competition: 'Copa do Brasil',
+      roundLabel: parts.slice(1).join(' · ') || `Rodada ${message?.round ?? '—'}`,
+    };
+  }
+  return {
+    competition: short && !/^disciplina$/i.test(String(short)) ? String(short) : 'Competição',
+    roundLabel: roundLabel || `Rodada ${message?.round ?? '—'}`,
+  };
+};
+
+/** Corpo pré-jogo: data XX/XX + linha em branco antes dos destaques. */
+const formatMatchdayBody = body => {
+  let text = String(body || '').trim();
+  text = text.replace(
+    /^(\d{1,2})\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\b/i,
+    (_, day, month) => {
+      const dd = String(day).padStart(2, '0');
+      const mm = MONTH_ABBR_TO_NUM[month.toUpperCase()] || '01';
+      return `${dd}/${mm}`;
+    },
+  );
+  text = text.replace(
+    /\.\s*(?:Brasileir[aã]o[^.\n]*|Copa do Brasil[^.\n]*|S[ée]rie D[^.\n]*)\./i,
+    '.',
+  );
+  text = text.replace(/\s*Destaques do advers[aá]rio\s*:/i, '\n\nDestaques do adversário:');
+  return text;
+};
 
 /**
  * Hub de mensagens — UI + estado isolados do motor legado.
@@ -300,6 +383,8 @@ export function createMessagesFeature(deps) {
     const body = $('#messageReaderBody');
 
     const offerMessage = isIncomingOfferMessage(message);
+    const matchdayMessage = isMatchdayMessage(message);
+    const competitionShortMeta = usesCompetitionShortMeta(message);
     const head = $('.message-reader-head');
     head?.classList.add('is-reader-grid');
     head?.classList.toggle('is-transfer-offer', !!offerMessage);
@@ -307,6 +392,9 @@ export function createMessagesFeature(deps) {
       if (offerMessage) {
         const competition = message.meta?.competition || 'Mercado';
         meta.innerHTML = `<span>RODADA ${escapeHtml(message.round)}</span><span>${escapeHtml(competition)}</span>`;
+      } else if (competitionShortMeta) {
+        const shortMeta = competitionShortReaderMeta(message);
+        meta.innerHTML = `<span>${escapeHtml(shortMeta.competition)}</span><span>${escapeHtml(shortMeta.roundLabel)}</span>`;
       } else {
         const category = CATEGORY_LABELS[message.category] || String(message.category || 'CLUBE').toUpperCase();
         const secondary = message.meta?.competition
@@ -324,6 +412,12 @@ export function createMessagesFeature(deps) {
       } else if (offerMessage) {
         title.classList.remove('is-loan-title');
         title.textContent = transferOfferReaderTitle(message);
+      } else if (matchdayMessage) {
+        title.classList.remove('is-loan-title');
+        title.textContent = 'JOGO DO DIA';
+      } else if (isDisciplineDigestMessage(message)) {
+        title.classList.remove('is-loan-title');
+        title.textContent = 'DISCIPLINA';
       } else {
         title.classList.remove('is-loan-title');
         title.textContent = message.title;
@@ -352,6 +446,8 @@ export function createMessagesFeature(deps) {
               </div>
             </div>`
           : bodyToHtml(offerText);
+      } else if (matchdayMessage) {
+        body.innerHTML = bodyToHtml(formatMatchdayBody(message.body));
       } else {
         body.innerHTML = bodyToHtml(message.body);
       }
@@ -382,7 +478,11 @@ export function createMessagesFeature(deps) {
             const listTitle =
               urgent && message.meta?.playerName
                 ? `${message.title} · ${message.meta.playerName}`
-                : message.title;
+                : isMatchdayMessage(message)
+                  ? 'JOGO DO DIA'
+                  : isDisciplineDigestMessage(message)
+                    ? 'DISCIPLINA'
+                    : message.title;
             return `<article class="message-item ${message.read ? 'read' : 'unread'} message-${message.category}${urgent ? ' message-action-required' : ''}" data-message-id="${message.id}"><div class="message-item-main"><small>${CATEGORY_LABELS[message.category] || message.category.toUpperCase()} · RODADA ${message.round}${urgent ? ' · AÇÃO' : ''}</small><strong>${escapeHtml(listTitle)}</strong></div><time>${formatMessageTime(message.at)}</time></article>`;
           })
           .join('')
@@ -398,7 +498,12 @@ export function createMessagesFeature(deps) {
       ? recent
           .map(message => {
             const urgent = isActionRequiredMessage(message);
-            return `<div class="dashboard-message-row ${message.read ? 'read' : 'unread'}${urgent ? ' message-action-required' : ''}" data-message-id="${message.id}"><small>${CATEGORY_LABELS[message.category] || message.category}${urgent ? ' · AÇÃO' : ''}</small><strong>${escapeHtml(message.title)}</strong></div>`;
+            const feedTitle = isMatchdayMessage(message)
+              ? 'JOGO DO DIA'
+              : isDisciplineDigestMessage(message)
+                ? 'DISCIPLINA'
+                : message.title;
+            return `<div class="dashboard-message-row ${message.read ? 'read' : 'unread'}${urgent ? ' message-action-required' : ''}" data-message-id="${message.id}"><small>${CATEGORY_LABELS[message.category] || message.category}${urgent ? ' · AÇÃO' : ''}</small><strong>${escapeHtml(feedTitle)}</strong></div>`;
           })
           .join('')
       : '<div class="dashboard-message-empty">As ocorrências da temporada aparecerão aqui.</div>';

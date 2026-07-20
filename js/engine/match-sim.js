@@ -60,12 +60,22 @@ export function createRoundMatchSimulator(deps) {
     return {lineup:active,overall:adjustedAverage('overall')+context*.18+institution.overall+tacticOverall+(active.length<11?(active.length-11)*5.8:0)+(isHome?.65:0),attack:adjustedAverage('finishing')*.48+adjustedAverage('speed')*.17+adjustedAverage('dribble')*.12+adjustedAverage('playmaking')*.23+formation.attack+mentalShift*9-possessionShift*2.6+pressShift*1.75+context+institution.attack+(isHome?1.1:0),passing:adjustedAverage('passing')*.6+adjustedAverage('playmaking')*.4+formation.passing+possessionShift*6.5+pressShift*.75+context*.55+institution.passing+(isHome?.35:0),defense:adjustedAverage('marking')*.52+adjustedAverage('tackling')*.48+formation.defense+mentalShift*-5.5+(1-possessionShift)*.9+pressShift*3.5-lineShift*2.1+context*.4+institution.defense-yellows*.55+(isHome?.45:0),keeper:active.find(player=>player.pos==='GOL')||state.lineup[0]};
   };
   const simulateRoundMatch=(homeClub,awayClub,fixture=null)=>{
+    const homeSide=getClubs()[homeClub],awaySide=getClubs()[awayClub];
+    if(!homeSide?.roster||!awaySide?.roster){
+      return {
+        home:homeClub,away:awayClub,homeGoals:0,awayGoals:0,
+        data:{homeShots:0,awayShots:0,homeOnTarget:0,awayOnTarget:0,homeOff:0,awayOff:0,homeSaved:0,awaySaved:0,homeKeeperSaves:0,awayKeeperSaves:0,homePenalties:0,awayPenalties:0,homeOffsides:0,awayOffsides:0,homeFouls:0,awayFouls:0,homeYellow:0,awayYellow:0,homeRed:0,awayRed:0,homeCorners:0,awayCorners:0,homeTackles:0,awayTackles:0,homePasses:0,awayPasses:0,homeAccurate:0,awayAccurate:0,homePossession:50,awayPossession:50,homeXg:0,awayXg:0},
+        events:[],goals:{home:[],away:[]},substitutions:{home:0,away:0},fatigueAfter:{home:{},away:{}},
+        discipline:{home:[],away:[]},injuries:{home:[],away:[]},deferredInjuries:{home:[],away:[]},workload:{home:[],away:[]},
+        tactics:{home:{},away:{}},
+      };
+    }
     const eligibility=typeof resolveStoppageEligibility==='function'
       ?resolveStoppageEligibility(fixture||{home:homeClub,away:awayClub})
       :{knockout:isKnockoutShootoutCompetition(fixture),round:Number(fixture?.round)||0,totalRounds:0};
     const extendedStoppage=allowsExtendedSecondHalfStoppage(eligibility||{});
-    const createState=(club,opponent,isHome)=>{const built=buildSimLineup(club,opponent,isHome),{lineup,bench}=built,cards=new Map(lineup.map(player=>[player.name,{yellow:0,red:false,dismissal:null}])),institution=clubInstitutionalContext(club);return {name:club.name,lineup,bench,cards,injuries:new Map(),deferredInjuries:[],fatigue:new Map(club.roster.map(player=>[player.name,player.fatigue])),openingLineup:lineup.map(player=>player.name),minutesPlayed:new Map(lineup.map(player=>[player.name,0])),tactic:{...(club._benchmarkTactic??roundTactic(club))},day:institution.volatility?rnd(-4.8,4.8)*institution.volatility:0,momentum:0,substitutions:0,windows:0,lastShift:''};};
-    const states={home:createState(getClubs()[homeClub],getClubs()[awayClub],true),away:createState(getClubs()[awayClub],getClubs()[homeClub],false)}, metrics={home:{possession:50,passes:0,accurate:0,shots:0,on:0,off:0,saved:0,penalties:0,fouls:0,yellow:0,red:0,corners:0,offsides:0,tackles:0,xg:0,attacks:0,goodAttacks:0},away:{possession:50,passes:0,accurate:0,shots:0,on:0,off:0,saved:0,penalties:0,fouls:0,yellow:0,red:0,corners:0,offsides:0,tackles:0,xg:0,attacks:0,goodAttacks:0}};
+    const createState=(club,opponent,isHome)=>{const built=buildSimLineup(club,opponent,isHome),{lineup,bench}=built,cards=new Map(lineup.map(player=>[player.name,{yellow:0,red:false,dismissal:null}])),institution=clubInstitutionalContext(club);return {name:club.name,lineup,bench,cards,injuries:new Map(),deferredInjuries:[],fatigue:new Map((club.roster||[]).map(player=>[player.name,player.fatigue])),openingLineup:lineup.map(player=>player.name),minutesPlayed:new Map(lineup.map(player=>[player.name,0])),tactic:{...(club._benchmarkTactic??roundTactic(club))},day:institution.volatility?rnd(-4.8,4.8)*institution.volatility:0,momentum:0,substitutions:0,windows:0,lastShift:''};};
+    const states={home:createState(homeSide,awaySide,true),away:createState(awaySide,homeSide,false)}, metrics={home:{possession:50,passes:0,accurate:0,shots:0,on:0,off:0,saved:0,penalties:0,fouls:0,yellow:0,red:0,corners:0,offsides:0,tackles:0,xg:0,attacks:0,goodAttacks:0},away:{possession:50,passes:0,accurate:0,shots:0,on:0,off:0,saved:0,penalties:0,fouls:0,yellow:0,red:0,corners:0,offsides:0,tackles:0,xg:0,attacks:0,goodAttacks:0}};
     const events=[],goals={home:[],away:[]};let homeGoals=0,awayGoals=0,cardEvents=0,homePossession=50;
     const addEvent=(minute,text,type='')=>events.push({minute,text,type});
     const scoreFor=side=>side==='home'?homeGoals-awayGoals:awayGoals-homeGoals;

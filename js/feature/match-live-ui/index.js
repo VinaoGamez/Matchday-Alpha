@@ -1,6 +1,7 @@
 import { MEMORY_LIMITS } from '../../core/save.js';
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { applyCompetitionBadge } from '../../ui/competition-badge.js';
+import { setHumanBadgeOnCrest } from '../../ui/human-badge.js';
 import {
   formatLiveClockParts,
   formatMatchMinuteLabel,
@@ -247,10 +248,16 @@ export function createMatchLiveUiFeature(deps) {
     });
     const homeCrest = $('#liveHomeCrest'),
       awayCrest = $('#liveAwayCrest');
-    homeCrest.textContent = clubCrestInitials(homeClub);
-    awayCrest.textContent = clubCrestInitials(awayClub);
-    homeCrest.classList.remove('away');
-    awayCrest.classList.add('away');
+    if (homeCrest) {
+      homeCrest.textContent = clubCrestInitials(homeClub);
+      homeCrest.classList.remove('away');
+      setHumanBadgeOnCrest(homeCrest, userHome);
+    }
+    if (awayCrest) {
+      awayCrest.textContent = clubCrestInitials(awayClub);
+      awayCrest.classList.add('away');
+      setHumanBadgeOnCrest(awayCrest, !userHome);
+    }
     const homeNameEl = $('#liveHomeName');
     const awayNameEl = $('#liveAwayName');
     if (homeNameEl) {

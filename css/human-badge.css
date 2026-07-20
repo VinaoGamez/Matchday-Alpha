@@ -1,0 +1,121 @@
+/* Badge treinador humano — padrão MatchDay (lima + cyan) */
+
+.human-badge {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #0d2732;
+  border: 1px solid #b6ff38;
+  color: #b6ff38;
+  box-shadow: 0 0 0 1px #b6ff3833, 0 1px 4px #0006;
+  vertical-align: middle;
+  line-height: 0;
+}
+
+.human-badge-icon {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+
+.human-badge.is-inline {
+  width: 15px;
+  height: 15px;
+  margin-left: 2px;
+}
+
+.human-badge.is-inline .human-badge-icon {
+  width: 9px;
+  height: 9px;
+}
+
+.human-badge.is-crest {
+  width: 18px;
+  height: 18px;
+  border-width: 1.5px;
+  box-shadow: 0 0 0 1px #0b1a22, 0 0 0 2px #b6ff3866, 0 2px 6px #0008;
+}
+
+.human-badge.is-crest .human-badge-icon {
+  width: 11px;
+  height: 11px;
+}
+
+.human-badge-host {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.human-badge-host > .human-badge.is-crest {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  z-index: 2;
+}
+
+.club-with-human {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.club-with-human > .club-link,
+.club-with-human > b,
+.club-with-human > span {
+  min-width: 0;
+}
+
+/* Escudo do placar ao vivo / relatório */
+.live-team .human-badge-host {
+  margin-bottom: 2px;
+}
+
+.live-team .human-badge.is-crest {
+  width: 20px;
+  height: 20px;
+}
+
+.live-team .human-badge.is-crest .human-badge-icon {
+  width: 12px;
+  height: 12px;
+}
+
+/* Card próxima partida (dashboard) */
+.match .teams .human-badge-host {
+  display: grid;
+}
+
+.match .teams .human-badge.is-crest {
+  width: 18px;
+  height: 18px;
+}
+
+/* Listas compactas */
+.live-day-match-row .human-badge.is-inline,
+.agenda-item .human-badge.is-inline,
+.fixture-row .human-badge.is-inline,
+.league-row .human-badge.is-inline,
+.standing-row .human-badge.is-inline,
+.d-group-row .human-badge.is-inline,
+.round-fixture-line .human-badge.is-inline {
+  width: 14px;
+  height: 14px;
+}
+
+.live-day-match-row .human-badge.is-inline .human-badge-icon,
+.agenda-item .human-badge.is-inline .human-badge-icon,
+.fixture-row .human-badge.is-inline .human-badge-icon,
+.league-row .human-badge.is-inline .human-badge-icon,
+.standing-row .human-badge.is-inline .human-badge-icon {
+  width: 8px;
+  height: 8px;
+}

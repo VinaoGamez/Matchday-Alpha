@@ -43,10 +43,29 @@ export function writeJson(key, value) {
       return false;
     }
     try {
+      // Libera espaço: live-match é regenerável; histórico grande bloqueia qualquer save.
       localStorage.removeItem(SAVE_KEYS.liveMatch);
+      try {
+        const hist = localStorage.getItem(SAVE_KEYS.playerHistory);
+        // Se a própria gravação do histórico falhou, ou o blob já está enorme, apaga.
+        if (key === SAVE_KEYS.playerHistory || (hist && hist.length > 250_000)) {
+          localStorage.removeItem(SAVE_KEYS.playerHistory);
+        }
+      } catch {
+        /* ignore */
+      }
       localStorage.setItem(key, raw);
       return true;
     } catch (retryError) {
+      // Último recurso: limpa histórico e tenta uma vez mais (save de carreira/temporada).
+      try {
+        localStorage.removeItem(SAVE_KEYS.playerHistory);
+        localStorage.removeItem(SAVE_KEYS.liveMatch);
+        localStorage.setItem(key, raw);
+        return true;
+      } catch {
+        /* fall through */
+      }
       console.warn('[matchday] cota de localStorage esgotada', key, retryError);
       try {
         window.dispatchEvent(new CustomEvent('matchday:save-quota', { detail: { key } }));

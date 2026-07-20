@@ -397,7 +397,7 @@
   pointer-events: none;
 }
 .national-ranking-titles { color: #ffc94f; font-size: 14px; font-weight: 700; }
-.national-ranking-total { color: #b6ff38; font-size: 16px; font-weight: 800; }
+.national-ranking-total { color: #63d9ff; font-size: 16px; font-weight: 800; }
 .national-ranking-row span:nth-child(6),
 .national-ranking-row span:last-child { text-align: center; }
 
@@ -944,7 +944,7 @@
   border-radius: 4px;
   background: #122b35;
   border: 1px solid #315b68;
-  color: #b6ff38;
+  color: #63d9ff;
   font: 800 15px/1 'Barlow Condensed', sans-serif;
   font-style: normal;
   text-align: center;
@@ -1051,21 +1051,21 @@
 }
 
 .championship-page-table .league-row.highlight {
-  background: #203b26 !important;
-  color: #dcffa9 !important;
+  background: #1a3224 !important;
+  color: #edf8f5 !important;
   box-shadow: inset 4px 0 0 #b6ff38;
 }
 
 .championship-page-table .league-row.promotion.highlight {
-  background: #1f4632 !important;
-  color: #dcffa9 !important;
-  box-shadow: inset 3px 0 0 #b6ff38;
+  background: #1a3224 !important;
+  color: #edf8f5 !important;
+  box-shadow: inset 4px 0 0 #b6ff38;
 }
 
 .championship-page-table .league-row.relegation.highlight {
   background: #4a2430 !important;
   color: #ffd0d6 !important;
-  box-shadow: inset 3px 0 0 #b6ff38;
+  box-shadow: inset 4px 0 0 #b6ff38;
 }
 
 .championship-page-table .league-row span:nth-child(2) {
@@ -1073,7 +1073,7 @@
 }
 
 .championship-page-table .league-row span:last-child {
-  color: #b6ff38;
+  color: #63d9ff;
   font-weight: 800;
 }
 

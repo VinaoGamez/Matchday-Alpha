@@ -849,13 +849,13 @@ export async function bootEngine({ bus } = {}) {
   const buildSerieDGroupFixtures=groups=>normalizeSerieDGroupFixtures(Array.from({length:SERIE_D_GROUP_ROUNDS},(_,roundIndex)=>groups.flatMap(group=>(buildBrazilianLeagueFixtures(group)[roundIndex]||[]).map(game=>({...game,round:roundIndex+1})))));
   const serieDGroupFixtures=savedNewGame?buildSerieDGroupFixtures(serieDGroups):[];
   const championshipFixtures=savedNewGame?{A:serieAFixtures,B:serieBFixtures,C:serieCFixtures,D:serieDGroupFixtures}[userDivision]:serieAFixtures;
-  const scheduledMatchCount=championshipFixtures.reduce((total,round)=>total+round.length,0);
+  const scheduledMatchCount=(Array.isArray(championshipFixtures)?championshipFixtures:[]).reduce((total,round)=>total+(Array.isArray(round)?round.length:0),0);
   $('#calendar .title span').textContent=`${scheduledMatchCount} jogos da fase atual foram definidos no início da temporada.`;
   const nationalCompetitions={
     A:{...divisionRules.A,teams:divisionTeams.A,fixtures:serieAFixtures,standings:[]},
     B:{...divisionRules.B,teams:divisionTeams.B,fixtures:serieBFixtures,standings:[]},
     C:{...divisionRules.C,teams:divisionTeams.C,fixtures:serieCFixtures,standings:[],secondStage:{groups:2,clubsPerGroup:4}},
-    D:{...divisionRules.D,teams:divisionTeams.D,groups:serieDGroups,fixtures:serieDGroupFixtures,standings:[],knockout:{qualifiedPerGroup:4,promoted:6,twoLegged:true}}
+    D:{...divisionRules.D,teams:divisionTeams.D,groups:serieDGroups,fixtures:serieDGroupFixtures,standings:[],knockout:{qualifiedPerGroup:4,promotionSlots:SERIE_D_PROMOTIONS,promoted:[],twoLegged:true}}
   };
   const seasonRoundHistory=validSavedSeason&&Array.isArray(savedSeason.seasonRoundHistory)?compactRoundHistory(savedSeason.seasonRoundHistory,userClub):[];
   /** Log de público em casa — sobrevive ao prune de ledger/mensagens (resumo de temporada). */
@@ -1307,9 +1307,25 @@ export async function bootEngine({ bus } = {}) {
     const opponent=clubName===userClub&&fixture?fixture.home===userClub?fixture.away:fixture.home:clubName===userClub&&liveMatchGame?liveMatchGame.home===userClub?liveMatchGame.away:liveMatchGame.home:null;
     return applyDisciplineCard(player,card,{competitionKey,round,isUserClub:clubName===userClub,opponent});
   };
-  const pushDisciplineDigest=(lines,round,contextLabel)=>{
+  const pushDisciplineDigest=(lines,round,contextLabel,fixture=null)=>{
     if(!lines.length)return;
-    pushMessage({category:'discipline',type:'digest',title:`Disciplina · ${contextLabel}`,body:lines.map(line=>`• ${line}`).join('\n'),round,meta:{competition:'Disciplina'}});
+    const shortMeta=fixture?matchdayMetaForGame(fixture):{
+      competition:`Brasileirão ${userDivision}`,
+      roundLabel:`Rodada ${round}`,
+    };
+    const opponent=String(contextLabel||'').replace(/^vs\s+/i,'').trim()||null;
+    pushMessage({
+      category:'discipline',
+      type:'digest',
+      title:'DISCIPLINA',
+      body:lines.map(line=>`• ${line}`).join('\n'),
+      round,
+      meta:{
+        competition:shortMeta.competition,
+        roundLabel:shortMeta.roundLabel,
+        opponent,
+      },
+    });
   };
   const matchAvailability=createMatchAvailability({
     getClubs:()=>clubs,
@@ -1407,7 +1423,7 @@ export async function bootEngine({ bus } = {}) {
   let onCupScheduleChanged=()=>{};
   const restoredCup=validSavedSeason&&savedSeason.cupCompetition?.stages?.length?savedSeason.cupCompetition:null;
   const cupCompetition=restoredCup?{currentPhase:restoredCup.currentPhase||1,champion:restoredCup.champion||null,stages:restoredCup.stages.map(stage=>({...stage,fixtures:(stage.fixtures||[]).map(game=>({...game,date:new Date(game.date)}))}))}:{currentPhase:1,champion:null,stages:[]};
-  let cupGameNumber=Math.max(0,...cupCompetition.stages.flatMap(stage=>stage.fixtures.map(game=>game.gameNumber||0)))+1;
+  let cupGameNumber=Math.max(0,...(cupCompetition.stages||[]).flatMap(stage=>(Array.isArray(stage?.fixtures)?stage.fixtures:[]).map(game=>game.gameNumber||0)))+1;
   // O calendário é resolvido como uma agenda nacional única. Antes de confirmar
   // uma data da Copa, são considerados todos os jogos de liga do clube e as fases
   // anteriores da própria Copa. Intervalo mínimo de quatro datas = três dias
@@ -1418,7 +1434,21 @@ export async function bootEngine({ bus } = {}) {
   const clubMatchDates=new Map();
   const reserveClubDate=(club,date)=>{if(!clubMatchDates.has(club))clubMatchDates.set(club,[]);clubMatchDates.get(club).push(date.getTime());};
   const unreserveClubDate=(club,timestamp)=>{const list=clubMatchDates.get(club);if(!list)return;const index=list.indexOf(timestamp);if(index>=0)list.splice(index,1);};
-  const rebuildLeagueClubDates=()=>{clubMatchDates.clear();Object.entries(nationalCompetitions).forEach(([division,competition])=>competition.fixtures.forEach((round,index)=>{const date=fixtureDateFor(division,index+1);(round||[]).forEach(game=>{reserveClubDate(game.home,date);reserveClubDate(game.away,date);});}));};
+  const rebuildLeagueClubDates=()=>{
+    clubMatchDates.clear();
+    Object.entries(nationalCompetitions).forEach(([division,competition])=>{
+      const rounds=Array.isArray(competition?.fixtures)?competition.fixtures:[];
+      rounds.forEach((round,index)=>{
+        if(!Array.isArray(round))return;
+        const date=fixtureDateFor(division,index+1);
+        round.forEach(game=>{
+          if(!game?.home||!game?.away)return;
+          reserveClubDate(game.home,date);
+          reserveClubDate(game.away,date);
+        });
+      });
+    });
+  };
   rebuildLeagueClubDates();
   const dateAvailable=(club,date)=>!(clubMatchDates.get(club)||[]).some(existing=>Math.abs(existing-date.getTime())<minimumMatchGap);
   const cupDateAvailable=(club,date)=>dateAvailable(club,date);
@@ -1443,33 +1473,57 @@ export async function bootEngine({ bus } = {}) {
     game.date=scheduled;game._reservedTs=scheduled.getTime();reserveClubDate(game.home,scheduled);reserveClubDate(game.away,scheduled);
     return game;
   };
-  const allCupFixtures=()=>cupCompetition.stages.flatMap(stage=>stage.fixtures);
+  const allCupFixtures=()=>(cupCompetition.stages||[]).flatMap(stage=>Array.isArray(stage?.fixtures)?stage.fixtures:[]);
   const refreshCopaDoBrasilFixtures=()=>{copaDoBrasilFixtures.length=0;copaDoBrasilFixtures.push(...allCupFixtures());};
   const rescheduleAllCupFixtures=()=>{
     rebuildLeagueClubDates();
+    // Piso: jogos incompletos não podem ficar atrás do dia de carreira (fases criadas tarde
+    // com datas nominais de ago/set enquanto o calendário já está em nov).
+    const careerFloor=new Date(careerCalendarDate);
+    careerFloor.setHours(12,0,0,0);
     const tieIdaDates=new Map();
     [...allCupFixtures()].sort((a,b)=>new Date(a.date)-new Date(b.date)||(a.gameNumber||0)-(b.gameNumber||0)||(a.leg==='VOLTA'?1:0)-(b.leg==='VOLTA'?1:0)).forEach(game=>{
-      const minDate=game.leg==='VOLTA'&&tieIdaDates.has(game.tieId)?new Date(tieIdaDates.get(game.tieId)+minimumTwoLegGap):null;
+      let minDate=game.leg==='VOLTA'&&tieIdaDates.has(game.tieId)?new Date(tieIdaDates.get(game.tieId)+minimumTwoLegGap):null;
+      if(!game.completed){
+        const gameDay=new Date(game.date);
+        gameDay.setHours(12,0,0,0);
+        if(gameDay.getTime()<careerFloor.getTime()){
+          if(!minDate||minDate.getTime()<careerFloor.getTime())minDate=new Date(careerFloor);
+        }
+      }
       scheduleCupFixture(game,{minDate});
       if(game.leg!=='VOLTA')tieIdaDates.set(game.tieId,game.date.getTime());
     });
   };
   const calendarIntervalLabel=conflicts=>conflicts===0?'intervalo mínimo de 3 dias validado':`${conflicts} conflito(s) aguardando ajuste`;
   const cupPairsForStage=(definition,entrants)=>{
-    if(definition.index===1){const ranked=[...entrants];return Array.from({length:14},(_,index)=>{const pair=[ranked[index],ranked[ranked.length-1-index]];return Math.random()<.5?pair:pair.reverse();});}
-    if(definition.index===5){const ranked=[...entrants].sort((a,b)=>clubs[b].power-clubs[a].power),potA=shuffleCup(ranked.slice(0,16)),potB=shuffleCup(ranked.slice(16));return potA.map((club,index)=>Math.random()<.5?[club,potB[index]]:[potB[index],club]);}
-    const draw=shuffleCup(entrants);return Array.from({length:draw.length/2},(_,index)=>Math.random()<.5?[draw[index*2],draw[index*2+1]]:[draw[index*2+1],draw[index*2]]);
+    const pool=Array.isArray(entrants)?entrants.filter(Boolean):[];
+    if(!definition||pool.length<2)return [];
+    if(definition.index===1){const ranked=[...pool];return Array.from({length:Math.min(14,Math.floor(ranked.length/2))},(_,index)=>{const pair=[ranked[index],ranked[ranked.length-1-index]];return Math.random()<.5?pair:pair.reverse();});}
+    if(definition.index===5){const ranked=[...pool].sort((a,b)=>(clubs[b]?.power||0)-(clubs[a]?.power||0)),potA=shuffleCup(ranked.slice(0,16)),potB=shuffleCup(ranked.slice(16));return potA.filter((_,index)=>potB[index]).map((club,index)=>Math.random()<.5?[club,potB[index]]:[potB[index],club]);}
+    const draw=shuffleCup(pool);return Array.from({length:Math.floor(draw.length/2)},(_,index)=>Math.random()<.5?[draw[index*2],draw[index*2+1]]:[draw[index*2+1],draw[index*2]]);
   };
   const createCupStage=(phaseIndex,entrants)=>{
-    const definition=cupPhaseDefinitions[phaseIndex-1],pairs=cupPairsForStage(definition,entrants),fixtures=[];
+    const definition=cupPhaseDefinitions[phaseIndex-1];
+    if(!definition?.dates?.length)return null;
+    const pairs=cupPairsForStage(definition,entrants),fixtures=[];
+    const safeEntrants=Array.isArray(entrants)?entrants.filter(Boolean):[];
     pairs.forEach(([home,away],tieIndex)=>{
+      if(!home||!away)return;
       const tieId=`F${phaseIndex}-G${tieIndex+1}`;
-      fixtures.push({home,away,competition:'COPA DO BRASIL',phase:definition.name,phaseIndex,leg:definition.twoLegged?'IDA':'JOGO ÚNICO',date:new Date(definition.dates[0]),time:fixtureTimes[tieIndex%fixtureTimes.length],gameNumber:cupGameNumber++,tieId,completed:false});
-      if(definition.twoLegged)fixtures.push({home:away,away:home,competition:'COPA DO BRASIL',phase:definition.name,phaseIndex,leg:'VOLTA',date:new Date(definition.dates[1]),time:fixtureTimes[(tieIndex+1)%fixtureTimes.length],gameNumber:cupGameNumber++,tieId,completed:false});
+      const idaDate=definition.dates[0]||cupDate(6,1);
+      fixtures.push({home,away,competition:'COPA DO BRASIL',phase:definition.name,phaseIndex,leg:definition.twoLegged?'IDA':'JOGO ÚNICO',date:new Date(idaDate),time:fixtureTimes[tieIndex%fixtureTimes.length],gameNumber:cupGameNumber++,tieId,completed:false});
+      if(definition.twoLegged){
+        const voltaDate=definition.dates[1]||definition.dates[0]||idaDate;
+        fixtures.push({home:away,away:home,competition:'COPA DO BRASIL',phase:definition.name,phaseIndex,leg:'VOLTA',date:new Date(voltaDate),time:fixtureTimes[(tieIndex+1)%fixtureTimes.length],gameNumber:cupGameNumber++,tieId,completed:false});
+      }
     });
-    const stage={index:phaseIndex,name:definition.name,twoLegged:definition.twoLegged,entrants:[...entrants],fixtures,completed:false,winners:[]};cupCompetition.stages.push(stage);refreshCopaDoBrasilFixtures();rescheduleAllCupFixtures();syncUserCalendarSpacing();cupCompetition.currentPhase=phaseIndex;onCupScheduleChanged();return stage;
+    const stage={index:phaseIndex,name:definition.name,twoLegged:definition.twoLegged,entrants:safeEntrants,fixtures,completed:false,winners:[]};cupCompetition.stages.push(stage);refreshCopaDoBrasilFixtures();rescheduleAllCupFixtures();syncUserCalendarSpacing();cupCompetition.currentPhase=phaseIndex;onCupScheduleChanged();return stage;
   };
-  cupCompetition.stages.forEach(stage=>stage.fixtures.sort((a,b)=>a.date-b.date||a.gameNumber-b.gameNumber));
+  cupCompetition.stages.forEach(stage=>{
+    if(!Array.isArray(stage.fixtures))stage.fixtures=[];
+    stage.fixtures.sort((a,b)=>a.date-b.date||a.gameNumber-b.gameNumber);
+  });
   refreshCopaDoBrasilFixtures();
   const knockoutShootoutSanitized=sanitizeKnockoutShootoutSave({cupCompetition,serieDFixtures:nationalCompetitions.D.fixtures});
   let syncUserCalendarSpacing=()=>{rescheduleAllCupFixtures();};
@@ -1596,6 +1650,7 @@ export async function bootEngine({ bus } = {}) {
       lines.push(`Bilheteria (casa): +${formatBudget(gateResult.entry.amount)} · caixa ${formatBudget(gateResult.balance)}`);
     }
     if(userAtHome)recordUserHomeCrowd(game,gateResult);
+    const resultMeta=matchdayMetaForGame(game);
     pushMessage({
       category:'competition',
       type:'match-result',
@@ -1603,7 +1658,8 @@ export async function bootEngine({ bus } = {}) {
       body:lines.join('\n'),
       round:currentRound,
       meta:{
-        competition:competitionLabelForGame(game),
+        competition:resultMeta.competition,
+        roundLabel:resultMeta.roundLabel,
         outcome,
         home:game.home,
         away:game.away,
@@ -1635,7 +1691,10 @@ export async function bootEngine({ bus } = {}) {
     const cup=copaDoBrasilFixtures.filter(isUserFixture);
     return [...league,...knockout,...cup].map(game=>({game,details:fixtureDetails(game)})).sort((a,b)=>a.details.date-b.details.date||((a.game.round||0)-(b.game.round||0))||String(a.game.leg||'').localeCompare(String(b.game.leg||'')));
   };
-  const userKnockoutFixtures=()=>userDivision==='D'?nationalCompetitions.D.fixtures.filter(Array.isArray).flat().filter(isKnockoutShootoutCompetition):[];
+  const userKnockoutFixtures=()=>userDivision==='D'
+    ?(Array.isArray(nationalCompetitions.D?.fixtures)?nationalCompetitions.D.fixtures:[])
+      .filter(Array.isArray).flat().filter(isKnockoutShootoutCompetition)
+    :[];
   const pendingUserSchedule=()=>userSchedule().filter(entry=>!isFixtureCompleted(entry.game));
   syncUserCalendarSpacing=()=>{
     for(let pass=0;pass<30;pass++){
@@ -1683,17 +1742,31 @@ export async function bootEngine({ bus } = {}) {
     return null;
   };
   const nextPendingUserEntry=()=>pendingUserSchedule()[0]||nextLeagueUserEntry();
+  const isPendingFixtureOverdue=entry=>{
+    if(!entry?.details?.date)return false;
+    const target=new Date(entry.details.date);
+    target.setHours(12,0,0,0);
+    const today=new Date(careerCalendarDate);
+    today.setHours(12,0,0,0);
+    return today.getTime()>target.getTime();
+  };
   const normalizeCalendarBeforeNextMatch=()=>{
     const next=nextPendingUserEntry();
-    if(!next||isFixtureCompleted(next.game))return;
+    if(!next||isFixtureCompleted(next.game))return false;
+    if(!isPendingFixtureOverdue(next))return false;
+    // Snap no dia do jogo (não no dia anterior) para liberar JOGAR PARTIDA.
     const target=new Date(next.details.date);
     target.setHours(12,0,0,0);
-    if(careerCalendarDate.getTime()>target.getTime()){
-      const resume=new Date(target);
-      resume.setDate(resume.getDate()-1);
-      resume.setHours(12,0,0,0);
-      advanceCareerCalendarTo(resume);
-    }
+    advanceCareerCalendarTo(target);
+    return true;
+  };
+  /** Repara Copa atrasada e, se ainda houver atraso (liga), volta o calendário ao dia do jogo. */
+  const ensureCalendarMatchConsistency=()=>{
+    const next=nextPendingUserEntry();
+    if(!next||!isPendingFixtureOverdue(next))return false;
+    rescheduleAllCupFixtures();
+    syncUserCalendarSpacing();
+    return normalizeCalendarBeforeNextMatch();
   };
   if(validSavedSeason){
     if(!savedSeason.careerCalendarDate){
@@ -1703,7 +1776,7 @@ export async function bootEngine({ bus } = {}) {
       const lastCompleted=userSchedule().filter(entry=>isFixtureCompleted(entry.game)).pop();
       if(lastCompleted)advanceCareerCalendarTo(lastCompleted.details.date);
     }
-    normalizeCalendarBeforeNextMatch();
+    ensureCalendarMatchConsistency();
   }
   const restDaysUntilNextFixture=()=>{const last=lastCompletedUserEntry(),next=nextPendingUserEntry();if(!next)return 3;if(!last)return daysBetweenDates(careerCalendarDate,next.details.date);return daysBetweenDates(last.details.date,next.details.date);};
   const intervalDaysForRoundAdvance=()=>clamp(restDaysUntilNextFixture(),2,12);
@@ -1997,12 +2070,42 @@ export async function bootEngine({ bus } = {}) {
   const matchBriefAlreadySent=briefKey=>messages.getMessages().some(message=>message.meta?.briefKey===briefKey);
   const opponentForGame=game=>game.home===userClub?game.away:game.home;
   const competitionLabelForGame=game=>game.competition==='COPA DO BRASIL'?`Copa do Brasil · ${game.phase||game.leg||''}`:isKnockoutShootoutCompetition(game)?`Série D · ${game.leg||'Eliminatórias'}`:`Brasileirão Série ${userDivision} · Rodada ${game.round??currentRound}`;
+  const matchdayMetaForGame=game=>{
+    if(game.competition==='COPA DO BRASIL'){
+      return {
+        competition:'Copa do Brasil',
+        roundLabel:[game.phase,game.leg].filter(Boolean).join(' · ')||'Copa',
+      };
+    }
+    if(isKnockoutShootoutCompetition(game)){
+      return {competition:'Brasileirão D',roundLabel:game.leg||'Eliminatórias'};
+    }
+    return {
+      competition:`Brasileirão ${userDivision}`,
+      roundLabel:`Rodada ${game.round??currentRound}`,
+    };
+  };
   const pushMatchDayBrief=game=>{
     if(!game)return;
     const opponent=opponentForGame(game),details=fixtureDetails(game),briefKey=`matchday-${game.home}-${game.away}-${calendarKey(details.date)}`;
     if(matchBriefAlreadySent(briefKey))return;
     const leaders=clubSeasonLeaders(opponent),venue=game.home===userClub?'Casa':'Fora';
-    pushMessage({category:'competition',type:'matchday',title:`Jogo do dia · ${opponent}`,body:`${details.display} · ${details.time} · ${venue}. ${competitionLabelForGame(game)}. Destaques do adversário: artilheiro ${leaders.scorer.name} (${leaders.goals} gols) · assistências ${leaders.assistant.name} (${leaders.assists}).`,round:currentRound,meta:{competition:competitionLabelForGame(game),briefKey,opponent}});
+    const day=String(details.date.getDate()).padStart(2,'0');
+    const month=String(details.date.getMonth()+1).padStart(2,'0');
+    const meta=matchdayMetaForGame(game);
+    const body=[
+      `${day}/${month} · ${details.time} · ${venue}.`,
+      '',
+      `Destaques do adversário: artilheiro ${leaders.scorer.name} (${leaders.goals} gols) · assistências ${leaders.assistant.name} (${leaders.assists}).`,
+    ].join('\n');
+    pushMessage({
+      category:'competition',
+      type:'matchday',
+      title:'JOGO DO DIA',
+      body,
+      round:currentRound,
+      meta:{competition:meta.competition,roundLabel:meta.roundLabel,briefKey,opponent},
+    });
   };
   const pushSeasonEndBrief=({prizeTotal=0,budgetAfter=null}={})=>{
     const row=nationalCompetitions[userDivision]?.standings?.find(item=>item.club===userClub),position=displayedClubPosition(userClub);
@@ -2155,9 +2258,10 @@ export async function bootEngine({ bus } = {}) {
     getUserSerieDGroupIndex:()=>userSerieDGroupIndex,
     isSponsorChoicePending:()=>!!pendingSponsorChoice,
     onRequestSponsorPicker:()=>openSponsorPickerIfPending?.(),
-    // Visível só com pós-jogo pendente e modal fechado (×). Some no SAIR / avanço de rodada.
+    // Visível só com pós-jogo pendente e modal fechado (×). Some no AVANÇAR / avanço de rodada.
     canReopenLivePostMatch:()=>{
-      if(!(matchStarted&&matchFinished&&!roundCommitted))return false;
+      // Pós-jogo pendente (ainda sem AVANÇAR) + modal fechado → CTA PÓS-JOGO no dashboard.
+      if(!(matchStarted&&matchFinished&&!roundCommitted&&liveMatchGame))return false;
       return !!$('#matchModal')?.classList.contains('hidden');
     },
     getTransferWindowPhase:()=>transfersEngine?.getWindowPhase?.()||null,
@@ -2478,7 +2582,17 @@ export async function bootEngine({ bus } = {}) {
     if(pendingSponsorChoice){openSponsorPickerIfPending();return { ok:false, reason:'sponsor' };}
     if(matchStarted&&!matchFinished)return { ok:false, reason:'market_closed' };
     if(seasonTransitionPrepared)return { ok:false, reason:'market_closed' };
+    ensureCalendarMatchConsistency();
     rebuildCalendarGames();
+    // Jogo atrasado / dia de jogo: não segue avançando a janela.
+    if(isOnPendingMatchDay()){
+      const stoppedMatch=userMatchOnDate(careerCalendarDate);
+      pushMatchDayBrief(stoppedMatch);
+      setSelectedCalendarDate(careerCalendarDate);
+      persistSeason(true);
+      refreshSeasonPresentation();
+      return {ok:true,days:0,stoppedMatch,phaseBefore:transfersEngine.getWindowPhase?.()||{},phaseAfter:transfersEngine.getWindowPhase?.()||{},report:null,newOfferIds:[]};
+    }
     const phaseBefore=transfersEngine.getWindowPhase?.()||{};
     if(!phaseBefore.active)return { ok:false, reason:'window_closed', status:transfersEngine.marketStatus() };
     const daysToAdvance=phaseBefore.mode==='day'?1:7;
@@ -2772,6 +2886,9 @@ export async function bootEngine({ bus } = {}) {
   };
   const refreshSeasonPresentation=()=>{
     reconcileCurrentRound();
+    if(ensureCalendarMatchConsistency()){
+      // Datas da Copa / dia de carreira corrigidos — reconstrói a grade.
+    }
     rebuildCalendarGames();
     futureMatches=currentRoundFixtures();
     refreshUserFixtures();
@@ -2877,6 +2994,7 @@ export async function bootEngine({ bus } = {}) {
     },
   }));
   const orderRosterForFormation=(roster,targetFormation)=>{
+    if(!Array.isArray(roster))return;
     const roles=formationRoles[targetFormation]||formationRoles['4-3-3'],eligible=roster.filter(player=>!playerUnavailable(player)),starterPool=eligible.filter(player=>!playerStarterBlocked(player)),pool=starterPool.length>=roles.length?starterPool:eligible,assignment=lineupForRoles(pool,roles),lineup=roles.map((_,slot)=>assignment.get(slot)).filter(Boolean),selected=new Set(lineup),availableBench=eligible.filter(player=>!selected.has(player)&&!playerInRestrictedReturn(player)),restrictedBench=eligible.filter(player=>!selected.has(player)&&playerInRestrictedReturn(player)),unavailable=roster.filter(player=>!selected.has(player)&&playerUnavailable(player));
     roster.splice(0,roster.length,...lineup,...availableBench,...restrictedBench,...unavailable);
   };
@@ -3040,7 +3158,9 @@ export async function bootEngine({ bus } = {}) {
   let championshipRoundView=currentRound,championshipGroupView=userSerieDGroupIndex,championshipLeaderMode='scorers';
   const serieCRelegationZone=serieCRelegationSlots(careerSeason);
   const classificationZone=(division,index,total)=>division==='A'&&index>=total-4?'relegation':division==='B'?(index<4?'promotion':index>=total-4?'relegation':''):division==='C'?(index<4?'promotion':index>=total-serieCRelegationZone?'relegation':''):'';
-  const championshipRoundLimit=division=>division==='CUP'?Math.max(1,cupCompetition.stages.length):Math.max(1,nationalCompetitions[division].fixtures.length);
+  const championshipRoundLimit=division=>division==='CUP'
+    ?Math.max(1,(cupCompetition.stages||[]).length)
+    :Math.max(1,Array.isArray(nationalCompetitions[division]?.fixtures)?nationalCompetitions[division].fixtures.length:1);
   const championshipRoundHistory=division=>(division===userDivision?seasonRoundHistory:competitionRoundHistory[division])||[];
   const renderChampionshipLeaders=()=>{
     const scope=$('#championshipLeaderScope'),table=$('#championshipLeadersTable');
@@ -3078,8 +3198,23 @@ export async function bootEngine({ bus } = {}) {
     renderChampionshipLeaders();
   };
   const renderSerieDGroupCard=(group,groupIndex,competition,{featured=false}={})=>{
-    const slots=competition.knockout?.qualifiedPerGroup||4,groupRows=group.map(club=>competition.standings.find(row=>row.club===club)).filter(Boolean).sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff);
-    return `<article class="d-group-card ${featured?'user-group-card':''} ${!featured?'compact':''}" data-championship-group="${groupIndex}" role="button" tabindex="0" title="Ver jogos do Grupo A${groupIndex+1}"><h4>GRUPO A${groupIndex+1}${featured?'<em>SEU GRUPO</em>':''}</h4><div class="d-group-head"><span>#</span><span>CLUBE</span><span>J</span><span>PTS</span></div>${groupRows.map((row,index)=>`<div class="d-group-row ${index<slots?'qualified':''} ${row.club===userClub?'user-club':''}" data-club="${row.club}" role="button" tabindex="0"><span>${index+1}</span><span class="club-link">${row.club}</span><span>${row.played}</span><span>${row.points}</span></div>`).join('')}</article>`;
+    const slots=competition.knockout?.qualifiedPerGroup||4;
+    const groupRows=group.map(club=>competition.standings.find(row=>row.club===club)).filter(Boolean)
+      .sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff);
+    // Destaque (grupo do usuário): colunas completas no padrão MatchDay. Compacto: # / clube / J / PTS.
+    const head=featured
+      ?'<div class="d-group-head d-group-head-full"><span>#</span><span>CLUBE</span><span>J</span><span>V</span><span>E</span><span>D</span><span>SG</span><span>PTS</span></div>'
+      :'<div class="d-group-head"><span>#</span><span>CLUBE</span><span>J</span><span>PTS</span></div>';
+    const rows=groupRows.map((row,index)=>{
+      const zone=index<slots?'qualified':'';
+      const mine=row.club===userClub?'user-club':'';
+      if(featured){
+        const sg=row.goalDiff>=0?`+${row.goalDiff}`:String(row.goalDiff);
+        return `<div class="d-group-row d-group-row-full ${zone} ${mine}" data-club="${row.club}" role="button" tabindex="0"><span>${index+1}</span><span class="club-link">${row.club}</span><span>${row.played}</span><span>${row.wins}</span><span>${row.draws}</span><span>${row.losses}</span><span>${sg}</span><span>${row.points}</span></div>`;
+      }
+      return `<div class="d-group-row ${zone} ${mine}" data-club="${row.club}" role="button" tabindex="0"><span>${index+1}</span><span class="club-link">${row.club}</span><span>${row.played}</span><span>${row.points}</span></div>`;
+    }).join('');
+    return `<article class="d-group-card ${featured?'user-group-card':''} ${!featured?'compact':''}" data-championship-group="${groupIndex}" role="button" tabindex="0" title="Ver jogos do Grupo A${groupIndex+1}"><h4>GRUPO A${groupIndex+1}${featured?'<em>SEU GRUPO</em>':''}</h4>${head}${rows}</article>`;
   };
   const markCupPhaseSelection=phaseIndex=>{
     $$('#championshipTable [data-cup-phase]').forEach(button=>{
@@ -3207,13 +3342,13 @@ export async function bootEngine({ bus } = {}) {
         :`${userClub} · GRUPO A${userSerieDGroupIndex+1} · 4 primeiros avançam`)
       :`${competition.clubs} CLUBES · ${competition.format.toUpperCase()} · ${competition.promotion?`${competition.promotion} ACESSOS`:''}${competition.relegation?` · ${competition.relegation} REBAIXADOS`:''}`;
     if(division==='D'){
-      championshipGroupView=clamp(championshipGroupView,0,Math.max(0,(competition.groups?.length||1)-1));
+      // Destaque fixo no grupo do usuário; a lateral continua podendo trocar o filtro de confrontos.
+      const userIdx=clamp(Math.max(0,userSerieDGroupIndex),0,Math.max(0,(competition.groups?.length||1)-1));
+      championshipGroupView=userIdx;
       if(championshipRoundView>SERIE_D_GROUP_ROUNDS)championshipRoundView=SERIE_D_GROUP_ROUNDS;
-      heading.textContent=`Fase de grupos · A${championshipGroupView+1}`;head.style.display='none';table.className='series-d-table';
-      const userIdx=Math.max(0,userSerieDGroupIndex);
-      const focusIdx=championshipGroupView;
-      const focusGroupHtml=renderSerieDGroupCard(competition.groups[focusIdx],focusIdx,competition,{featured:focusIdx===userIdx});
-      const othersHtml=competition.groups.map((group,groupIndex)=>groupIndex===focusIdx?'':renderSerieDGroupCard(group,groupIndex,competition)).filter(Boolean).join('');
+      heading.textContent=`Fase de grupos · A${userIdx+1}`;head.style.display='none';table.className='series-d-table';
+      const focusGroupHtml=renderSerieDGroupCard(competition.groups[userIdx],userIdx,competition,{featured:true});
+      const othersHtml=competition.groups.map((group,groupIndex)=>groupIndex===userIdx?'':renderSerieDGroupCard(group,groupIndex,competition)).filter(Boolean).join('');
       table.innerHTML=`<div class="series-d-layout">${focusGroupHtml}<div class="d-group-others"><p class="d-group-others-label">Demais grupos</p><div class="d-group-grid d-group-grid-compact">${othersHtml}</div></div></div>`;
     }else{
       heading.textContent='Tabela';head.style.display='grid';table.className='';
@@ -3278,7 +3413,8 @@ export async function bootEngine({ bus } = {}) {
   
   const championshipSidebar=$('#championshipModal .championship-grid aside');
   championshipSidebar.className='championship-sidebar';
-  championshipSidebar.innerHTML=`<section class="championship-upcoming"><div class="round-browser-nav"><button id="championshipPreviousRound" class="round-navigation" type="button" aria-label="Rodada anterior">←</button><div><small id="championshipRoundStatus">RODADA PROGRAMADA</small><h3 id="championshipRoundTitle">Rodada ${currentRound}</h3></div><button id="championshipNextRound" class="round-navigation" type="button" aria-label="Próxima rodada">→</button></div><div id="championshipGroupNav" class="round-browser-nav championship-group-nav hidden"></div><div id="futureMatches"></div></section><section id="championshipLeadersPanel" class="championship-leaders"><label>LÍDERES DO CAMPEONATO<em id="championshipLeaderScope">Série A</em></label><div class="championship-leader-tabs" role="tablist"><button class="active" type="button" data-championship-leader-tab="scorers">ARTILHEIROS</button><button type="button" data-championship-leader-tab="assists">ASSISTÊNCIAS</button></div><div class="championship-leader-head"><span>#</span><span>JOGADOR</span><span id="championshipLeaderValueName">GOLS</span></div><div id="championshipLeadersTable"></div></section>`;
+  // Ordem MatchDay Série D: Grupo primeiro, Rodada depois (confrontos abaixo).
+  championshipSidebar.innerHTML=`<section class="championship-upcoming"><div id="championshipGroupNav" class="round-browser-nav championship-group-nav hidden"></div><div class="round-browser-nav"><button id="championshipPreviousRound" class="round-navigation" type="button" aria-label="Rodada anterior">←</button><div><small id="championshipRoundStatus">RODADA PROGRAMADA</small><h3 id="championshipRoundTitle">Rodada ${currentRound}</h3></div><button id="championshipNextRound" class="round-navigation" type="button" aria-label="Próxima rodada">→</button></div><div id="futureMatches"></div></section><section id="championshipLeadersPanel" class="championship-leaders"><label>LÍDERES DO CAMPEONATO<em id="championshipLeaderScope">Série A</em></label><div class="championship-leader-tabs" role="tablist"><button class="active" type="button" data-championship-leader-tab="scorers">ARTILHEIROS</button><button type="button" data-championship-leader-tab="assists">ASSISTÊNCIAS</button></div><div class="championship-leader-head"><span>#</span><span>JOGADOR</span><span id="championshipLeaderValueName">GOLS</span></div><div id="championshipLeadersTable"></div></section>`;
   onClick('#championshipPreviousRound',()=>{championshipRoundView--;renderChampionshipRound();});
   onClick('#championshipNextRound',()=>{championshipRoundView++;renderChampionshipRound();});
   championshipSidebar.addEventListener('click',event=>{const leaderTab=event.target.closest('[data-championship-leader-tab]');if(leaderTab){championshipLeaderMode=leaderTab.dataset.championshipLeaderTab;renderChampionshipLeaders();return;}const groupStep=Number(event.target.closest('[data-championship-group-step]')?.dataset.championshipGroupStep||0);if(!groupStep||championshipDivision!=='D'||championshipRoundView>10)return;championshipGroupView=(championshipGroupView+groupStep+serieDGroups.length)%serieDGroups.length;renderChampionshipRound();});
@@ -3902,6 +4038,7 @@ export async function bootEngine({ bus } = {}) {
     simulateRoundResults:(...args)=>simulateRoundResults(...args),
     openRoundResults:(...args)=>openRoundResults(...args),
     openLiveMatchRatings,
+    onPostMatchModalClosed:()=>renderUserMatchPresentation(),
     stopMatchClock,
     startMatchClock:(...args)=>startMatchClock(...args),
     closeFormationSuggestion,
@@ -3922,10 +4059,23 @@ export async function bootEngine({ bus } = {}) {
   });
   const {renderFinalSummary,showFinalActions,exitLiveMatch,reopenMatchWindow,openPreparation}=matchLiveSession;
   let roundResults = null, roundPreviewResults={};
-  const cupPenaltyWinner=(first,second)=>{const strength=name=>{const club=clubs[name],lineup=club.roster.slice(0,11),takers=[...lineup].filter(player=>player.pos!=='GOL').sort((a,b)=>b.penaltyTaking-a.penaltyTaking).slice(0,5),keeper=lineup.find(player=>player.pos==='GOL')||lineup[0];return takers.reduce((sum,player)=>sum+player.penaltyTaking,0)/Math.max(1,takers.length)+(keeper?.penaltySaving||50)*.32+club.power*.18+rnd(-9,9);};return strength(first)>=strength(second)?first:second;};
+  const cupPenaltyWinner=(first,second)=>{
+    const strength=name=>{
+      const club=clubs[name];
+      if(!club?.roster?.length)return 0;
+      const lineup=club.roster.slice(0,11);
+      const takers=[...lineup].filter(player=>player.pos!=='GOL').sort((a,b)=>b.penaltyTaking-a.penaltyTaking).slice(0,5);
+      const keeper=lineup.find(player=>player.pos==='GOL')||lineup[0];
+      return takers.reduce((sum,player)=>sum+player.penaltyTaking,0)/Math.max(1,takers.length)+(keeper?.penaltySaving||50)*.32+(club.power||50)*.18+rnd(-9,9);
+    };
+    return strength(first)>=strength(second)?first:second;
+  };
   const applyCupFatigue=(game,result)=>fatigueEngine.applyCupFatigue(game,result,applyMatchAvailability);
   const nextCupEntrants=(phase,winners)=>phase===1?[...winners,...cupSecondDirect]:phase===2?[...winners,...cupSpecialEntrants]:phase===4?[...winners,...cupSerieAEntrants]:[...winners];
-  const cupTieGames=(stage,tieId)=>stage.fixtures.filter(game=>game.tieId===tieId).sort((a,b)=>a.date-b.date||a.gameNumber-b.gameNumber);
+  const cupTieGames=(stage,tieId)=>{
+    const fixtures=Array.isArray(stage?.fixtures)?stage.fixtures:[];
+    return fixtures.filter(game=>game?.tieId===tieId).sort((a,b)=>a.date-b.date||a.gameNumber-b.gameNumber);
+  };
   const simulateCupComputerGame=game=>{
     if(game.completed||isUserFixture(game))return null;
     const result=simulateRoundMatch(game.home,game.away,game);
@@ -4621,7 +4771,9 @@ export async function bootEngine({ bus } = {}) {
   };
   const finalizeCupStageIfReady=stage=>{
     if(!stage||stage.completed)return null;
-    const ties=[...new Set(stage.fixtures.map(game=>game.tieId))],winners=[];
+    const fixtures=Array.isArray(stage.fixtures)?stage.fixtures:[];
+    if(!fixtures.length)return null;
+    const ties=[...new Set(fixtures.map(game=>game.tieId).filter(Boolean))],winners=[];
     for(const tieId of ties){
       const winner=resolveCupTie(stage,tieId);
       if(winner===null)return null;
@@ -4629,18 +4781,26 @@ export async function bootEngine({ bus } = {}) {
     }
     stage.winners=winners;stage.completed=true;
     if(stage.index===9){cupCompetition.champion=winners[0]||null;cupCompetition.currentPhase=9;}
-    else{const entrants=nextCupEntrants(stage.index,winners);const nextStage=createCupStage(stage.index+1,entrants);notifyCupPhaseAdvance(stage,nextStage);}
+    else{
+      const entrants=nextCupEntrants(stage.index,winners);
+      if(Array.isArray(entrants)&&entrants.length>=2){
+        const nextStage=createCupStage(stage.index+1,entrants);
+        notifyCupPhaseAdvance(stage,nextStage);
+      }
+    }
     onCupScheduleChanged();
     return winners;
   };
   const advanceCupComputerTies=stage=>{
     if(!stage||stage.completed)return false;
+    const fixtures=Array.isArray(stage.fixtures)?stage.fixtures:[];
+    if(!fixtures.length)return false;
     let changed=false;
-    [...new Set(stage.fixtures.map(game=>game.tieId))].forEach(tieId=>{
+    [...new Set(fixtures.map(game=>game.tieId).filter(Boolean))].forEach(tieId=>{
       const games=cupTieGames(stage,tieId);
       if(games.some(game=>isUserFixture(game)&&!game.completed))return;
       games.forEach(game=>{if(simulateCupComputerGame(game))changed=true;});
-      if(games.every(game=>game.completed)){
+      if(games.length&&games.every(game=>game.completed)){
         resolveCupTieWinner(games,cupTieAggregate(games));
         changed=true;
       }
@@ -4655,10 +4815,14 @@ export async function bootEngine({ bus } = {}) {
     return stage?.winners||[];
   };
   const advanceCupThroughDate=date=>{
+    if(!date)return false;
     let changed=false;
     let stage=cupCompetition.stages.find(item=>!item.completed);
     while(stage){
-      const stageDue=stage.fixtures.length&&Math.max(...stage.fixtures.map(game=>new Date(game.date).getTime()))<=date.getTime();
+      const fixtures=Array.isArray(stage.fixtures)?stage.fixtures:[];
+      if(!fixtures.length)break;
+      const latest=Math.max(...fixtures.map(game=>new Date(game.date||0).getTime()));
+      const stageDue=latest<=date.getTime();
       if(!stageDue)break;
       if(advanceCupComputerTies(stage))changed=true;
       if(stagePendingUserFixtures(stage))break;
@@ -4810,7 +4974,12 @@ export async function bootEngine({ bus } = {}) {
   };
   const openRoundResults=()=>{roundBrowserDivision=userDivision;roundBrowserRound=currentRound;roundBrowserGroup=userDivision==='D'?userSerieDGroupIndex:0;renderRoundResultsBrowser();$('#roundResultsModal').classList.remove('hidden');};
   $('#roundResultsModal').addEventListener('click',event=>{const division=event.target.closest('[data-round-division]')?.dataset.roundDivision;if(division){roundBrowserDivision=division;const rounds=availableResultRounds(division);roundBrowserRound=rounds.includes(currentRound)?currentRound:(rounds.at(-1)||currentRound);if(division==='D')roundBrowserGroup=serieDGroups.findIndex(group=>group.includes(userClub));if(roundBrowserGroup<0)roundBrowserGroup=0;renderRoundResultsBrowser();return;}const groupStep=Number(event.target.closest('[data-group-step]')?.dataset.groupStep||0);if(groupStep){roundBrowserGroup=(roundBrowserGroup+groupStep+serieDGroups.length)%serieDGroups.length;renderRoundResultsBrowser();return;}const roundStep=Number(event.target.closest('[data-round-step]')?.dataset.roundStep||0);if(roundStep){const rounds=availableResultRounds(roundBrowserDivision),index=rounds.indexOf(roundBrowserRound),next=rounds[index+roundStep];if(next){roundBrowserRound=next;renderRoundResultsBrowser();}}});
-  onClick('#closeRoundResults',()=>{$('#roundResultsModal').classList.add('hidden');reopenMatchWindow();});
+  onClick('#closeRoundResults',()=>{
+    $('#roundResultsModal').classList.add('hidden');
+    // Pós-jogo pendente: volta ao resumo; senão só atualiza o CTA do dashboard.
+    if(matchStarted&&matchFinished&&!roundCommitted&&liveMatchGame)reopenMatchWindow();
+    renderUserMatchPresentation();
+  });
   let persistSeasonTimer=null;
   let saveQuotaWarned=false;
   let latestLiveMatchSnapshot=null;
@@ -5092,8 +5261,11 @@ export async function bootEngine({ bus } = {}) {
     if(pendingSponsorChoice){openSponsorPickerIfPending();return null;}
     if(!savedNewGame||isUserSeasonIdle())return null;
     if(seasonFullyComplete())return null;
+    ensureCalendarMatchConsistency();
     rebuildCalendarGames();
     if(isOnPendingMatchDay()){
+      pushMatchDayBrief(userMatchOnDate(careerCalendarDate)||nextPendingUserEntry()?.game);
+      refreshSeasonPresentation();
       renderCalendar();
       return {stopped:'match'};
     }
@@ -5150,8 +5322,8 @@ export async function bootEngine({ bus } = {}) {
     if(pendingSponsorChoice){openSponsorPickerIfPending();return null;}
     if(!savedNewGame||isUserSeasonIdle())return null;
     if(seasonFullyComplete())return null;
+    ensureCalendarMatchConsistency();
     rebuildCalendarGames();
-    normalizeCalendarBeforeNextMatch();
     if(isOnPendingMatchDay()){
       pushMatchDayBrief(userMatchOnDate(careerCalendarDate)||nextPendingUserEntry()?.game);
       refreshSeasonPresentation();
@@ -5197,8 +5369,40 @@ export async function bootEngine({ bus } = {}) {
   }
   if(savedNewGame)persistSeason(true);
   const recordGameLeaders=game=>{
-    [game.home,game.away].forEach(clubName=>clubs[clubName].roster.slice(0,11).forEach(player=>{const scorer=allScorers.find(item=>item.club===clubName&&item.name===player.name),assistant=allAssistants.find(item=>item.club===clubName&&item.name===player.name);if(scorer)scorer.games++;if(assistant)assistant.games++;}));
-    if(game.goals)[['home',game.home],['away',game.away]].forEach(([side,clubName])=>(game.goals[side]||[]).forEach(goal=>{if(goal?.type==='own')return;const started=name=>clubs[clubName].roster.slice(0,11).some(player=>player.name===name);let scorer=allScorers.find(item=>item.club===clubName&&item.name===goal.name);if(!scorer){const player=clubs[clubName].roster.find(item=>item.name===goal.name);scorer={name:goal.name,club:clubName,division:clubs[clubName].division,games:1,goals:0,tieValue:(player?.finishing||50)+(player?.heading||50)*.2};allScorers.push(scorer);}else if(!started(goal.name))scorer.games++;scorer.goals++;if(goal.assist){let assistant=allAssistants.find(item=>item.club===clubName&&item.name===goal.assist);if(!assistant){const player=clubs[clubName].roster.find(item=>item.name===goal.assist);assistant={name:goal.assist,club:clubName,division:clubs[clubName].division,games:1,assists:0,tieValue:(player?.passing||50)+(player?.playmaking||50)};allAssistants.push(assistant);}else if(!started(goal.assist))assistant.games++;assistant.assists++;}}));
+    if(!game?.home||!game?.away)return;
+    [game.home,game.away].forEach(clubName=>{
+      const roster=clubs[clubName]?.roster;
+      if(!Array.isArray(roster))return;
+      roster.slice(0,11).forEach(player=>{
+        const scorer=allScorers.find(item=>item.club===clubName&&item.name===player.name),assistant=allAssistants.find(item=>item.club===clubName&&item.name===player.name);
+        if(scorer)scorer.games++;
+        if(assistant)assistant.games++;
+      });
+    });
+    if(game.goals)[['home',game.home],['away',game.away]].forEach(([side,clubName])=>{
+      const club=clubs[clubName];
+      if(!club?.roster)return;
+      (game.goals[side]||[]).forEach(goal=>{
+        if(goal?.type==='own')return;
+        const started=name=>club.roster.slice(0,11).some(player=>player.name===name);
+        let scorer=allScorers.find(item=>item.club===clubName&&item.name===goal.name);
+        if(!scorer){
+          const player=club.roster.find(item=>item.name===goal.name);
+          scorer={name:goal.name,club:clubName,division:club.division,games:1,goals:0,tieValue:(player?.finishing||50)+(player?.heading||50)*.2};
+          allScorers.push(scorer);
+        }else if(!started(goal.name))scorer.games++;
+        scorer.goals++;
+        if(goal.assist){
+          let assistant=allAssistants.find(item=>item.club===clubName&&item.name===goal.assist);
+          if(!assistant){
+            const player=club.roster.find(item=>item.name===goal.assist);
+            assistant={name:goal.assist,club:clubName,division:club.division,games:1,assists:0,tieValue:(player?.passing||50)+(player?.playmaking||50)};
+            allAssistants.push(assistant);
+          }else if(!started(goal.assist))assistant.games++;
+          assistant.assists++;
+        }
+      });
+    });
     allScorers.sort((a,b)=>b.goals-a.goals||b.tieValue-a.tieValue||a.games-b.games);allAssistants.sort((a,b)=>b.assists-a.assists||b.tieValue-a.tieValue||a.games-b.games);
     recordPlayerHistoryMatch(game,{persist:false,round:game.round??currentRound,competition:game.competition,leg:game.leg});
   };
@@ -5221,20 +5425,61 @@ export async function bootEngine({ bus } = {}) {
     if(game.fatigueAfter)[['home',game.home],['away',game.away]].forEach(([side,clubName])=>Object.entries(game.fatigueAfter[side]||{}).forEach(([playerName,value])=>{const player=clubs[clubName].roster.find(candidate=>candidate.name===playerName);if(player)player.fatigue=clamp(value,0,100);}));
     applyMatchAvailability(game,game.fixture||game);
   };
-  const simulateNationalRound=()=>{Object.keys(nationalCompetitions).filter(division=>division!==userDivision).forEach(division=>{const competition=nationalCompetitions[division],fixtures=competition.fixtures[currentRound-1]||[];if(!fixtures.length)return;const previewKey=`${division}-${currentRound}`,results=roundPreviewResults[previewKey]||fixtures.map(game=>simulateRoundMatch(game.home,game.away,game));results.forEach(recordGameLeaders);if(division!=='D'||currentRound<=10)results.forEach(game=>applySecondaryResult(game,competition));competition.standings.sort((a,b)=>b.points-a.points||b.goalDiff-a.goalDiff||b.wins-a.wins);competition.standings.forEach((row,index)=>clubs[row.club].position=index+1);competitionRoundHistory[division].push({round:currentRound,games:results.map(game=>compactMatchResult(game,{keepData:false}))});});playerHistory.persist();};
+  const simulateNationalRound=()=>{
+    Object.keys(nationalCompetitions).filter(division=>division!==userDivision).forEach(division=>{
+      const competition=nationalCompetitions[division];
+      const fixtures=(Array.isArray(competition?.fixtures)?competition.fixtures:[])[currentRound-1]||[];
+      if(!fixtures.length)return;
+      const previewKey=`${division}-${currentRound}`;
+      const playable=fixtures.filter(game=>game?.home&&game?.away&&clubs[game.home]&&clubs[game.away]);
+      const results=roundPreviewResults[previewKey]||playable.map(game=>simulateRoundMatch(game.home,game.away,game));
+      results.forEach(recordGameLeaders);
+      if(division!=='D'||currentRound<=10)results.forEach(game=>applySecondaryResult(game,competition));
+      competition.standings.sort((a,b)=>b.points-a.points||b.goalDiff-a.goalDiff||b.wins-a.wins);
+      competition.standings.forEach((row,index)=>{if(clubs[row.club])clubs[row.club].position=index+1;});
+      if(!competitionRoundHistory[division])competitionRoundHistory[division]=[];
+      competitionRoundHistory[division].push({round:currentRound,games:results.map(game=>compactMatchResult(game,{keepData:false}))});
+    });
+    playerHistory.persist();
+  };
   const dKnockout=nationalCompetitions.D.knockout;
-  dKnockout.stages=dKnockout.stages||{};dKnockout.promoted=dKnockout.promoted||[];
-  const dRoundResults=round=>(userDivision==='D'?seasonRoundHistory:competitionRoundHistory.D).find(item=>item.round===round)?.games||[];
-  const makeTies=clubsList=>Array.from({length:Math.floor(clubsList.length/2)},(_,index)=>({home:clubsList[index*2],away:clubsList[index*2+1]}));
-  const installTieRounds=(ties,startRound,extraTies=[])=>{const all=[...ties,...extraTies];nationalCompetitions.D.fixtures[startRound-1]=all.map((tie,tieIndex)=>({home:tie.home,away:tie.away,round:startRound,competition:KNOCKOUT_COMPETITIONS.SERIE_D,tieId:`d-ko-r${startRound}-t${tieIndex}`,leg:'IDA',knockoutRound:startRound,twoLegged:true,completed:false}));nationalCompetitions.D.fixtures[startRound]=all.map((tie,tieIndex)=>({home:tie.away,away:tie.home,round:startRound+1,competition:KNOCKOUT_COMPETITIONS.SERIE_D,tieId:`d-ko-r${startRound}-t${tieIndex}`,leg:'VOLTA',knockoutRound:startRound,twoLegged:true,completed:false}));};
-  const getSerieDTieGames=game=>{if(!game?.tieId)return[];return nationalCompetitions.D.fixtures.filter(Array.isArray).flat().filter(item=>item.tieId===game.tieId).sort((a,b)=>(a.leg==='IDA'?0:1)-(b.leg==='IDA'?0:1));};
+  dKnockout.stages=dKnockout.stages||{};
+  // Saves antigos usavam `promoted: 6` (nº de vagas). A lista de clubes promovidos é sempre array.
+  if(typeof dKnockout.promoted==='number'){
+    dKnockout.promotionSlots=dKnockout.promotionSlots||dKnockout.promoted;
+    dKnockout.promoted=[];
+  }else if(!Array.isArray(dKnockout.promoted)){
+    dKnockout.promoted=[];
+  }
+  if(!Number.isFinite(Number(dKnockout.promotionSlots)))dKnockout.promotionSlots=SERIE_D_PROMOTIONS;
+  const serieDPromotedClubs=()=>Array.isArray(dKnockout.promoted)?dKnockout.promoted:[];
+  const dRoundResults=round=>{
+    const history=userDivision==='D'?seasonRoundHistory:(competitionRoundHistory.D||[]);
+    return (Array.isArray(history)?history:[]).find(item=>item.round===round)?.games||[];
+  };
+  const makeTies=clubsList=>{
+    if(!Array.isArray(clubsList)||clubsList.length<2)return [];
+    return Array.from({length:Math.floor(clubsList.length/2)},(_,index)=>({home:clubsList[index*2],away:clubsList[index*2+1]}));
+  };
+  const installTieRounds=(ties,startRound,extraTies=[])=>{
+    const all=[...(Array.isArray(ties)?ties:[]),...(Array.isArray(extraTies)?extraTies:[])].filter(tie=>tie?.home&&tie?.away);
+    if(!Array.isArray(nationalCompetitions.D.fixtures))nationalCompetitions.D.fixtures=[];
+    nationalCompetitions.D.fixtures[startRound-1]=all.map((tie,tieIndex)=>({home:tie.home,away:tie.away,round:startRound,competition:KNOCKOUT_COMPETITIONS.SERIE_D,tieId:`d-ko-r${startRound}-t${tieIndex}`,leg:'IDA',knockoutRound:startRound,twoLegged:true,completed:false}));
+    nationalCompetitions.D.fixtures[startRound]=all.map((tie,tieIndex)=>({home:tie.away,away:tie.home,round:startRound+1,competition:KNOCKOUT_COMPETITIONS.SERIE_D,tieId:`d-ko-r${startRound}-t${tieIndex}`,leg:'VOLTA',knockoutRound:startRound,twoLegged:true,completed:false}));
+  };
+  const getSerieDTieGames=game=>{
+    if(!game?.tieId)return [];
+    const rounds=Array.isArray(nationalCompetitions.D.fixtures)?nationalCompetitions.D.fixtures:[];
+    return rounds.filter(Array.isArray).flat().filter(item=>item.tieId===game.tieId).sort((a,b)=>(a.leg==='IDA'?0:1)-(b.leg==='IDA'?0:1));
+  };
   const mergeSerieDTieResults=(games,startRound)=>{const historyGames=[...dRoundResults(startRound),...dRoundResults(startRound+1)];return games.map(fixture=>{const played=historyGames.find(item=>item.home===fixture.home&&item.away===fixture.away);if(!played)return {...fixture};return {...fixture,...played,completed:true,penalties:played.penalties||fixture.penalties,shootoutWinner:played.shootoutWinner||fixture.shootoutWinner,shootoutPenalties:played.shootoutPenalties||fixture.shootoutPenalties};});};
   const getKnockoutTieGames=game=>{if(!game)return[];if(game.competition===KNOCKOUT_COMPETITIONS.COPA){const stage=cupCompetition.stages.find(item=>item.fixtures.includes(game));return stage?cupTieGames(stage,game.tieId):[];}if(isKnockoutShootoutCompetition(game))return getSerieDTieGames(game);return [];};
   /** Grava shootout da cópia resolvida de volta nas fixtures oficiais da Série D. */
   const persistSerieDTieShootout=games=>{
     const deciding=games?.[games.length-1];
     if(!deciding?.shootoutWinner)return;
-    nationalCompetitions.D.fixtures.filter(Array.isArray).flat().forEach(fixture=>{
+    (Array.isArray(nationalCompetitions.D?.fixtures)?nationalCompetitions.D.fixtures:[])
+      .filter(Array.isArray).flat().forEach(fixture=>{
       if(!sameKnockoutFixture(fixture,deciding))return;
       fixture.shootoutWinner=deciding.shootoutWinner;
       fixture.shootoutPenalties=deciding.shootoutPenalties||deciding.penalties;
@@ -5243,7 +5488,8 @@ export async function bootEngine({ bus } = {}) {
     });
     const histRounds=[deciding.knockoutRound,deciding.round,(deciding.knockoutRound||0)+1].filter(Boolean);
     histRounds.forEach(round=>{
-      const entry=(userDivision==='D'?seasonRoundHistory:competitionRoundHistory.D).find(item=>item.round===round);
+      const history=userDivision==='D'?seasonRoundHistory:(competitionRoundHistory.D||[]);
+      const entry=(Array.isArray(history)?history:[]).find(item=>item.round===round);
       entry?.games?.forEach(game=>{
         if(!sameKnockoutFixture(game,deciding))return;
         game.shootoutWinner=deciding.shootoutWinner;
@@ -5254,14 +5500,18 @@ export async function bootEngine({ bus } = {}) {
     });
   };
   const resolveTies=(ties,startRound)=>{
-    const idaFixtures=nationalCompetitions.D.fixtures[startRound-1]||[];
+    if(!Array.isArray(ties)||!ties.length)return null;
+    const dFixtures=Array.isArray(nationalCompetitions.D?.fixtures)?nationalCompetitions.D.fixtures:[];
+    const idaFixtures=dFixtures[startRound-1]||[];
     const winners=[],losers=[];
     for(let tieIndex=0;tieIndex<ties.length;tieIndex++){
       const tie=ties[tieIndex];
+      if(!tie?.home||!tie?.away)return null;
       const tieId=`d-ko-r${startRound}-t${tieIndex}`;
-      const raw=getSerieDTieGames({tieId}).length
-        ?getSerieDTieGames({tieId})
-        :[idaFixtures[tieIndex],(nationalCompetitions.D.fixtures[startRound]||[])[tieIndex]].filter(Boolean);
+      const linked=getSerieDTieGames({tieId});
+      const raw=linked.length
+        ?linked
+        :[idaFixtures[tieIndex],(dFixtures[startRound]||[])[tieIndex]].filter(Boolean);
       const games=mergeSerieDTieResults(raw,startRound);
       if(!games.length||games.some(game=>game.homeGoals==null&&!game.completed))return null;
       const involvesUser=games.some(isUserFixture);
@@ -5280,12 +5530,30 @@ export async function bootEngine({ bus } = {}) {
     return{winners,losers};
   };
   const updateSeriesDKnockout=completedRound=>{
-    if(completedRound===10&&!dKnockout.stages.second){const qualified=serieDGroups.map(group=>group.map(name=>nationalCompetitions.D.standings.find(row=>row.club===name)).sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff).slice(0,4).map(row=>row.club)),ties=[];for(let group=0;group<16;group+=2){const left=qualified[group],right=qualified[group+1];ties.push({home:left[0],away:right[3]},{home:left[1],away:right[2]},{home:left[2],away:right[1]},{home:left[3],away:right[0]});}dKnockout.stages.second=ties;installTieRounds(ties,11);notifySerieDKnockoutPhase(11,'2ª fase eliminatória');}
+    if(completedRound===10&&!dKnockout.stages.second){
+      const qualified=serieDGroups.map(group=>(group||[])
+        .map(name=>nationalCompetitions.D.standings.find(row=>row.club===name))
+        .filter(Boolean)
+        .sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff)
+        .slice(0,4)
+        .map(row=>row.club));
+      const ties=[];
+      for(let group=0;group<16;group+=2){
+        const left=qualified[group]||[],right=qualified[group+1]||[];
+        if(left.length<4||right.length<4)continue;
+        ties.push({home:left[0],away:right[3]},{home:left[1],away:right[2]},{home:left[2],away:right[1]},{home:left[3],away:right[0]});
+      }
+      if(ties.length){
+        dKnockout.stages.second=ties;
+        installTieRounds(ties,11);
+        notifySerieDKnockoutPhase(11,'2ª fase eliminatória');
+      }
+    }
     if(completedRound===12&&!dKnockout.stages.third){const resolved=resolveTies(dKnockout.stages.second,11);if(!resolved)return;dKnockout.stages.third=makeTies(resolved.winners);installTieRounds(dKnockout.stages.third,13);notifySerieDKnockoutPhase(13,'3ª fase eliminatória');}
     if(completedRound===14&&!dKnockout.stages.round16){const resolved=resolveTies(dKnockout.stages.third,13);if(!resolved)return;dKnockout.stages.round16=makeTies(resolved.winners);installTieRounds(dKnockout.stages.round16,15);notifySerieDKnockoutPhase(15,'Oitavas de final');}
     if(completedRound===16&&!dKnockout.stages.quarter){const resolved=resolveTies(dKnockout.stages.round16,15);if(!resolved)return;dKnockout.stages.quarter=makeTies(resolved.winners);installTieRounds(dKnockout.stages.quarter,17);notifySerieDKnockoutPhase(17,'Quartas de final');}
     if(completedRound===18&&!dKnockout.stages.semi){const resolved=resolveTies(dKnockout.stages.quarter,17);if(!resolved)return;dKnockout.promoted=[...resolved.winners];dKnockout.stages.semi=makeTies(resolved.winners);dKnockout.stages.playoff=makeTies(resolved.losers);installTieRounds(dKnockout.stages.semi,19,dKnockout.stages.playoff);notifySerieDKnockoutPhase(19,'Semifinal');}
-    if(completedRound===20&&!dKnockout.stages.final){const semifinal=resolveTies(dKnockout.stages.semi,19),playoff=resolveTies(dKnockout.stages.playoff,19);if(!semifinal||!playoff)return;dKnockout.promoted=[...new Set([...dKnockout.promoted,...playoff.winners])];dKnockout.stages.final=makeTies(semifinal.winners);installTieRounds(dKnockout.stages.final,21);notifySerieDKnockoutPhase(21,'Final');}
+    if(completedRound===20&&!dKnockout.stages.final){const semifinal=resolveTies(dKnockout.stages.semi,19),playoff=resolveTies(dKnockout.stages.playoff,19);if(!semifinal||!playoff)return;dKnockout.promoted=[...new Set([...serieDPromotedClubs(),...playoff.winners])];dKnockout.stages.final=makeTies(semifinal.winners);installTieRounds(dKnockout.stages.final,21);notifySerieDKnockoutPhase(21,'Final');}
     if(completedRound===22&&dKnockout.stages.final&&!dKnockout.champion){const resolved=resolveTies(dKnockout.stages.final,21);if(!resolved)return;dKnockout.champion=resolved.winners[0]||null;}
     rebuildCalendarGames();
   };
@@ -5662,7 +5930,24 @@ export async function bootEngine({ bus } = {}) {
   }
   const ranked=division=>[...nationalCompetitions[division].standings].sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff).map(row=>row.club);
   const playoffEdge=(first,second,division)=>{const table=nationalCompetitions[division].standings,a=table.find(row=>row.club===first),b=table.find(row=>row.club===second),aScore=a.points+clubs[first].power*.18+rnd(-2.5,2.5),bScore=b.points+clubs[second].power*.18+rnd(-2.5,2.5);return aScore>=bScore?first:second;};
-  const finishRemainingNationalRounds=fromRound=>{for(let round=fromRound;round<=38;round++)['A','B','C'].forEach(division=>{const competition=nationalCompetitions[division],fixtures=competition.fixtures[round-1]||[],results=fixtures.map(game=>simulateRoundMatch(game.home,game.away,game));results.forEach(recordGameLeaders);results.forEach(game=>applySecondaryResult(game,competition));competitionRoundHistory[division].push({round,games:results.map(game=>compactMatchResult(game,{keepData:false}))});});Object.values(nationalCompetitions).forEach(competition=>competition.standings.sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff));playerHistory.persist();};
+  const finishRemainingNationalRounds=fromRound=>{
+    for(let round=fromRound;round<=38;round++){
+      ['A','B','C'].forEach(division=>{
+        const competition=nationalCompetitions[division];
+        const fixtures=(Array.isArray(competition?.fixtures)?competition.fixtures:[])[round-1]||[];
+        const playable=fixtures.filter(game=>game?.home&&game?.away&&clubs[game.home]&&clubs[game.away]);
+        const results=playable.map(game=>simulateRoundMatch(game.home,game.away,game));
+        results.forEach(recordGameLeaders);
+        results.forEach(game=>applySecondaryResult(game,competition));
+        if(!competitionRoundHistory[division])competitionRoundHistory[division]=[];
+        competitionRoundHistory[division].push({round,games:results.map(game=>compactMatchResult(game,{keepData:false}))});
+      });
+    }
+    Object.values(nationalCompetitions).forEach(competition=>{
+      if(Array.isArray(competition?.standings))competition.standings.sort((a,b)=>b.points-a.points||b.wins-a.wins||b.goalDiff-a.goalDiff);
+    });
+    playerHistory.persist();
+  };
   /** Só fecha a temporada quando o calendário nacional acabou e não há jogos do usuário (Copa inclusive). */
   const seasonReadyForTransition=()=>{
     if(!seasonComplete())return false;
@@ -5685,7 +5970,7 @@ export async function bootEngine({ bus } = {}) {
       }
       transfersEngine?.clearSeasonDeals?.();
     }catch{/* boot / mercado off */}
-    const a=ranked('A'),b=ranked('B'),c=ranked('C'),relA=a.slice(-4),promB=[b[0],b[1],playoffEdge(b[2],b[5],'B'),playoffEdge(b[3],b[4],'B')],relB=b.slice(-4),promC=c.slice(0,4),relCCount=serieCRelegationCountForTransition(c.length,careerSeason+1),relC=c.slice(-relCCount);let promD=[...(dKnockout.promoted||[])];if(promD.length<SERIE_D_PROMOTIONS){const groupWinners=serieDGroups.map(group=>group.map(name=>nationalCompetitions.D.standings.find(row=>row.club===name)).sort((x,y)=>y.points-x.points||y.wins-x.wins||y.goalDiff-x.goalDiff)[0]?.club).filter(Boolean);promD=[...new Set([...promD,...groupWinners])].slice(0,SERIE_D_PROMOTIONS);}
+    const a=ranked('A'),b=ranked('B'),c=ranked('C'),relA=a.slice(-4),promB=[b[0],b[1],playoffEdge(b[2],b[5],'B'),playoffEdge(b[3],b[4],'B')],relB=b.slice(-4),promC=c.slice(0,4),relCCount=serieCRelegationCountForTransition(c.length,careerSeason+1),relC=c.slice(-relCCount);let promD=[...serieDPromotedClubs()];if(promD.length<SERIE_D_PROMOTIONS){const groupWinners=serieDGroups.map(group=>group.map(name=>nationalCompetitions.D.standings.find(row=>row.club===name)).filter(Boolean).sort((x,y)=>y.points-x.points||y.wins-x.wins||y.goalDiff-x.goalDiff)[0]?.club).filter(Boolean);promD=[...new Set([...promD,...groupWinners])].slice(0,SERIE_D_PROMOTIONS);}
     const next={A:[...divisionTeams.A.filter(name=>!relA.includes(name)),...promB],B:[...divisionTeams.B.filter(name=>!promB.includes(name)&&!relB.includes(name)),...relA,...promC],C:[...divisionTeams.C.filter(name=>!promC.includes(name)&&!relC.includes(name)),...relB,...promD],D:[...divisionTeams.D.filter(name=>!promD.includes(name)),...relC]};
     const used=new Set(Object.values(next).flat());generatedClubPool.filter(name=>!used.has(name)&&name!==userClub).some(name=>{if(next.D.length>=SERIE_D_CLUBS)return true;next.D.push(name);used.add(name);return false;});
     // Garante teto CBF da próxima temporada (saves/transições legadas).
@@ -5818,7 +6103,10 @@ export async function bootEngine({ bus } = {}) {
       if(!alreadyRecorded){
         // Novas punições do jogo ao vivo entram antes da simulação da rodada;
         // suspensões só são cumpridas depois que as partidas da rodada acontecem.
-        const roundParticipants=new Set(Object.values(nationalCompetitions).flatMap(competition=>(competition.fixtures[currentRound-1]||[]).flatMap(game=>[game.home,game.away])));
+        const roundParticipants=new Set(Object.values(nationalCompetitions).flatMap(competition=>{
+          const round=(Array.isArray(competition?.fixtures)?competition.fixtures:[])[currentRound-1]||[];
+          return (Array.isArray(round)?round:[]).filter(game=>game?.home&&game?.away).flatMap(game=>[game.home,game.away]);
+        }));
         const restDays=intervalDaysForRoundAdvance();
         commitLiveAvailability();
         const completedGames=simulateRoundResults(true);
@@ -5868,12 +6156,21 @@ export async function bootEngine({ bus } = {}) {
   };
   // Avança uma rodada nacional sem partida ao vivo do usuário (clube idle/eliminado).
   const simulateIdleRound=()=>{
-    const alreadyRecorded=seasonRoundHistory.some(item=>item.round===currentRound);
+    const fixturesOf=competition=>Array.isArray(competition?.fixtures)?competition.fixtures:[];
+    const alreadyRecorded=(seasonRoundHistory||[]).some(item=>item.round===currentRound);
     if(!alreadyRecorded){
-      const roundFixtures=nationalCompetitions[userDivision].fixtures[currentRound-1]||[];
-      const roundParticipants=new Set(Object.values(nationalCompetitions).flatMap(competition=>(competition.fixtures[currentRound-1]||[]).flatMap(game=>[game.home,game.away])));
+      const roundFixtures=fixturesOf(nationalCompetitions[userDivision])[currentRound-1]||[];
+      const roundParticipants=new Set(
+        Object.values(nationalCompetitions).flatMap(competition=>
+          (fixturesOf(competition)[currentRound-1]||[])
+            .filter(game=>game?.home&&game?.away)
+            .flatMap(game=>[game.home,game.away]),
+        ),
+      );
       const restDays=clamp(3,2,12),recoveryMod=trainingRecoveryMultiplier('after');
-      const completedGames=roundFixtures.map(game=>simulateRoundMatch(game.home,game.away,game));
+      const completedGames=roundFixtures
+        .filter(game=>game?.home&&game?.away&&clubs[game.home]&&clubs[game.away])
+        .map(game=>simulateRoundMatch(game.home,game.away,game));
       completedGames.forEach(recordGameLeaders);
       playerHistory.persist();
       if(userDivision!=='D'||currentRound<=10)completedGames.forEach(applyRoundToTable);
@@ -5894,11 +6191,12 @@ export async function bootEngine({ bus } = {}) {
       if(evaluateManagerJobRisk())return {sacked:true};
     }else updateSeriesDKnockout(currentRound);
     const completedSeasonNow=currentRound===38||(userDivision==='D'&&currentRound===22);
-    if(userDivision==='D'&&currentRound===22&&!competitionRoundHistory.A.some(item=>item.round>=23))finishRemainingNationalRounds(23);
+    if(userDivision==='D'&&currentRound===22&&!(competitionRoundHistory.A||[]).some(item=>item.round>=23))finishRemainingNationalRounds(23);
     currentRound++;
     reconcileCurrentRound();
     processAiMarketAfterRound();
-    const cupReferenceDate=completedSeasonNow?new Date(careerSeason,11,31,12):fixtureDate(clamp(currentRound,1,Math.max(championshipFixtures.length,currentRound,1)));
+    const fixtureCap=Math.max(Array.isArray(championshipFixtures)?championshipFixtures.length:0,fixturesOf(nationalCompetitions[userDivision]).length,currentRound,1);
+    const cupReferenceDate=completedSeasonNow?new Date(careerSeason,11,31,12):fixtureDate(clamp(currentRound,1,fixtureCap));
     advanceCupThroughDate(cupReferenceDate);
     roundPreviewResults={};
     return {sacked:false,finished:completedSeasonNow};
@@ -5956,11 +6254,17 @@ export async function bootEngine({ bus } = {}) {
         // Yield ao browser para atualizar o overlay entre blocos de rodadas.
         setTimeout(step,0);
       }catch(error){
-        console.error('Falha ao simular restante da temporada',error);
+        console.error('Falha ao simular restante da temporada',{
+          round:currentRound,
+          division:userDivision,
+          cupPhase:cupCompetition?.currentPhase,
+          dKnockoutStages:Object.keys(dKnockout?.stages||{}),
+          error,
+        });
         seasonSummary.closeIdleSim();
         nonHumanSimRunning=false;
-        persistSeason(true);
-        refreshSeasonPresentation();
+        try{persistSeason(true);}catch{/* quota / persist */}
+        try{refreshSeasonPresentation();}catch{/* UI */}
       }
     };
     setTimeout(step,0);
@@ -6245,7 +6549,7 @@ export async function bootEngine({ bus } = {}) {
     modal.classList.remove('hidden');
     score();
     renderFinalSummary();
-    showFinalActions();
+    showFinalActions({openRatings:true});
     clearLiveMatchSave();
     latestLiveMatchSnapshot=null;
     persistSeason(true);
@@ -6358,8 +6662,8 @@ export async function bootEngine({ bus } = {}) {
       }
       if(shootoutState){renderShootoutTrack();$('#shootoutPanel').classList.remove('hidden');}
       else if(liveMatchGame?.penalties){$('#shootoutTitle').textContent=`Shootout ${liveMatchGame.penalties}`;$('#shootoutPanel').classList.remove('hidden');}
-      renderFinalSummary();
-      showFinalActions();
+      renderFinalSummary({processMedical:false});
+      showFinalActions({reopen:true});
       return true;
     }
     modal.classList.remove('hidden');
@@ -6444,7 +6748,8 @@ export async function bootEngine({ bus } = {}) {
       return;
     }
     const nextEntry=nextPendingUserEntry();
-    if(nextEntry&&!sameCalendarDay(nextEntry.details.date,careerCalendarDate)){
+    // Libera jogo no dia agendado ou se o calendário passou do jogo (atrasado).
+    if(nextEntry&&isPendingFixtureOverdue(nextEntry)===false&&!sameCalendarDay(nextEntry.details.date,careerCalendarDate)){
       $$('.nav').find(button=>button.dataset.view==='calendar')?.click();
       return;
     }
@@ -6464,21 +6769,26 @@ export async function bootEngine({ bus } = {}) {
   });
   onClick('#simulateRemainder',()=>simulateNonHumanSeasonRemainder());
   const openLastPostMatchView=()=>{
-    if(!(matchStarted&&matchFinished&&!roundCommitted))return false;
+    if(!(matchStarted&&matchFinished&&!roundCommitted&&liveMatchGame))return false;
+    $('#calendarMatchReportModal')?.classList.add('hidden');
     const opened=reopenMatchWindow();
-    if(opened)renderUserMatchPresentation();
+    if(opened){
+      renderUserMatchPresentation();
+      // Reabrir pelo CTA não força NOTAS de novo — o usuário abre pelo botão NOTAS.
+    }
     return opened;
   };
   onClick('#reopenPostMatch',()=>{openLastPostMatchView();});
   onClick('#closeMatch',()=>{
-    // Pós-jogo: × só fecha a janela — SAIR / CLASSIFICAÇÃO avançam a rodada.
+    // Pós-jogo: × só fecha a janela — AVANÇAR é quem confirma e avança a rodada.
     if(matchFinished&&!roundCommitted){
       flushLiveMatchPersist();
       if(matchStarted)persistSeason(true);
       stopMatchClock();
-      modal.classList.add('hidden');
-      $('#liveOpponentModal').classList.add('hidden');
       closeFormationSuggestion();
+      $('#calendarMatchReportModal')?.classList.add('hidden');
+      $('#liveOpponentModal').classList.add('hidden');
+      modal.classList.add('hidden');
       renderUserMatchPresentation();
       return;
     }
@@ -6486,6 +6796,7 @@ export async function bootEngine({ bus } = {}) {
     if(matchStarted)persistSeason(true);
     stopMatchClock();
     modal.classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');closeFormationSuggestion();
+    $('#calendarMatchReportModal')?.classList.add('hidden');
     renderUserMatchPresentation();
   });
   onClick('#resumeMatch',()=>{
@@ -6631,7 +6942,7 @@ export async function bootEngine({ bus } = {}) {
     if(cupFirstRanked.includes(userClub))return 1;
     return null;
   };
-  const userCupFixtures=()=>cupCompetition.stages.flatMap(stage=>stage.fixtures.filter(game=>game.home===userClub||game.away===userClub));
+  const userCupFixtures=()=>(cupCompetition.stages||[]).flatMap(stage=>(Array.isArray(stage?.fixtures)?stage.fixtures:[]).filter(game=>game.home===userClub||game.away===userClub));
   const runCupCareerAudit=()=>{
     const expected=expectedCupEntryPhase(),seasonEnd=new Date(careerSeason,11,31,12),mayCheck=new Date(careerSeason,4,1,12);
     const fixturesAtStart=userCupFixtures().length,pendingAtStart=pendingUserSchedule().filter(entry=>entry.game.competition==='COPA DO BRASIL').length;

@@ -1,6 +1,35 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-35',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T03:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Temporada idle',
+        items: [
+          'Corrigido crash ao simular o restante da temporada e no balanço/próxima temporada (Série D promoted).',
+          'Simulação idle mais resistente a fixtures/Copa incompletos e clubes ausentes.',
+          'Calendário não deixa jogos da Copa atrás do dia de carreira; Dia de Jogo reconhece partidas atrasadas.',
+        ],
+      },
+      {
+        label: 'Pós-jogo e tabelas',
+        items: [
+          'AVANÇAR no pós-jogo; CLASSIFICAÇÃO não consome a rodada (dá para reabrir PÓS-JOGO).',
+          'Tabelas do campeonato no visual MatchDay (azul); zonas de acesso e linha do seu clube em verde.',
+        ],
+      },
+      {
+        label: 'Save',
+        items: [
+          'Quota do localStorage: limpeza mais agressiva do histórico de jogadores quando a cota estoura.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-34',
     date: '2026-07-20',
     publishedAt: '2026-07-20T01:30:00-03:00',

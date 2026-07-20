@@ -89,7 +89,14 @@ export function createMatchAvailability(deps) {
         if (player && !player.injury) applyDeferredInjuryDiagnosis(player, entry, club);
       });
     });
-    if (userDisciplineLines.length) pushDisciplineDigest(userDisciplineLines, currentRound, userOpponent ? `vs ${userOpponent}` : `Rodada ${currentRound}`);
+    if (userDisciplineLines.length) {
+      pushDisciplineDigest(
+        userDisciplineLines,
+        currentRound,
+        userOpponent ? `vs ${userOpponent}` : `Rodada ${currentRound}`,
+        matchFixture,
+      );
+    }
   };
 
   const serveAvailability = (days, participants = new Set(Object.keys(getClubs()))) =>
@@ -119,7 +126,14 @@ export function createMatchAvailability(deps) {
       const entries = [...liveMinutesPlayed[side].entries()].filter(([, mins]) => mins > 0).map(([name, mins]) => ({ name, minutes: mins, started: liveOpeningLineup[side].includes(name) }));
       applyMatchWorkload(clubName, entries, tacticFor(side));
     });
-    if (userDisciplineLines.length) pushDisciplineDigest(userDisciplineLines, currentRound, userOpponent ? `vs ${userOpponent}` : `Rodada ${currentRound}`);
+    if (userDisciplineLines.length) {
+      pushDisciplineDigest(
+        userDisciplineLines,
+        currentRound,
+        userOpponent ? `vs ${userOpponent}` : `Rodada ${currentRound}`,
+        liveMatchGame,
+      );
+    }
     setAvailabilityCommitted(true);
   };
 

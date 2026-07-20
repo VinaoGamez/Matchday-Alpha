@@ -160,6 +160,13 @@ export function savePlayerHistoryStore(store, options = {}) {
     Number(options.matchLogBudget) > 0
       ? Math.ceil(Number(options.matchLogBudget))
       : PLAYER_HISTORY_LIMITS.maxMatchLogsPerSeason;
+  const applyOk = payload => {
+    store.players = payload.players;
+    store.matchLogs = payload.matchLogs;
+    store.seasonArchives = payload.seasonArchives;
+    store.season = payload.season ?? null;
+    return true;
+  };
   const payload = {
     version: SAVE_VERSION.playerHistory || 1,
     players: prunePlayers(store.players),
@@ -168,10 +175,7 @@ export function savePlayerHistoryStore(store, options = {}) {
     seasonArchives: pruneArchives(store.seasonArchives),
   };
   let ok = writeJson(SAVE_KEYS.playerHistory, payload);
-  if (ok) {
-    store.matchLogs = payload.matchLogs;
-    return true;
-  }
+  if (ok) return applyOk(payload);
   // Quota: corta logs pela metade e tenta de novo.
   payload.matchLogs = pruneMatchLogsForSeason(
     payload.matchLogs,
@@ -179,14 +183,20 @@ export function savePlayerHistoryStore(store, options = {}) {
     Math.max(32, Math.floor(budget / 2)),
   );
   ok = writeJson(SAVE_KEYS.playerHistory, payload);
-  if (ok) {
-    store.matchLogs = payload.matchLogs;
-    return true;
-  }
+  if (ok) return applyOk(payload);
+  // Ainda cheio: zera logs + arquivos de temporada.
   payload.matchLogs = [];
+  payload.seasonArchives = [];
   ok = writeJson(SAVE_KEYS.playerHistory, payload);
-  if (ok) store.matchLogs = [];
-  return ok;
+  if (ok) return applyOk(payload);
+  // Último recurso: corta jogadores pela metade.
+  payload.players = prunePlayers(payload.players, Math.max(500, Math.floor(PLAYER_HISTORY_LIMITS.maxPlayersSoft / 2)));
+  ok = writeJson(SAVE_KEYS.playerHistory, payload);
+  if (ok) return applyOk(payload);
+  payload.players = {};
+  ok = writeJson(SAVE_KEYS.playerHistory, payload);
+  if (ok) return applyOk(payload);
+  return false;
 }
 
 export function clearPlayerHistoryStore() {

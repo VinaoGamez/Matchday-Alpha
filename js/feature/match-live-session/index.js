@@ -35,6 +35,7 @@ import { MODULE_VERSIONS } from '../../core/constants.js';
  * @param {Function} deps.simulateRoundResults
  * @param {Function} deps.openRoundResults
  * @param {Function} [deps.openLiveMatchRatings] — abre relatório com notas Brasfoot
+ * @param {Function} [deps.onPostMatchModalClosed] — dashboard/CTA após fechar o modal pós-jogo
  * @param {Function} deps.stopMatchClock
  * @param {Function} deps.startMatchClock
  * @param {Function} deps.closeFormationSuggestion
@@ -85,6 +86,7 @@ export function createMatchLiveSessionFeature(deps) {
     simulateRoundResults,
     openRoundResults,
     openLiveMatchRatings,
+    onPostMatchModalClosed,
     stopMatchClock,
     startMatchClock,
     closeFormationSuggestion,
@@ -103,6 +105,13 @@ export function createMatchLiveSessionFeature(deps) {
     renderSubstitutionControls,
     renderTacticalConfrontation,
   } = deps;
+
+  const dismissPostMatchChrome = () => {
+    $('#calendarMatchReportModal')?.classList.add('hidden');
+    $('#liveOpponentModal')?.classList.add('hidden');
+    modal.classList.add('hidden');
+    if (typeof onPostMatchModalClosed === 'function') onPostMatchModalClosed();
+  };
 
   const renderFinalSummary = ({ processMedical = true } = {}) => {
     const userClub = getUserClub(), club = getMatchClub(), clubs = getClubs(), currentRound = getCurrentRound();
@@ -181,7 +190,7 @@ export function createMatchLiveSessionFeature(deps) {
     }
   };
 
-  const showFinalActions = ({ reopen = false } = {}) => {
+  const showFinalActions = ({ reopen = false, openRatings = !reopen } = {}) => {
     const liveMatchGame = getLiveMatchGame();
     if (!reopen && liveMatchGame) {
       const matchDate = liveMatchGame.competition === 'COPA DO BRASIL' ? new Date(liveMatchGame.date) : fixtureDetails(liveMatchGame).date;
@@ -191,22 +200,25 @@ export function createMatchLiveSessionFeature(deps) {
     const actions = $('#matchActions');
     actions.classList.remove('hidden');
     actions.innerHTML =
-      '<button type="button" id="finalRatings">NOTAS</button><button type="button" id="finalDashboard">CLASSIFICAÇÃO</button><button type="button" id="finalTable">TABELA DE JOGOS</button><button type="button" id="finalNext">SAIR</button>';
+      '<button type="button" id="finalRatings">NOTAS</button><button type="button" id="finalDashboard">CLASSIFICAÇÃO</button><button type="button" id="finalTable">TABELA DE JOGOS</button><button type="button" id="finalNext">AVANÇAR</button>';
     // Bind direto nos botões novos (evita listener órfão se o nó foi recriado).
     actions.querySelector('#finalRatings')?.addEventListener('click', () => {
       if (typeof openLiveMatchRatings === 'function') openLiveMatchRatings();
     });
+    // CLASSIFICAÇÃO / TABELA só navegam — não avançam a rodada (isso fica no AVANÇAR).
     actions.querySelector('#finalDashboard')?.addEventListener('click', () => {
-      if (getMatchFinished() && !getRoundCommitted()) advanceSeasonRound({ navigateDashboard: false });
-      modal.classList.add('hidden');
+      dismissPostMatchChrome();
       openChampionship();
     });
     actions.querySelector('#finalTable')?.addEventListener('click', () => {
       simulateRoundResults();
-      modal.classList.add('hidden');
+      dismissPostMatchChrome();
       openRoundResults();
     });
     actions.querySelector('#finalNext')?.addEventListener('click', () => exitLiveMatch());
+    if (openRatings && typeof openLiveMatchRatings === 'function') {
+      queueMicrotask(() => openLiveMatchRatings());
+    }
   };
 
   const exitLiveMatch = () => {
@@ -216,7 +228,8 @@ export function createMatchLiveSessionFeature(deps) {
     $('#penaltyDuelModal')?.classList.add('hidden');
     $('#penaltyChoice')?.classList.add('hidden');
     $('#penaltyCompare')?.classList.add('hidden');
-    $('#liveOpponentModal').classList.add('hidden');
+    $('#liveOpponentModal')?.classList.add('hidden');
+    $('#calendarMatchReportModal')?.classList.add('hidden');
     closeFormationSuggestion();
     advanceSeasonRound();
   };
