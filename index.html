@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="css/championship.css?v=20260719-semi-copy">
   <link rel="stylesheet" href="css/calendar.css?v=20260719-notas-fix">
   <link rel="stylesheet" href="css/layout.css?v=20260718-comp-badge">
+  <link rel="stylesheet" href="css/transfers.css?v=20260719-offer-modal">
   <!-- Engine themes & feature CSS (extracted from JS injects; order = cascade) -->
   <link rel="stylesheet" href="css/treatment-modal.css?v=20260717-css-mod">
   <link rel="stylesheet" href="css/live-opponent.css?v=20260717-css-mod">
@@ -61,7 +62,7 @@
       <button class="nav" data-view="office">▥ Escritório</button>
       <button class="nav" data-view="stadium">⬡ Estádio</button>
       <button class="nav" data-view="training">◎ Treinamento</button>
-      <button class="nav" data-view="transfers">⇄ Transferências</button>
+      <button class="nav" data-view="transfers"><span class="nav-label"><img class="nav-transfer-icon" src="./brand/transfer-coins.png" alt="" width="16" height="16" aria-hidden="true">Transferências</span></button>
       <button class="nav" data-view="youth">◆ Categoria de Base</button>
       <button class="nav" data-view="ranking">≣ Ranking Nacional</button>
       <button class="nav" data-view="managers">♛ Ranking de Técnicos</button>
@@ -76,7 +77,7 @@
     <section id="dashboard" class="view active">
       <div class="hero"><div><p>BOA TARDE, MISTER</p><h1>O clássico está de volta.</h1><span>Prepare o Atlético Fênix para mais uma rodada.</span></div><div class="crest">AF</div></div>
       <div class="grid">
-        <article class="card match"><label><span id="nextMatchCardTitle">PRÓXIMA PARTIDA</span> <em id="nextMatchRound">RODADA 14</em></label><div class="teams"><div><i>AF</i><b id="nextMatchHome">Atlético Fênix</b><small id="nextMatchHomePosition">4º colocado</small></div><strong class="match-vs-block"><span id="nextMatchCompetition" class="match-competition" data-kind="serie-a" aria-label="Campeonato"><svg class="match-competition-trophy" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path class="trophy-cup" d="M8 4h16v3c0 4.5-2.2 7.8-5.5 9.5L18 20v2h4v3H10v-3h4v-2l-.5-3.5C10.2 14.8 8 11.5 8 7V4z"/><path class="trophy-shine" d="M11 6h10v1.5c0 3.2-1.5 5.6-3.8 7L16 17.5 14.8 14.5C12.5 12.6 11 10.2 11 7V6z"/><rect class="trophy-base" x="12" y="25" width="8" height="2" rx="1"/><path class="trophy-handles" fill="none" stroke-width="1.2" d="M8 6H5.5a2.5 2.5 0 0 0 0 5H8M24 6h2.5a2.5 2.5 0 0 1 0 5H24"/></svg><b id="nextMatchCompetitionName">Brasileirão Série A</b></span><span class="match-vs-label">VS</span><div id="nextMatchMeta" class="match-meta"></div></strong><div><i id="nextMatchAwayCrest" class="away">EC</i><b id="nextMatchAway">Estrela do Cerrado</b><small id="nextMatchAwayPosition">9º colocado</small></div></div><div id="seasonReviewBoard" class="season-review-board hidden" aria-label="Resumo da temporada"></div><footer class="match-actions-footer"><section class="match-recent-form" aria-label="Últimos resultados"><label>ÚLTIMOS RESULTADOS</label><div class="form" id="matchRecentForm"></div><small id="matchRecentSummary">A temporada ainda não possui resultados.</small></section><div class="match-actions-buttons"><button id="playMatch">JOGAR PARTIDA →</button><button id="reopenPostMatch" class="scout-button hidden" type="button" title="Reabrir o resumo da última partida">PÓS-JOGO</button><button id="simulateRemainder" class="hidden">SIMULAR RESTANTE DA TEMPORADA →</button><button id="openDashboardCalendar" class="scout-button">DIA DE JOGO</button><button id="inspectOpponent" class="scout-button">VER ADVERSÁRIO</button></div></footer><section class="club-upcoming"><label>PRÓXIMOS JOGOS</label><div class="club-upcoming-head"><span>CONFRONTO</span><span>DATA E HORA</span><span>MANDO</span></div><div id="clubUpcomingMatches"></div></section></article>
+        <article class="card match"><label><span id="nextMatchCardTitle">PRÓXIMA PARTIDA</span> <em id="nextMatchRound">RODADA 14</em></label><div class="teams"><div><i>AF</i><b id="nextMatchHome">Atlético Fênix</b><small id="nextMatchHomePosition">4º colocado</small></div><strong class="match-vs-block"><span id="nextMatchCompetition" class="match-competition" data-kind="serie-a" aria-label="Campeonato"><svg class="match-competition-trophy" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><path class="trophy-cup" d="M8 4h16v3c0 4.5-2.2 7.8-5.5 9.5L18 20v2h4v3H10v-3h4v-2l-.5-3.5C10.2 14.8 8 11.5 8 7V4z"/><path class="trophy-shine" d="M11 6h10v1.5c0 3.2-1.5 5.6-3.8 7L16 17.5 14.8 14.5C12.5 12.6 11 10.2 11 7V6z"/><rect class="trophy-base" x="12" y="25" width="8" height="2" rx="1"/><path class="trophy-handles" fill="none" stroke-width="1.2" d="M8 6H5.5a2.5 2.5 0 0 0 0 5H8M24 6h2.5a2.5 2.5 0 0 1 0 5H24"/></svg><b id="nextMatchCompetitionName">Brasileirão Série A</b></span><span class="match-vs-label">VS</span><div id="nextMatchMeta" class="match-meta"></div></strong><div><i id="nextMatchAwayCrest" class="away">EC</i><b id="nextMatchAway">Estrela do Cerrado</b><small id="nextMatchAwayPosition">9º colocado</small></div></div><div id="seasonReviewBoard" class="season-review-board hidden" aria-label="Resumo da temporada"></div><footer class="match-actions-footer"><section class="match-recent-form" aria-label="Últimos resultados"><label>ÚLTIMOS RESULTADOS</label><div class="form" id="matchRecentForm"></div><small id="matchRecentSummary">A temporada ainda não possui resultados.</small></section><div class="match-actions-buttons"><button id="playMatch">JOGAR PARTIDA →</button><button id="reopenPostMatch" class="scout-button hidden" type="button" title="Reabrir o resumo da última partida">PÓS-JOGO</button><button id="simulateRemainder" class="hidden">SIMULAR RESTANTE DA TEMPORADA →</button><button id="advanceTransferCalendar" class="scout-button hidden">AVANÇAR SEMANA</button><button id="openDashboardCalendar" class="scout-button hidden">DIA DE JOGO</button><button id="inspectOpponent" class="scout-button">VER ADVERSÁRIO</button></div></footer><section class="club-upcoming"><label>PRÓXIMOS JOGOS</label><div class="club-upcoming-head"><span>CONFRONTO</span><span>DATA E HORA</span><span>MANDO</span></div><div id="clubUpcomingMatches"></div></section></article>
         <aside class="dashboard-side"><article class="card season-goal-card" id="dashboardSeasonGoalCard"><label>META DA TEMPORADA</label><div class="season-goal-card-row"><div class="season-goal-card-copy"><strong id="dashboardSeasonGoal">—</strong><small id="dashboardSeasonGoalMeta">A diretoria define a expectativa da campanha.</small></div><div id="dashboardSeasonGoalGauge" class="season-goal-card-gauge" aria-hidden="true"></div></div></article><article class="card environment-card"><label>AMBIENTE DO ELENCO</label><div class="summary-top dashboard-summary"><div class="overall-box dashboard-overall"><small>OVERALL</small><strong>78</strong></div><div class="environment-gauge dashboard-environment" style="--environment:86"><div><strong>86%</strong><small>AMBIENTE</small></div></div></div><div class="dashboard-environment-note"><strong>Vestiário em alta</strong><small>O elenco está motivado.</small></div><div class="dashboard-factors"><div><small>ORÇAMENTO DO CLUBE</small><b id="dashboardBudget">—</b></div><div><small>APOIO DA TORCIDA</small><b data-dashboard-factor data-min="58" data-max="97"></b></div><div><small>DIRETORIA</small><b data-dashboard-factor data-min="48" data-max="94"></b></div><div><small>SAÚDE FINANCEIRA</small><b data-dashboard-factor data-min="42" data-max="91"></b></div></div></article><div class="side-mini-cards"><article class="card stadium-card office-entry-card" id="openStadiumFromDashboard" role="button" tabindex="0" aria-label="Abrir Estádio"><label>ESTÁDIO</label><svg class="stadium-entry-icon" viewBox="0 0 160 110" role="img" aria-hidden="true"><ellipse cx="80" cy="58" rx="62" ry="28" fill="none" stroke="currentColor" stroke-width="5"/><ellipse cx="80" cy="58" rx="28" ry="12" fill="#0a2028" stroke="#b6ff38" stroke-width="4"/><path d="M28 52c8-18 28-30 52-30s44 12 52 30M28 64c8 18 28 30 52 30s44-12 52-30" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/></svg><div><strong>Estádio</strong><small>Gramado, capacidade e bilheteria →</small></div></article><article class="card stadium-card office-entry-card" id="openOfficeFromDashboard" role="button" tabindex="0" aria-label="Abrir Escritório"><label>ESCRITÓRIO</label><svg class="office-icon" viewBox="0 0 160 110" role="img" aria-hidden="true"><rect class="office-icon-board" x="78" y="16" width="68" height="60" rx="5"/><rect class="office-icon-bar" x="90" y="50" width="9" height="16" rx="1.5"/><rect class="office-icon-bar" x="104" y="40" width="9" height="26" rx="1.5"/><rect class="office-icon-bar" x="118" y="30" width="9" height="36" rx="1.5"/><rect class="office-icon-bar" x="132" y="22" width="9" height="44" rx="1.5"/><circle class="office-icon-figure" cx="46" cy="28" r="15"/><path class="office-icon-figure" fill-rule="evenodd" d="M12 90V76c2-20 14-34 34-34s32 14 34 34v14H12zm26-46l8 14 8-14z"/></svg><div><strong>Escritório</strong><small>Orçamento e investimentos →</small></div></article></div></aside>
         <div class="dashboard-tables">
           <article class="card standings"><label id="openChampionship">BRASILEIRÃO SÉRIE A <em>VER CAMPEONATO →</em></label><div class="mini-table-head"><span>#</span><span>CLUBE</span><span>J</span><span>SG</span><span>PTS</span></div><div id="miniTable"></div></article>
@@ -87,7 +88,43 @@
         </div>
       </div>
     </section>
-    <section id="squad" class="view"><div class="title"><p>PLANTEL PRINCIPAL</p><h1>Elenco</h1></div><p class="roster-note">Qualidade atual, potencial, biotipo, perfil, atributos técnicos e cansaço. A recuperação física varia conforme idade e participação nas partidas.</p><div class="card roster"><div class="roster-head roster-expanded"><span>JOGADOR</span><span>POS</span><span>IDADE</span><span>POT</span><span>ALTURA</span><span>PÉ</span><span>PERFIL</span><span>RISCO</span><span>FOR</span><span>DRI</span><span>VEL</span><span>MAR</span><span>DES</span><span>CHU</span><span>PAS</span><span>CAB</span><span>POS GOL</span><span>PEN GOL</span><span>REF</span><span>FALTA</span><span>PÊNALTI</span><span>ARM</span><span>CANSAÇO</span></div><div id="playerList"></div></div></section>
+    <section id="squad" class="view squad-view">
+      <div class="title"><p>PLANTEL PRINCIPAL</p><h1>Elenco</h1></div>
+      <p class="roster-note">Clique nos títulos para ordenar. Use os filtros acima da tabela para refinar a lista.</p>
+      <div class="card roster">
+        <div class="roster-filters" id="rosterFilters">
+          <label>POS<select data-roster-filter="pos" aria-label="Filtrar posição"><option value="">Todas</option></select></label>
+          <label>PÉ<select data-roster-filter="foot" aria-label="Filtrar pé"><option value="">Todos</option></select></label>
+          <label>PERFIL<select data-roster-filter="personality" aria-label="Filtrar perfil"><option value="">Todos</option></select></label>
+        </div>
+        <div class="roster-scroll">
+          <div class="roster-head roster-expanded" id="rosterHead" role="row">
+            <button type="button" data-roster-sort="name">JOGADOR</button>
+            <button type="button" data-roster-sort="pos">POS</button>
+            <button type="button" data-roster-sort="age">IDADE</button>
+            <button type="button" data-roster-sort="ovr">OVERALL</button>
+            <button type="button" data-roster-sort="height">ALTURA</button>
+            <button type="button" data-roster-sort="foot">PÉ</button>
+            <button type="button" data-roster-sort="personality">PERFIL</button>
+            <button type="button" data-roster-sort="speed" class="roster-group-phys">VEL</button>
+            <button type="button" data-roster-sort="dribble" class="roster-group-phys">DRI</button>
+            <button type="button" data-roster-sort="marking" class="roster-group-def">MAR</button>
+            <button type="button" data-roster-sort="tackling" class="roster-group-def">DES</button>
+            <button type="button" data-roster-sort="heading" class="roster-group-def">CAB</button>
+            <button type="button" data-roster-sort="finishing" class="roster-group-atk">CHU</button>
+            <button type="button" data-roster-sort="passing" class="roster-group-atk">PAS</button>
+            <button type="button" data-roster-sort="playmaking" class="roster-group-atk">ARM</button>
+            <button type="button" data-roster-sort="freeKick" class="roster-group-set">FALTA</button>
+            <button type="button" data-roster-sort="penaltyTaking" class="roster-group-set">PÊNALTI</button>
+            <button type="button" data-roster-sort="positioning" class="roster-group-gk">POS GOL</button>
+            <button type="button" data-roster-sort="penaltySaving" class="roster-group-gk">PEN GOL</button>
+            <button type="button" data-roster-sort="reflexes" class="roster-group-gk">REF</button>
+            <button type="button" data-roster-sort="fatigue">CANSAÇO</button>
+          </div>
+          <div id="playerList"></div>
+        </div>
+      </div>
+    </section>
     <section id="tactics" class="view"><div class="title"><p>PREPARAÇÃO DA PARTIDA</p><h1>Táticas</h1></div><div class="tactics"><div class="pitch tactical-board"><div class="field-markings" aria-hidden="true"><i class="mid-line"></i><i class="centre-circle"></i><i class="centre-spot"></i><i class="area area-top"></i><i class="area area-bottom"></i><i class="six-yard six-top"></i><i class="six-yard six-bottom"></i><i class="spot spot-top"></i><i class="spot spot-bottom"></i><i class="goal goal-top"></i><i class="goal goal-bottom"></i></div><div id="pitchPlayers"></div></div><div class="card controls"><div class="tactic-suggestion-wrap"><button id="applyTacticSuggestion" type="button" class="tactic-suggestion-btn">✦ SUGESTÃO TÁTICA</button><span class="tactic-suggestion-tooltip">Monta automaticamente a melhor formação, escalação e ajustes de mentalidade, estilo de construção, intensidade de pressão e linha de impedimento com base apenas no seu elenco disponível.</span></div><label>FORMAÇÃO</label><div id="formations" class="formation-buttons"></div><p id="formationDescription"></p><div class="tactic-slider"><label>MENTALIDADE <output id="mentalityReadout"></output></label><div><small>DEFENSIVA</small><input id="mentalitySlider" type="range" min="0" max="100" value="50"><small>OFENSIVA</small></div></div><div class="tactic-slider"><label>ESTILO DE CONSTRUÇÃO <output id="possessionReadout"></output></label><div><small>CONTRA-ATAQUE</small><input id="possessionSlider" type="range" min="0" max="100" value="50"><small>POSSE</small></div></div><div class="tactic-slider"><label>INTENSIDADE DE PRESSÃO <output id="pressReadout"></output></label><div><small>BAIXA</small><input id="pressSlider" type="range" min="0" max="100" value="50"><small>ALTA</small></div></div><div class="tactic-slider"><label>LINHA DE IMPEDIMENTO <output id="offsideLineReadout"></output></label><div><small>BAIXA</small><input id="offsideLineSlider" type="range" min="0" max="100" value="50"><small>ALTA</small></div></div></div><aside class="card tactic-roster"><label>ELENCO PARA A PARTIDA</label><small class="tactic-roster-hint">Arraste entre titulares e reservas, ou solte na prancheta para ajustar a equipe.</small><section><h3>TITULARES</h3><div class="tactic-roster-head"><span>JOGADOR</span><span>POS</span><span>OVR</span><span>CANSAÇO</span></div><div id="tacticStarters"></div></section><section><h3>RESERVAS</h3><div class="tactic-roster-head"><span>JOGADOR</span><span>POS</span><span>OVR</span><span>CANSAÇO</span></div><div id="tacticBench"></div></section></aside></div></section>
     <section id="office" class="view office-view">
       <div class="title"><p>GESTÃO FINANCEIRA DO CLUBE</p><h1>Escritório</h1><span>Administre o orçamento, invista na estrutura e acompanhe os movimentos de caixa.</span></div>
@@ -229,13 +266,99 @@
         </article>
       </div>
     </section>
-    <section id="transfers" class="view coming-soon-view">
-      <div class="title"><p>MERCADO DE JOGADORES</p><h1>Transferências</h1><span>Contratações, vendas e negociações com outros clubes.</span></div>
-      <article class="card coming-soon-card">
-        <label>EM BREVE</label>
-        <strong>Área em desenvolvimento</strong>
-        <p>O mercado de transferências estará disponível em uma atualização futura. Por enquanto, foque no elenco atual, nas táticas e no planejamento semanal de treinos.</p>
-      </article>
+    <section id="transfers" class="view transfers-view">
+      <div class="title transfers-page-heading">
+        <p>MERCADO DE JOGADORES</p>
+        <h1>Transferências</h1>
+      </div>
+      <div class="transfers-toolbar">
+        <div class="transfers-toolbar-left">
+          <span class="transfers-budget" title="Orçamento do clube">
+            <i class="transfers-budget-icon" aria-hidden="true">
+              <img src="./brand/transfer-coins.png" alt="" width="30" height="30">
+            </i>
+            <strong id="transfersBalance">R$ —</strong>
+          </span>
+          <em id="transfersMarketState" class="transfers-market-state">MERCADO ABERTO</em>
+        </div>
+        <div id="transfersTabs" class="transfers-tabs" role="tablist">
+          <button type="button" data-transfers-tab="buy" class="is-active">COMPRAR</button>
+          <button type="button" data-transfers-tab="sell">VENDER</button>
+        </div>
+      </div>
+      <p id="transfersStatus" class="transfers-status" aria-live="polite"></p>
+      <div id="transfersIncomingOffers" class="transfers-incoming-offers hidden" aria-live="polite"></div>
+
+      <div id="transfersBuyPanel" class="card transfers-panel">
+        <div class="transfers-search">
+          <h2 class="transfers-search-title">BUSCA DE JOGADORES</h2>
+          <div class="transfers-search-grid">
+            <label class="transfers-field"><span>Nome</span><input id="transfersFilterQuery" type="search" placeholder="Jogador ou clube" /></label>
+            <label class="transfers-field"><span>Posição</span><select id="transfersFilterPos"></select></label>
+            <label class="transfers-field"><span>Divisão</span><select id="transfersFilterDivision"></select></label>
+            <label class="transfers-field"><span>Força mín.</span><input id="transfersFilterOvr" type="number" min="0" max="99" placeholder="Qualquer" /></label>
+            <label class="transfers-field"><span>Força máx.</span><input id="transfersFilterMaxOvr" type="number" min="0" max="99" placeholder="Qualquer" /></label>
+            <label class="transfers-field"><span>Idade mín.</span><input id="transfersFilterMinAge" type="number" min="15" max="45" placeholder="Qualquer" /></label>
+            <label class="transfers-field"><span>Idade máx.</span><input id="transfersFilterMaxAge" type="number" min="15" max="45" placeholder="Qualquer" /></label>
+            <label class="transfers-field"><span>Passe máx.</span><input id="transfersFilterMaxPrice" type="number" min="0" step="1000" placeholder="R$" /></label>
+            <label class="transfers-field"><span>Salário máx.</span><input id="transfersFilterMaxWage" type="number" min="0" step="100" placeholder="R$" /></label>
+          </div>
+          <div class="transfers-search-options">
+            <label class="transfers-filter-check"><input id="transfersFilterListed" type="checkbox" /> Só mostrar jogadores à venda</label>
+            <label class="transfers-filter-check"><input id="transfersFilterLoan" type="checkbox" /> Só disponíveis para empréstimo</label>
+            <button id="transfersApplyFilters" type="button">PROCURAR</button>
+            <span id="transfersLoanSlots" class="transfers-loan-slots" aria-live="polite"></span>
+            <span id="transfersResultCount" class="transfers-result-count"></span>
+          </div>
+        </div>
+        <div class="transfers-table-wrap">
+          <table class="transfers-table" aria-label="Resultados da busca">
+            <thead>
+              <tr>
+                <th data-sort="name">Jogador</th>
+                <th data-sort="club">Clube</th>
+                <th data-sort="pos">Posição</th>
+                <th data-sort="foot">Pé</th>
+                <th data-sort="ovr">Overall</th>
+                <th data-sort="age">Idade</th>
+                <th data-sort="wage">Salário</th>
+                <th data-sort="price">Passe</th>
+                <th>Caract.</th>
+                <th data-sort="listed">Venda</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="transfersBuyBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="transfersSellPanel" class="card transfers-panel hidden">
+        <div class="transfers-search transfers-search--sell">
+          <h2 class="transfers-search-title">SEU ELENCO</h2>
+          <p class="transfers-search-hint">Liste à venda, ofereça para empréstimo ou venda direto. Empréstimos voltam no fim da temporada.</p>
+          <p id="transfersSellLoanSlots" class="transfers-loan-slots" aria-live="polite"></p>
+        </div>
+        <div class="transfers-table-wrap">
+          <table class="transfers-table" aria-label="Seu elenco no mercado">
+            <thead>
+              <tr>
+                <th>Jogador</th>
+                <th>Posição</th>
+                <th>Pé</th>
+                <th>Overall</th>
+                <th>Idade</th>
+                <th>Salário</th>
+                <th>Valor</th>
+                <th>Caract.</th>
+                <th>Venda</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="transfersSellBody"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
     <section id="youth" class="view coming-soon-view">
       <div class="title"><p>FORMAÇÃO DE TALENTOS</p><h1>Categoria de Base</h1><span>Desenvolvimento de jovens e revelação de promessas para o elenco principal.</span></div>
@@ -351,6 +474,54 @@
     </section>
   </main>
 </div>
+<div id="transfersWindowReportModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="transfersWindowReportTitle">
+  <div class="modal-card transfers-report-card">
+    <button id="transfersWindowReportClose" class="close" type="button" aria-label="Fechar">×</button>
+    <label class="transfers-report-eyebrow">FIM DA JANELA</label>
+    <h2 id="transfersWindowReportTitle">Relatório de transferências</h2>
+    <p id="transfersWindowReportSummary" class="transfers-report-summary">—</p>
+    <div id="transfersWindowReportBiggest" class="transfers-report-biggest">
+      <small>MAIOR TRANSFERÊNCIA DO MERCADO</small>
+      <strong id="transfersWindowReportBiggestName">—</strong>
+      <span id="transfersWindowReportBiggestMeta">—</span>
+      <em id="transfersWindowReportBiggestFee">—</em>
+    </div>
+    <ul id="transfersWindowReportList" class="transfers-report-list"></ul>
+    <footer class="transfers-report-actions">
+      <button type="button" id="transfersWindowReportOk" class="transfers-offer-submit">CONTINUAR</button>
+    </footer>
+  </div>
+</div>
+<div id="transfersOfferModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="transfersOfferTitle">
+  <div class="modal-card transfers-offer-card">
+    <button id="transfersOfferClose" class="close" type="button" aria-label="Fechar">×</button>
+    <label id="transfersOfferEyebrow">NEGOCIAÇÃO</label>
+    <h2 id="transfersOfferTitle">Oferta de contratação</h2>
+    <p id="transfersOfferPlayer" class="transfers-offer-player">—</p>
+    <p id="transfersOfferMeta" class="transfers-offer-meta">—</p>
+    <div class="transfers-offer-facts">
+      <div><small>PEDIDO / VALOR</small><strong id="transfersOfferAsk">—</strong></div>
+      <div><small>SALÁRIO</small><strong id="transfersOfferWage">—</strong></div>
+      <div><small>SEU CAIXA</small><strong id="transfersOfferBalance">—</strong></div>
+    </div>
+    <label class="transfers-offer-field" for="transfersOfferInput">
+      <span id="transfersOfferInputLabel">Sua oferta (R$)</span>
+      <input id="transfersOfferInput" type="text" inputmode="numeric" autocomplete="off" />
+    </label>
+    <div class="transfers-offer-quick">
+      <button type="button" data-offer-quick="-10">−10%</button>
+      <button type="button" data-offer-quick="ask">PEDIDO</button>
+      <button type="button" data-offer-quick="value">MERCADO</button>
+      <button type="button" data-offer-quick="+10">+10%</button>
+    </div>
+    <p id="transfersOfferHint" class="transfers-offer-hint" aria-live="polite"></p>
+    <p id="transfersOfferError" class="transfers-offer-error" aria-live="assertive"></p>
+    <footer class="transfers-offer-actions">
+      <button type="button" id="transfersOfferCancel" class="transfers-offer-cancel">CANCELAR</button>
+      <button type="button" id="transfersOfferSubmit" class="transfers-offer-submit">ENVIAR OFERTA</button>
+    </footer>
+  </div>
+</div>
 <div id="messageReaderModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="messageReaderTitle">
   <div class="modal-card message-reader-card">
     <button id="closeMessageReader" class="close" type="button" aria-label="Fechar">×</button>
@@ -360,6 +531,13 @@
       <time id="messageReaderTime">—</time>
     </header>
     <div id="messageReaderBody" class="message-reader-body"></div>
+    <div id="messageReaderTransferActions" class="message-reader-transfer-actions hidden" data-offer-id="">
+      <p id="messageReaderOfferExpire" class="message-reader-offer-expire"></p>
+      <div class="message-reader-transfer-buttons">
+        <button id="messageReaderOfferReject" type="button" class="message-reader-offer-icon is-reject" aria-label="Recusar" title="Recusar"><span aria-hidden="true">×</span></button>
+        <button id="messageReaderOfferAccept" type="button" class="message-reader-offer-icon is-accept" aria-label="Aceitar" title="Aceitar"><span aria-hidden="true">✓</span></button>
+      </div>
+    </div>
     <footer class="message-reader-actions">
       <button id="messageReaderPrev" type="button">← ANTERIOR</button>
       <button id="messageReaderClose" type="button">FECHAR</button>
@@ -403,17 +581,42 @@
   .tactical-board{background:radial-gradient(ellipse at center,#16aa72 0,#0d985f 58%,#078653 100%)!important;box-shadow:inset 0 0 34px #003d2766}.field-markings{position:absolute;inset:0;pointer-events:none;z-index:0;color:#e6fff0}.field-markings i{position:absolute;display:block}.mid-line{left:0;right:0;top:50%;border-top:2px solid #e6fff0}.centre-circle{width:18%;aspect-ratio:1;left:41%;top:41%;border:2px solid #e6fff0;border-radius:50%}.centre-spot,.spot{width:7px;height:7px;border-radius:50%;background:#e6fff0}.centre-spot{left:calc(50% - 3px);top:calc(50% - 3px)}.area{left:14%;right:14%;height:15%;border:2px solid #e6fff0}.area-top{top:0;border-top:0}.area-bottom{bottom:0;border-bottom:0}.six-yard{left:31%;right:31%;height:6%;border:2px solid #e6fff0}.six-top{top:0;border-top:0}.six-bottom{bottom:0;border-bottom:0}.spot-top{top:12%;left:calc(50% - 3px)}.spot-bottom{bottom:12%;left:calc(50% - 3px)}.goal{width:19%;height:2.7%;left:40.5%;border:2px solid #e6fff0}.goal-top{top:0;border-top:0}.goal-bottom{bottom:0;border-bottom:0}.pitch-player,.board-player{z-index:2}.pitch-player i,.board-player i{box-shadow:0 2px 5px #001d1266}.tactical-board:before{content:'';position:absolute;inset:0;border:2px solid #e6fff0;opacity:.9;pointer-events:none;z-index:0}
   #matchModal>.modal-card>label{text-align:center;display:block}#matchModal .modal-card{max-height:calc(100vh - 20px);padding:14px 18px 12px;display:flex;flex-direction:column;overflow:auto}#matchModal .timeline{max-height:min(132px,20vh);margin:0;flex:1 1 auto;min-height:72px}#matchModal .timeline.hidden{display:none!important;flex:0;min-height:0;margin:0}#matchModal #matchStatus{margin:6px 0 0;flex-shrink:0;font-size:12px}#matchModal .match-actions{margin-top:8px;flex-shrink:0;position:sticky;bottom:0;padding-top:6px;background:linear-gradient(180deg,transparent,#0b1a22 28%)}#liveMatchDateTime,#liveMatchVenue{text-align:center;margin:0;font-size:11px;letter-spacing:.35px}#liveMatchDateTime{margin-top:5px;color:#b6c8c9}#liveMatchVenue{margin-top:2px;margin-bottom:4px;color:#7fa8b0}.live-match-competition-wrap{display:flex;justify-content:center;margin:0 0 4px}#matchModal .match-competition{max-width:min(92%,280px)}.score.live-score{align-items:flex-start;margin:6px 0 6px;gap:8px}.live-score-center{display:grid;justify-items:center;align-content:start;gap:1px;flex:0 0 auto;min-width:108px;padding-top:8px}.live-team{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0}.live-team b{font:700 20px 'Barlow Condensed',sans-serif;letter-spacing:.45px;text-align:center;line-height:1.05;max-width:100%}.live-team b.user-club-live{color:#b6ff38}.live-team i{font-style:normal;display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:#1f4935;color:#fff;font-weight:bold;font-size:14px;flex-shrink:0}.live-team i.away{background:#2375a1}.live-scorers{display:grid;gap:2px;min-height:0;width:100%;max-width:160px;text-align:center}.live-scorers span{display:block;color:#9eb6b8;font:600 10px 'DM Sans',sans-serif;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.live-scorers span em{color:#edf8f5;font-style:normal;font-weight:700}.score.live-score .live-score-center strong{flex:0 0 auto;padding:0;margin:0;font:800 34px 'Barlow Condensed',sans-serif;line-height:1;letter-spacing:.3px}.live-match-clock{display:grid;gap:1px;justify-items:center;margin:0;text-align:center}.live-match-clock.hidden{display:none!important}.live-match-clock-time{font:700 20px 'Barlow Condensed',sans-serif;color:#63d9ff;letter-spacing:.6px;line-height:1;white-space:nowrap}.live-match-clock-stoppage{display:inline;font-size:.45em;font-weight:700;color:#e8b84a;letter-spacing:0;margin-left:.1em;vertical-align:baseline}.live-match-clock-phase{font:700 9px 'DM Sans',sans-serif;color:#7fa8b0;letter-spacing:.65px;text-transform:uppercase}
   .timeline p.goal{color:#168456;font-weight:700}.timeline p.foul{color:#7458a5}.timeline p.penalty{color:#b9790a;font-weight:700}.timeline p.penalty-miss{color:#c84242;font-weight:700}.timeline p.yellow{color:#a97809;font-weight:700}.timeline p.red{color:#cf3d3d;font-weight:700}.penalty-choice{margin-top:15px;padding:15px;border:1px solid #e4bd65;background:#fff8e4;border-radius:7px}.penalty-choice label{display:block;color:#a9720d;font:bold 10px 'DM Sans',sans-serif;letter-spacing:.8px}.penalty-choice strong{display:block;margin:5px 0 11px}.penalty-choice button{border:1px solid #d8b75e;background:#fff;color:#735316;border-radius:4px;padding:8px;margin:3px;font:bold 11px 'DM Sans',sans-serif;cursor:pointer}.dark-mode .penalty-choice{background:#3a311e;border-color:#80662b}.dark-mode .penalty-choice button{background:#463b23;color:#fff0bd}
-  .roster-note{margin:-10px 0 15px;color:#718077;font-size:12px}
-  #squad .roster{width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-gutter:stable;scrollbar-color:#397487 #0b1a22}
-  .roster-head.roster-expanded,.player-row.roster-expanded{width:100%;min-width:1420px;grid-template-columns:minmax(150px,1.8fr) 44px 44px 44px 60px 58px 88px 44px repeat(14,47px) 96px;gap:5px}
-  #squad .roster-head>span{white-space:nowrap;text-align:center}
-  #squad .roster-head>span:first-child{text-align:left}
-  #squad .player-row>span{min-width:0}
-  #squad .player-row>span:first-child{overflow:visible;text-overflow:clip;white-space:normal}
+  .roster-note{margin:-6px 0 12px;color:#9eb6b8;font-size:13px;line-height:1.4;flex:0 0 auto}
+  main>.view.active.squad-view{display:flex!important;flex-direction:column;overflow:hidden;min-height:0}
+  #squad .title{flex:0 0 auto;margin-bottom:8px}
+  #squad .roster{flex:1 1 auto;min-height:0;width:100%;max-width:100%;display:flex;flex-direction:column;overflow:hidden;padding:0!important}
+  #squad .roster-scroll{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-gutter:stable;scrollbar-color:#397487 #0b1a22}
+  #squad .roster-filters{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:end;gap:10px;padding:10px 12px;border-bottom:1px solid #234650;background:#0d222b}
+  #squad .roster-filters label{display:grid;gap:4px;min-width:120px;color:#75cde3;font:700 10px 'DM Sans',sans-serif;letter-spacing:.45px}
+  #squad .roster-filters select{min-width:120px;padding:6px 8px;border:1px solid #315d69;border-radius:4px;background:#0c1e28;color:#edf8f5;font:600 12px 'DM Sans',sans-serif}
+  .roster-head.roster-expanded,.player-row.roster-expanded{width:max-content;min-width:100%;grid-template-columns:minmax(168px,220px) 52px 52px 72px 72px 78px 110px 48px 48px 48px 48px 48px 48px 48px 48px 56px 64px 64px 64px 48px 110px;gap:6px}
+  #squad .roster-head{position:sticky;top:0;z-index:3;align-items:center}
+  #squad .roster-head>button{min-width:0;white-space:nowrap;text-align:center}
+  #squad .roster-head>button:first-child,#squad .player-row>span:first-child{text-align:left}
+  #squad .roster-head>button{appearance:none!important;border:0!important;border-radius:0!important;background:transparent!important;color:inherit!important;padding:0!important;margin:0!important;font:inherit!important;letter-spacing:inherit!important;box-shadow:none!important;transform:none!important;cursor:pointer;text-align:center;min-height:0!important}
+  #squad .roster-head>button:hover{color:#edf8f5!important;background:transparent!important;border:0!important;box-shadow:none!important;transform:none!important}
+  #squad .roster-head>button.is-sorted{color:#b6ff38!important}
+  #squad .roster-head>button.is-sorted.is-asc::after{content:' ↑'}
+  #squad .roster-head>button.is-sorted.is-desc::after{content:' ↓'}
+  #squad .roster-head>button:first-child{text-align:left}
+  #squad .player-row>span{min-width:0;text-align:center}
+  #squad .player-row>span:first-child{overflow:visible;text-overflow:clip;white-space:normal;text-align:left}
   #squad .player-row>span:first-child .player-name-cell{width:100%}
+  #squad .roster-group-phys{box-shadow:inset 0 -2px 0 #3a8fa0}
+  #squad .roster-group-def{box-shadow:inset 0 -2px 0 #4a7a3a}
+  #squad .roster-group-atk{box-shadow:inset 0 -2px 0 #b8862a}
+  #squad .roster-group-set{box-shadow:inset 0 -2px 0 #7a5a9a}
+  #squad .roster-group-gk{box-shadow:inset 0 -2px 0 #3a6aaa}
+  /* Top 3 atributos: tinta suave + traço um pouco mais firme na cor do grupo */
+  #squad .player-row span.is-top-attr{font-weight:700;border-radius:3px;padding:2px 3px}
+  #squad .player-row .roster-group-phys.is-top-attr{color:#b7eaf3;background:#3a8fa028;box-shadow:inset 0 -2px 0 #5eb8c8}
+  #squad .player-row .roster-group-def.is-top-attr{color:#c8e6b8;background:#4a7a3a28;box-shadow:inset 0 -2px 0 #6fa85a}
+  #squad .player-row .roster-group-atk.is-top-attr{color:#f0d9a8;background:#b8862a28;box-shadow:inset 0 -2px 0 #d4a44a}
+  #squad .player-row .roster-group-set.is-top-attr{color:#dcc8f0;background:#7a5a9a28;box-shadow:inset 0 -2px 0 #9a78b8}
+  #squad .player-row .roster-group-gk.is-top-attr{color:#b8cff0;background:#3a6aaa28;box-shadow:inset 0 -2px 0 #5a8acc}
   .dashboard-medical-label{display:block;margin-top:8px;color:#9fcfd8;font-size:9px;line-height:1.35}
   #tactics .tactic-player-row.unavailable{cursor:not-allowed;opacity:.58;background:#25171b!important}
-  #squad .player-row .roster-fatigue{min-width:90px;overflow:visible}
+  #squad .player-row .roster-fatigue{min-width:100px;overflow:visible}
   .dark-mode .roster-note{color:#b9ccbe}
   .modal-card{width:min(980px,100%)}.pause-panel{margin-top:16px;text-align:left;border-top:1px solid #e5ece6;padding-top:16px}.pause-heading h2{margin:3px 0;font:700 27px 'Barlow Condensed',sans-serif}.pause-heading small{color:#718077}.pause-layout{display:grid;grid-template-columns:minmax(280px,1fr) minmax(340px,400px);gap:18px;margin-top:14px}.pause-tactic-toggle{width:100%;margin:0 0 12px;padding:11px 14px;border:1px solid #397487;border-radius:6px;background:#102833;color:#edf8f5;font:800 11px 'DM Sans',sans-serif;letter-spacing:.45px;cursor:pointer;text-align:center}.pause-tactic-toggle:hover{border-color:#63d9ff;background:#163845}.pause-tactic-toggle.open{border-color:#b6ff38;color:#b6ff38;background:#132820}.pause-tactic-adjust{display:grid;gap:0}.pause-tactic-adjust.hidden{display:none!important}.pause-panel:not(.tactics-open) .pause-layout{grid-template-columns:minmax(220px,280px) minmax(0,1fr)}.pause-panel:not(.tactics-open) .pause-layout>.tactical-board{justify-self:center;width:min(100%,420px)}.pause-pitch{height:420px;position:relative;border:6px solid #0c6941;border-radius:8px;background:#148255;background-image:linear-gradient(90deg,transparent 49.6%,#e8fff077 50%,transparent 50.4%),linear-gradient(#e8fff066 1px,transparent 1px);background-size:100% 100%,100% 52px;overflow:hidden}.pause-pitch:after{content:'';position:absolute;left:12%;right:12%;top:49.6%;border-top:2px solid #e8fff077}.board-player{position:absolute;transform:translate(-50%,-50%);width:92px;text-align:center;color:white;font:400 15px "DM Sans",sans-serif;font-weight:400;z-index:1}.board-player i{display:grid;place-items:center;margin:auto;width:30px;height:30px;background:#163d2a;border:1px solid white;border-radius:50%;font-style:normal}.board-player.yellow i{background:#e5b720;color:#26351e;border-color:#f9df77}.board-player.vacant i{background:transparent;border:2px dashed #d9f4de;color:#d9f4de}.board-player small{display:block;margin-top:5px;font:400 15px "DM Sans",sans-serif;font-weight:400;letter-spacing:0}.pause-controls{background:#f3f6f3;border-radius:7px;padding:13px}.pause-controls label{display:block;color:#678072;font-size:10px;font-weight:bold;letter-spacing:1px;margin:0 0 8px}.pause-controls select{width:100%;margin:0 0 14px;padding:8px;border:1px solid #c5d8c9;border-radius:4px}.substitution-panel{margin:4px 0 14px;padding:10px;border:1px solid #c5d8c9;border-radius:5px;background:#fff}.substitution-panel label{display:flex;justify-content:space-between}.substitution-panel label b{color:#087d58}.substitution-panel select{margin-bottom:7px}.substitution-panel button{width:100%;margin:1px 0 7px}.substitution-panel small{display:block;color:#718077;font-size:10px;line-height:1.25}.resume-match{border:0;border-radius:4px;background:#118456;color:#fff;padding:11px 22px;font:bold 10px 'DM Sans',sans-serif;cursor:pointer}.pause-resume-row{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:0 auto 14px;max-width:560px}.pause-resume-row .resume-match,.pause-resume-row .live-day-matches-btn{flex:1 1 220px;min-width:200px;text-align:center;padding:11px 16px;font:bold 10px 'DM Sans',sans-serif;border-radius:4px;cursor:pointer}.pause-resume-row .resume-match{border:0;background:#118456;color:#fff}.pause-resume-row .live-day-matches-btn{border:1px solid #63d9ff;background:#0f2a34;color:#d8f6ff;letter-spacing:.35px}.pause-resume-row .live-day-matches-btn:hover{background:#163845;border-color:#8ae4ff}.dark-mode .pause-resume-row .live-day-matches-btn{background:#102530;border-color:#4dbfff;color:#b8ecff}.dark-mode .pause-panel{border-color:#344b3d}.dark-mode .pause-controls,.dark-mode .substitution-panel{background:#24372c}.dark-mode .substitution-panel{border-color:#52735d}.dark-mode .substitution-panel label b{color:#b6ff38}.dark-mode .substitution-panel small,.dark-mode .pause-heading small{color:#b9ccbe}.dark-mode .pause-controls select{background:#263b2f;color:#e2eee5;border-color:#52735d}@media(max-width:700px){.pause-layout{grid-template-columns:1fr}.pause-pitch{height:360px}}
   /* Prancheta tática: campo vertical inspirado na referência do treinador. */
@@ -446,7 +649,7 @@
   @media(min-width:1251px) and (max-width:1500px){#tactics .tactics{grid-template-columns:minmax(280px,1fr) minmax(300px,390px)!important}#tactics .tactic-roster{grid-column:1 / -1;grid-row:2;display:grid;grid-template-columns:1fr 1fr}#tactics .tactic-roster>label,.tactic-roster-hint{grid-column:1 / -1}#tactics .tactic-roster section+section{border-top:0;border-left:9px solid #091820}}
   @media(min-width:1501px){#tactics .tactics{grid-template-columns:390px 440px minmax(650px,1fr)!important;gap:18px}#tactics .tactics>.board-stack,#tactics .tactics>.tactical-board{justify-self:start;max-width:440px}#tactics .tactics>.board-stack>.tactical-board{max-width:100%}#tactics .tactics>.controls{min-width:0}.tactics .formation-buttons button{min-height:42px;font-size:10px!important}.tactics .tactic-slider{padding:12px!important}}
   /* Elenco principal no mesmo padrão de leitura da escalação tática. */
-  #squad .roster{border-color:#28505b!important;background:#0b1a22!important;box-shadow:0 8px 24px #00000024!important}#squad .roster-head{min-height:43px;background:#102b35!important;color:#63d9ff!important;font:700 9px 'DM Sans',sans-serif;letter-spacing:.55px}#squad .player-row{min-height:46px;padding:10px 12px!important;border-color:#234650!important;color:#edf8f5!important;font-size:11px}#squad .player-row:hover{background:#132f3a!important}#squad .player-row>span:first-child b{font-size:12px;color:#f0fbfa}#squad .badge{display:inline-block;min-width:34px;background:#183d49!important;color:#63d9ff!important;border:1px solid #397487;border-radius:4px;padding:4px 5px!important;font-size:9px}#squad .roster-fatigue{display:flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;font-weight:700}#squad .roster-fatigue i{display:block;width:42px;height:7px;overflow:hidden;border-radius:99px;background:#25424b;box-shadow:inset 0 0 0 1px #397487}#squad .roster-fatigue i b{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#63d9ff,#b6ff38)}#squad .roster-fatigue em{font-style:normal;color:#dff6f2;font-size:10px}#squad .player-row:has(.roster-fatigue i b[style^="width:2"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:3"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:4"] ) .roster-fatigue i b{background:linear-gradient(90deg,#ffc94f,#ff9b3d)}#squad .player-row:has(.roster-fatigue i b[style^="width:5"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:6"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:7"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:8"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:9"] ) .roster-fatigue i b{background:linear-gradient(90deg,#ff9a44,#ff6370)}
+  #squad .roster{border-color:#28505b!important;background:#0b1a22!important;box-shadow:0 8px 24px #00000024!important}#squad .roster-head{min-height:52px;padding:8px 12px!important;background:#102b35!important;color:#63d9ff!important;font:700 11px 'DM Sans',sans-serif;letter-spacing:.4px}#squad .player-row{min-height:50px;padding:11px 12px!important;border-color:#234650!important;color:#edf8f5!important;font-size:13px}#squad .player-row:hover{background:#132f3a!important}#squad .player-row>span:first-child b,#squad .player-row .player-name-text{font-size:14px!important;color:#f0fbfa}#squad .badge{display:inline-block;min-width:36px;background:#183d49!important;color:#63d9ff!important;border:1px solid #397487;border-radius:4px;padding:4px 6px!important;font-size:11px}#squad .roster-fatigue{display:flex!important;align-items:center;justify-content:center;gap:7px;white-space:nowrap;font-weight:700}#squad .roster-fatigue i{display:block;width:48px;height:8px;overflow:hidden;border-radius:99px;background:#25424b;box-shadow:inset 0 0 0 1px #397487}#squad .roster-fatigue i b{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#63d9ff,#b6ff38)}#squad .roster-fatigue em{font-style:normal;color:#dff6f2;font-size:12px}#squad .player-row:has(.roster-fatigue i b[style^="width:2"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:3"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:4"] ) .roster-fatigue i b{background:linear-gradient(90deg,#ffc94f,#ff9b3d)}#squad .player-row:has(.roster-fatigue i b[style^="width:5"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:6"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:7"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:8"] ) .roster-fatigue i b,#squad .player-row:has(.roster-fatigue i b[style^="width:9"] ) .roster-fatigue i b{background:linear-gradient(90deg,#ff9a44,#ff6370)}
   @media(min-width:1100px){.view#dashboard .dashboard-tables .standing-row,.view#dashboard .dashboard-tables .dashboard-fixture-row{padding-top:10px!important;padding-bottom:10px!important}}
   .dashboard-tables .mini-table-head,.dashboard-tables .standing-row{grid-template-columns:28px minmax(0,1fr) 36px 40px 40px!important;column-gap:6px!important}.dashboard-tables .mini-table-head span:nth-child(n+3),.dashboard-tables .standing-row span:nth-child(n+3){text-align:right;font-variant-numeric:tabular-nums}.dashboard-tables .standing-row span:nth-child(4){color:#9fcfd8;font-weight:700}.dashboard-tables .standing-row span:nth-child(5){color:#dff4f5;font-weight:700}
   .club-upcoming-head,.club-upcoming-row{grid-template-columns:minmax(0,1.7fr) minmax(108px,.85fr) 56px!important;gap:8px!important}.club-upcoming-head span:nth-child(2),.club-upcoming-row>span:nth-child(2),.club-upcoming-head span:nth-child(3){text-align:right}.club-upcoming-row span:last-child{justify-self:end;min-width:48px;text-align:center}.club-upcoming-fixture{display:flex;align-items:center;gap:8px;min-width:0}.club-upcoming-matchup{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.club-upcoming-badge.match-competition{max-width:none;flex:0 0 auto;gap:4px;padding:2px 6px 2px 4px}.club-upcoming-badge .match-competition-trophy{width:11px;height:11px}.club-upcoming-badge.match-competition b{font-size:8px;letter-spacing:.2px;line-height:1.1}

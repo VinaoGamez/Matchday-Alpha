@@ -8,6 +8,11 @@ import { showUpdateAlertIfNeeded } from './ui/update-alert.js';
 document.documentElement.dataset.build = BUILD_VERSION;
 showUpdateAlertIfNeeded(BUILD_VERSION);
 
+if (!FEATURES.transfers) {
+  document.querySelector('.nav[data-view="transfers"]')?.classList.add('hidden');
+  document.querySelector('#transfers')?.setAttribute('hidden', '');
+}
+
 const bus = createEventBus();
 
 bootEngine({

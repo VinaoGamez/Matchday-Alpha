@@ -47,6 +47,9 @@ const PLAYER_WORLD_KEYS = [
   'contractUntil',
   'listed',
   'askingPrice',
+  'loanListed',
+  'onLoan',
+  'loanFrom',
 ];
 
 /** Serializa jogador para career.worldRosters (sem workload/histórico pesado). */

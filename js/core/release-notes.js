@@ -1,6 +1,29 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'alpha-02-tester-31',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T00:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Elenco / Evolução',
+        items: [
+          'Motor de evolução em 4 pulsos na temporada (notas, minutos e titularidade); idade +1 no ano novo.',
+          'Tabela do Elenco destaca os 3 melhores atributos de cada jogador.',
+          'Geração: jovens abaixo de 19 mais raros; jóias com potencial mais alto.',
+        ],
+      },
+      {
+        label: 'Pênaltis',
+        items: [
+          'Disputa não trava mais na morte súbita: a lista de cobradores reinicia até haver vencedor.',
+          'Goleiro também pode bater pênalti.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-30',
     date: '2026-07-19',
     publishedAt: '2026-07-19T18:00:00-03:00',

@@ -1,5 +1,5 @@
 /** Build e versões de save — contrato estável entre módulos. */
-export const BUILD_VERSION = 'alpha-02-tester-30';
+export const BUILD_VERSION = 'alpha-02-tester-31';
 
 export const SAVE_KEYS = {
   career: 'matchday-new-game',
@@ -39,7 +39,7 @@ export const MODULE_VERSIONS = {
   testerHub: 1,
   matchAvailability: 1,
   matchLiveAwaySubs: 1,
-  matchLiveOrchestration: 4,
+  matchLiveOrchestration: 5,
   matchLiveSession: 5,
   liveMatchPersist: 2,
   clubStatus: 8,
@@ -49,8 +49,18 @@ export const MODULE_VERSIONS = {
   managerSack: 1,
   playerHistory: 1,
   playerMatchStats: 1,
+  playerDevelopment: 1,
   transfers: 1,
 };
+
+/** Vite injeta `__MATCHDAY_ENABLE_TRANSFERS__`; em Node/scripts fica off. */
+function readTransfersFlag() {
+  try {
+    return Boolean(__MATCHDAY_ENABLE_TRANSFERS__);
+  } catch {
+    return false;
+  }
+}
 
 /** Flags para builds de testers — evoluir sem quebrar fluxo congelado. */
 export const FEATURES = {
@@ -58,6 +68,6 @@ export const FEATURES = {
   calendarRoutines: true,
   medicalTreatment: true,
   externalTunnel: true,
-  /** Mercado: código no repo, UI pública ainda EM BREVE até liberar. */
-  transfers: false,
+  /** Mercado: on no dist local; off no GitHub Pages (CI com GITHUB_PAGES=true). */
+  transfers: readTransfersFlag(),
 };

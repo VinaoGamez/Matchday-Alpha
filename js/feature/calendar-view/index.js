@@ -3,6 +3,7 @@ import { clamp } from '../../ui/dom.js';
 import { competitionBadgeMarkup, resolveCompetitionBadge } from '../../ui/competition-badge.js';
 import { formatMatchRating as defaultFormatMatchRating } from '../../engine/player-match-stats.js';
 import { formatMatchMinuteLabel } from '../../engine/match-clock.js';
+import { isDateInTransferWindow, getTransferWindowPhase } from '../../engine/transfers.js';
 import { tipKey, buildPlayerTipIndex, ownGoalTipCount } from './match-report-tips.js';
 import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
 import ownGoalBallUrl from '../../../assets/ui/goal-ball-own.png?url';
@@ -57,7 +58,23 @@ export function createCalendarViewFeature(deps) {
     findMatchLog,
     formatMatchRating = defaultFormatMatchRating,
     formatVenueCrowdLine,
+    getMarketDayBrief,
   } = deps;
+
+  const formatMarketFee = value => {
+    const amount = Math.round(Number(value) || 0);
+    if (amount <= 0) return '—';
+    if (amount >= 1_000_000) return `R$ ${(amount / 1_000_000).toFixed(1).replace('.0', '')} mi`;
+    if (amount >= 1_000) return `R$ ${Math.round(amount / 1_000)} mil`;
+    return `R$ ${amount}`;
+  };
+
+  const escapeAgenda = value =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
 
   let calendarCursor;
   let selectedCalendarDate;
@@ -566,15 +583,100 @@ export function createCalendarViewFeature(deps) {
     const advanceBtn = $('#calendarAdvanceWeek');
     if (advanceBtn) {
       const blocked = onMatchDay || seasonDone || isUserSeasonIdle();
+      const transferPhase = getTransferWindowPhase(careerCalendarDate);
+      const windowOpen = !!transferPhase?.active;
       advanceBtn.disabled = blocked;
-      advanceBtn.title = onMatchDay
-        ? 'Dispute a partida antes de avançar a semana'
-        : seasonDone
-          ? 'Temporada encerrada'
-          : isUserSeasonIdle()
-            ? 'Sem jogos do clube nesta fase'
-            : 'Simula até 7 dias de treino; para no dia de jogo do clube';
+      advanceBtn.classList.toggle('is-deadline', !blocked && !!transferPhase?.isDeadlineWeek);
+      if (!blocked && windowOpen) {
+        advanceBtn.textContent =
+          transferPhase.mode === 'day' ? 'AVANÇAR DIA ›' : 'AVANÇAR SEMANA ›';
+        advanceBtn.title = transferPhase.isDeadlineDay
+          ? 'Último dia da janela — avance para encerrar e ver o relatório'
+          : transferPhase.isDeadlineWeek
+            ? `Deadline Day · ${transferPhase.daysLeft} dia(s) restantes · mesma rotina do Dashboard`
+            : `${transferPhase.label || 'Janela'} · avança o mercado (IA) como no Dashboard`;
+      } else {
+        advanceBtn.textContent = 'PRÓXIMA SEMANA ›';
+        advanceBtn.title = onMatchDay
+          ? 'Dispute a partida antes de avançar a semana'
+          : seasonDone
+            ? 'Temporada encerrada'
+            : isUserSeasonIdle()
+              ? 'Sem jogos do clube nesta fase'
+              : 'Simula até 7 dias de treino; para no dia de jogo do clube';
+      }
     }
+  };
+
+  const renderMarketDayAgenda = () => {
+    if (typeof getMarketDayBrief !== 'function') return '';
+    let brief;
+    try {
+      brief = getMarketDayBrief(selectedCalendarDate);
+    } catch {
+      return '';
+    }
+    if (!brief) return '';
+    const phase = brief.phase || {};
+    const parts = [];
+
+    if (phase.active) {
+      const windowLabel = phase.isDeadlineDay
+        ? `${phase.label || 'Janela'} · DEADLINE DAY`
+        : phase.isDeadlineWeek
+          ? `${phase.label || 'Janela'} · última semana`
+          : phase.label || 'Janela de transferências';
+      parts.push(
+        `<div class="agenda-item market-window ${phase.isDeadlineWeek ? 'is-deadline' : ''}"><i>TX</i><div><small>JANELA DE TRANSFERÊNCIAS</small><strong>${escapeAgenda(windowLabel)}</strong><span class="agenda-market-note">${phase.daysLeft === 0 ? 'Último dia para negociar.' : `${phase.daysLeft} dia(s) restantes na janela.`}</span></div></div>`,
+      );
+    }
+
+    (brief.deals || []).forEach(deal => {
+      parts.push(
+        `<div class="agenda-item market-deal"><i>R$</i><div><small>TRANSFERÊNCIA</small><strong>${escapeAgenda(deal.playerName)}</strong><span class="agenda-market-note"><span class="club-link" data-club="${escapeAgenda(deal.from)}" role="button" tabindex="0">${escapeAgenda(deal.from)}</span> → <span class="club-link" data-club="${escapeAgenda(deal.to)}" role="button" tabindex="0">${escapeAgenda(deal.to)}</span> · ${formatMarketFee(deal.fee)}</span></div></div>`,
+      );
+    });
+
+    (brief.loans || []).forEach(deal => {
+      parts.push(
+        `<div class="agenda-item market-loan"><i>EMP</i><div><small>EMPRÉSTIMO ENTRE CLUBES</small><strong>${escapeAgenda(deal.playerName)}</strong><span class="agenda-market-note"><span class="club-link" data-club="${escapeAgenda(deal.from)}" role="button" tabindex="0">${escapeAgenda(deal.from)}</span> → <span class="club-link" data-club="${escapeAgenda(deal.to)}" role="button" tabindex="0">${escapeAgenda(deal.to)}</span></span></div></div>`,
+      );
+    });
+
+    (brief.interests || []).forEach(offer => {
+      parts.push(
+        `<div class="agenda-item market-interest"><i>INT</i><div><small>INTERESSE NO SEU ELENCO</small><strong>${escapeAgenda(offer.playerName)}</strong><span class="agenda-market-note"><span class="club-link" data-club="${escapeAgenda(offer.fromClub)}" role="button" tabindex="0">${escapeAgenda(offer.fromClub)}</span> · ${offer.type === 'loan' ? 'empréstimo' : formatMarketFee(offer.fee)}</span></div></div>`,
+      );
+    });
+
+    (brief.watches || []).forEach(watch => {
+      parts.push(
+        `<div class="agenda-item market-watch"><i>OBS</i><div><small>POSSÍVEL MOVIMENTO</small><strong>${escapeAgenda(watch.playerName)}</strong><span class="agenda-market-note"><span class="club-link" data-club="${escapeAgenda(watch.to)}" role="button" tabindex="0">${escapeAgenda(watch.to)}</span> observa <span class="club-link" data-club="${escapeAgenda(watch.from)}" role="button" tabindex="0">${escapeAgenda(watch.from)}</span></span></div></div>`,
+      );
+    });
+
+    if (phase.active && (brief.listedSample || []).length && !brief.deals?.length && !brief.watches?.length) {
+      brief.listedSample.slice(0, 3).forEach(row => {
+        parts.push(
+          `<div class="agenda-item market-listed"><i>LIST</i><div><small>NO MERCADO</small><strong>${escapeAgenda(row.playerName)} · ${escapeAgenda(row.overall)}</strong><span class="agenda-market-note"><span class="club-link" data-club="${escapeAgenda(row.from)}" role="button" tabindex="0">${escapeAgenda(row.from)}</span> · ${formatMarketFee(row.price)}</span></div></div>`,
+        );
+      });
+    }
+
+    if (phase.active || brief.deals?.length || brief.loans?.length || brief.interests?.length) {
+      const free = brief.freeAgents || {};
+      parts.push(
+        `<div class="agenda-item market-free coming-soon"><i>LIV</i><div><small>JOGADORES LIVRES</small><strong>Em breve no mercado</strong><span class="agenda-market-note">${escapeAgenda(free.note || 'Mecânica futura — após validar o mercado.')}</span></div></div>`,
+      );
+    }
+
+    if (!parts.length && phase.active) {
+      parts.push(
+        `<div class="agenda-item market-idle"><i>TX</i><div><small>MERCADO</small><strong>Sem negócios registrados neste dia</strong><span class="agenda-market-note">Avance a janela no Dashboard para movimentar o mercado.</span></div></div>`,
+      );
+    }
+
+    return parts.join('');
   };
 
   const renderCalendarAgenda = () => {
@@ -588,8 +690,16 @@ export function createCalendarViewFeature(deps) {
     calendarReportGames.clear();
     $('#calendarSelectedDay').textContent = dateLabel;
     const cupGames = games.filter(game => game.competition === 'COPA DO BRASIL');
-    $('#calendarSelectedMeta').textContent = games.length
-      ? `${games.length} ${games.length === 1 ? 'jogo programado' : 'jogos programados'}${cupGames.length ? ` · ${cupGames[0].phase}` : ''}`
+    const phase = getTransferWindowPhase(selectedCalendarDate);
+    const marketBits = [];
+    if (phase.active) marketBits.push(phase.isDeadlineDay ? 'Deadline Day' : phase.label || 'Janela aberta');
+    if (games.length) {
+      marketBits.unshift(
+        `${games.length} ${games.length === 1 ? 'jogo programado' : 'jogos programados'}${cupGames.length ? ` · ${cupGames[0].phase}` : ''}`,
+      );
+    }
+    $('#calendarSelectedMeta').textContent = marketBits.length
+      ? marketBits.join(' · ')
       : 'Sem partidas programadas';
     const gameRows = games
       .map((game, index) => {
@@ -612,11 +722,12 @@ export function createCalendarViewFeature(deps) {
           `<div class="agenda-item training"><i>MF</i><div><small>${activity.type === 'before' ? 'PRÉ-JOGO' : activity.type === 'after' ? 'PÓS-JOGO' : 'DIA LIVRE'}</small><strong>${activity.label}</strong></div></div>`
       )
       .join('');
+    const marketRows = renderMarketDayAgenda();
     const freeRow =
-      !games.length && !activities.length
+      !games.length && !activities.length && !marketRows
         ? `<div class="agenda-item free"><i>—</i><div><small>DIA SEM PARTIDA</small><strong>${trainingRules.free}</strong></div></div>`
         : '';
-    $('#calendarDayAgenda').innerHTML = gameRows + trainingRows + freeRow;
+    $('#calendarDayAgenda').innerHTML = gameRows + trainingRows + marketRows + freeRow;
   };
 
   const renderCalendar = () => {
@@ -654,6 +765,8 @@ export function createCalendarViewFeature(deps) {
       const userCompleted = userGame && isFixtureCompleted(userGame);
       const userScore = userCompleted ? fixtureResultLabel(userGame) : '';
       const inPlanningWeek = date >= planWeekStart && date <= planWeekEnd;
+      const inTransferWindow = !outside && isDateInTransferWindow(date);
+      const transferPhase = inTransferWindow ? getTransferWindowPhase(date) : null;
       const eventText = userGame
         ? (userGame.competition === 'COPA DO BRASIL' ? `COPA · ${userGame.phase}` : `${atHome ? 'CASA' : 'FORA'} · R${userGame.round}`) +
           (userScore ? ` · ${userScore}` : '')
@@ -662,7 +775,10 @@ export function createCalendarViewFeature(deps) {
           : games.length
             ? `${games.length} JOGOS · R${games[0].round}`
             : '';
-      return `<button type="button" class="calendar-day ${outside ? 'outside' : ''} ${selected ? 'selected' : ''} ${inPlanningWeek ? 'planning-week' : ''} ${key === careerDayKey ? 'career-today' : ''} ${pendingUserGame && key === careerDayKey ? 'matchday-stop' : ''} ${userGame ? (atHome ? 'user-home' : 'user-away') : ''} ${userCompleted ? 'completed-user' : ''} ${key === currentRoundKey ? 'current-round' : ''}" data-calendar-date="${key}" aria-pressed="${selected}"><time datetime="${key}">${date.getDate()}</time><span class="calendar-day-events">${eventText ? `<span class="${cupGame ? 'cup-match' : userGame ? 'user-match' : ''} ${userScore ? 'completed-score' : ''}">${eventText}</span>` : ''}${activities.map(activity => `<span class="training-event">◆ ${activity.label}</span>`).join('')}</span></button>`;
+      const transferChip = inTransferWindow
+        ? `<span class="transfer-window-event ${transferPhase?.isDeadlineWeek ? 'is-deadline' : ''}">${transferPhase?.isDeadlineDay ? 'DEADLINE' : transferPhase?.isDeadlineWeek ? 'JANELA · DIA' : 'JANELA'}</span>`
+        : '';
+      return `<button type="button" class="calendar-day ${outside ? 'outside' : ''} ${selected ? 'selected' : ''} ${inPlanningWeek ? 'planning-week' : ''} ${inTransferWindow ? 'transfer-window' : ''} ${transferPhase?.isDeadlineWeek ? 'transfer-deadline' : ''} ${transferPhase?.isDeadlineDay ? 'transfer-deadline-day' : ''} ${key === careerDayKey ? 'career-today' : ''} ${pendingUserGame && key === careerDayKey ? 'matchday-stop' : ''} ${userGame ? (atHome ? 'user-home' : 'user-away') : ''} ${userCompleted ? 'completed-user' : ''} ${key === currentRoundKey ? 'current-round' : ''}" data-calendar-date="${key}" aria-pressed="${selected}"><time datetime="${key}">${date.getDate()}</time><span class="calendar-day-events">${eventText ? `<span class="${cupGame ? 'cup-match' : userGame ? 'user-match' : ''} ${userScore ? 'completed-score' : ''}">${eventText}</span>` : ''}${transferChip}${activities.map(activity => `<span class="training-event">◆ ${activity.label}</span>`).join('')}</span></button>`;
     }).join('');
     renderTrainingRules();
     renderCalendarRoutine();
@@ -706,7 +822,10 @@ export function createCalendarViewFeature(deps) {
       'afterend',
       `<div id="calendarYearMonths" class="calendar-year-months">${Array.from({ length: 12 }, (_, month) => `<button type="button" data-calendar-month="${month}">${new Date(careerSeason, month, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '').toUpperCase()}</button>`).join('')}</div>`
     );
-    $('.calendar-legend').insertAdjacentHTML('beforeend', '<span><i class="cup"></i>COPA DO BRASIL</span>');
+    $('.calendar-legend').insertAdjacentHTML(
+      'beforeend',
+      '<span><i class="cup"></i>COPA DO BRASIL</span><span><i class="transfer-window"></i>JANELA</span><span><i class="transfer-deadline"></i>DEADLINE</span>',
+    );
     $('.calendar-sidebar').insertAdjacentHTML(
       'beforeend',
       `<article class="card calendar-routine-card"><label>ROTINA DA SEMANA</label><div id="calendarRoutineSummary" class="calendar-routine-summary"></div></article><article class="card cup-calendar-card"><label>COPA DO BRASIL ${careerSeason}</label><strong>126 CLUBES · 9 FASES</strong><p>1ª à 4ª fase em jogo único. Da 5ª fase à semifinal em ida e volta. Os 20 clubes da Série A entram na 5ª fase.</p><div><span>INÍCIO<b>18 FEV</b></span><span>FINAL ÚNICA<b>06 DEZ</b></span></div></article>`

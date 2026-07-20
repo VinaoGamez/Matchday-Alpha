@@ -72,6 +72,8 @@ const stubDom = () => {
   el('messageReaderBody');
   el('messageReaderPrev');
   el('messageReaderNext');
+  el('messageReaderTransferActions', { dataset: {} });
+  el('messageReaderOfferExpire');
   el('messages', { classList: { contains: () => false, toggle() {}, add() {}, remove() {} } });
   return {
     $(sel) {
@@ -191,6 +193,48 @@ check('urgent badge class for medical action', () => {
   assert(badge.classList.contains('nav-badge--urgent'), 'urgent class');
   assert(!badge.classList.contains('hidden'), 'visible');
   assert(badge.textContent === '1', 'count');
+});
+
+check('replaceMessage updates offer in place without new row', () => {
+  const { $, $$, onClick } = stubDom();
+  const feature = createMessagesFeature({
+    $,
+    $$,
+    onClick,
+    getHasCareer: () => true,
+    getCurrentRound: () => 1,
+    getCareerDate: () => new Date(2030, 0, 15, 12),
+    getCareerDateIso: () => new Date(2030, 0, 15, 12).toISOString(),
+    initialMessages: [
+      {
+        id: 'offer-1',
+        at: new Date(2030, 0, 10, 12).toISOString(),
+        round: 1,
+        category: 'transfer',
+        type: 'incoming-offer',
+        title: 'Proposta de compra · Alvo',
+        body: 'Clube X oferece.',
+        read: false,
+        meta: { requiresAction: true, offerId: 'toff-1', competition: 'Mercado' },
+      },
+    ],
+  });
+  const before = feature.getMessages().length;
+  const replaced = feature.replaceMessage(
+    { offerId: 'toff-1' },
+    {
+      type: 'offer-rejected',
+      title: 'Proposta recusada',
+      body: 'Você recusou a proposta.',
+      resolveAction: true,
+      actionResult: 'rejected',
+    },
+  );
+  assert(replaced && replaced.id === 'offer-1', 'same id');
+  assert(feature.getMessages().length === before, 'no new message');
+  assert(replaced.type === 'offer-rejected', 'type updated');
+  assert(!replaced.meta.requiresAction && replaced.meta.actionResolved, 'action cleared');
+  assert(feature.getTransferActionMessages().length === 0, 'no pending transfer action');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

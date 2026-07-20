@@ -1,4 +1,5 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
+import { defaultClubCrestInitials } from '../../ui/club-label.js';
 
 const MESSAGE_LIMIT = 200;
 /** Mensagens não lidas com esta idade (dias de calendário) são marcadas como lidas. */
@@ -30,6 +31,27 @@ export const isMedicalActionRequired = message =>
   isActionRequiredMessage(message) &&
   (message.category === 'medical' || message.type === 'treatment-pending');
 
+/** Proposta de transferência pendente. */
+export const isTransferActionRequired = message =>
+  isActionRequiredMessage(message) &&
+  (message.category === 'transfer' || message.type === 'incoming-offer');
+
+/** Mensagem de proposta (pendente ou já respondida) — usa o layout novo do leitor. */
+export const isIncomingOfferMessage = message => {
+  if (!message) return false;
+  if (message.type === 'incoming-offer') return true;
+  if (message.meta?.offerId) return true;
+  if (message.meta?.offerType === 'buy' || message.meta?.offerType === 'loan') return true;
+  return /proposta de (compra|empr[eé]stimo)/i.test(message.title || '');
+};
+
+const resolveOfferFromClub = message => {
+  if (message?.meta?.fromClub) return String(message.meta.fromClub);
+  const body = String(message?.body || '');
+  const match = body.match(/^(.+?)\s+(oferece|quer)\b/i);
+  return match?.[1]?.trim() || '';
+};
+
 const messageAgeDays = (message, careerDate) => {
   if (!message?.at || !careerDate) return 0;
   const at = new Date(message.at);
@@ -41,6 +63,35 @@ const formatMessageTime = at =>
   new Date(at)
     .toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
     .replace('.', '');
+
+const formatMessageDate = at => {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) return '—';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${date.getFullYear()}`;
+};
+
+const formatMessageDateShort = at => {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) return '—';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}`;
+};
+
+const stripOfferUrgencyLines = body =>
+  String(body || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !/expira na rodada/i.test(line) && !/responda com urgência/i.test(line))
+    .join('\n');
+
+const isLoanOfferMessage = message =>
+  message?.meta?.offerType === 'loan' || /empr[eé]stimo/i.test(message?.title || '');
+
+const transferOfferReaderTitle = message =>
+  isLoanOfferMessage(message) ? 'PROPOSTA DE EMPRÉSTIMO' : 'PROPOSTA DE COMPRA';
 
 const escapeHtml = value =>
   String(value ?? '')
@@ -70,9 +121,21 @@ const bodyToHtml = body =>
  * @param {Function} [deps.onPersist]
  * @param {Function} [deps.onPush]
  * @param {Function} [deps.onMedicalActionRequired]
+ * @param {Function} [deps.onTransferActionRequired]
+ * @param {Function} [deps.onTransferOfferRespond]
  */
 export function createMessagesFeature(deps) {
-  const { $, $$, onClick, getHasCareer, getCurrentRound, onPush, onMedicalActionRequired } = deps;
+  const {
+    $,
+    $$,
+    onClick,
+    getHasCareer,
+    getCurrentRound,
+    onPush,
+    onMedicalActionRequired,
+    onTransferActionRequired,
+    onTransferOfferRespond,
+  } = deps;
   const getCareerDateIso = typeof deps.getCareerDateIso === 'function' ? deps.getCareerDateIso : null;
   const getCareerDate =
     typeof deps.getCareerDate === 'function'
@@ -92,6 +155,10 @@ export function createMessagesFeature(deps) {
   let messageFilter = 'all';
   let readerIndex = -1;
   let persistSeason = typeof deps.onPersist === 'function' ? deps.onPersist : () => {};
+  /** Fila de propostas de transferência a apresentar na tela (avanço de janela). */
+  let transferActionQueue = [];
+  let transferActionQueueActive = false;
+  let onTransferActionQueueEmpty = null;
 
   const setPersist = fn => {
     persistSeason = typeof fn === 'function' ? fn : () => {};
@@ -100,6 +167,8 @@ export function createMessagesFeature(deps) {
   const getMessages = () => careerMessages;
 
   const getMedicalActionMessages = () => careerMessages.filter(isMedicalActionRequired);
+  const getActionRequiredMessages = () => careerMessages.filter(isActionRequiredMessage);
+  const getTransferActionMessages = () => careerMessages.filter(isTransferActionRequired);
 
   const unreadCount = () => careerMessages.filter(message => !message.read).length;
 
@@ -112,19 +181,25 @@ export function createMessagesFeature(deps) {
   };
 
   const updateMessageBadge = () => {
+    const actionRequired = getActionRequiredMessages();
     const medicalAction = getMedicalActionMessages();
+    const transferAction = getTransferActionMessages();
     const unread = unreadCount();
     const badge = $('#messagesBadge');
     const label = $('#messagesUnreadLabel');
-    const urgent = medicalAction.length > 0;
-    const badgeCount = urgent ? medicalAction.length : unread;
+    const urgent = actionRequired.length > 0;
+    const badgeCount = urgent ? actionRequired.length : unread;
 
     if (badge) {
       badge.textContent = String(badgeCount);
       badge.classList.toggle('hidden', badgeCount === 0);
       badge.classList.toggle('nav-badge--urgent', urgent);
       badge.title = urgent
-        ? 'Ação médica pendente'
+        ? medicalAction.length && transferAction.length
+          ? 'Ações pendentes (médico / transferências)'
+          : medicalAction.length
+            ? 'Ação médica pendente'
+            : 'Proposta de transferência pendente'
         : badgeCount
           ? `${badgeCount} mensagem${badgeCount === 1 ? '' : 'ns'} não lida${badgeCount === 1 ? '' : 's'}`
           : '';
@@ -132,13 +207,34 @@ export function createMessagesFeature(deps) {
     if (label) {
       if (urgent) {
         label.textContent =
-          medicalAction.length === 1
-            ? '1 ação médica pendente'
-            : `${medicalAction.length} ações médicas pendentes`;
+          actionRequired.length === 1
+            ? medicalAction.length
+              ? '1 ação médica pendente'
+              : '1 proposta de transferência pendente'
+            : `${actionRequired.length} ações pendentes`;
       } else {
         label.textContent = unread
           ? `${unread} não lida${unread === 1 ? '' : 's'}`
           : 'Todas lidas';
+      }
+    }
+  };
+
+  const syncTransferOfferActions = message => {
+    const actions = $('#messageReaderTransferActions');
+    if (!actions) return;
+    const show =
+      isTransferActionRequired(message) &&
+      !!message?.meta?.offerId &&
+      typeof onTransferOfferRespond === 'function';
+    actions.classList.toggle('hidden', !show);
+    actions.dataset.offerId = show ? message.meta.offerId : '';
+    const expire = $('#messageReaderOfferExpire');
+    if (expire) {
+      if (show && message.meta?.expiresRound) {
+        expire.innerHTML = `<span>Expira na rodada ${escapeHtml(message.meta.expiresRound)}.</span><span>Responda com urgência.</span>`;
+      } else {
+        expire.textContent = '';
       }
     }
   };
@@ -152,8 +248,26 @@ export function createMessagesFeature(deps) {
   };
 
   const closeMessageReader = () => {
+    const closedId =
+      readerIndex >= 0 ? filteredMessages()[readerIndex]?.id || null : null;
     $('#messageReaderModal')?.classList.add('hidden');
+    $('.message-reader-head')?.classList.remove('is-transfer-offer', 'is-reader-grid');
     readerIndex = -1;
+    syncTransferOfferActions(null);
+    if (!transferActionQueueActive) return;
+    transferActionQueue = transferActionQueue.filter(id => {
+      if (id === closedId) return false;
+      const message = careerMessages.find(item => item.id === id);
+      return isTransferActionRequired(message);
+    });
+    if (transferActionQueue.length) {
+      queueMicrotask(() => openMessageReader(transferActionQueue[0]));
+      return;
+    }
+    transferActionQueueActive = false;
+    const onEmpty = onTransferActionQueueEmpty;
+    onTransferActionQueueEmpty = null;
+    if (typeof onEmpty === 'function') queueMicrotask(() => onEmpty());
   };
 
   const refreshMessageViews = () => {
@@ -185,12 +299,64 @@ export function createMessagesFeature(deps) {
     const time = $('#messageReaderTime');
     const body = $('#messageReaderBody');
 
+    const offerMessage = isIncomingOfferMessage(message);
+    const head = $('.message-reader-head');
+    head?.classList.add('is-reader-grid');
+    head?.classList.toggle('is-transfer-offer', !!offerMessage);
     if (meta) {
-      meta.textContent = `${CATEGORY_LABELS[message.category] || message.category.toUpperCase()} · RODADA ${message.round}${message.meta?.competition ? ` · ${message.meta.competition}` : ''}`;
+      if (offerMessage) {
+        const competition = message.meta?.competition || 'Mercado';
+        meta.innerHTML = `<span>RODADA ${escapeHtml(message.round)}</span><span>${escapeHtml(competition)}</span>`;
+      } else {
+        const category = CATEGORY_LABELS[message.category] || String(message.category || 'CLUBE').toUpperCase();
+        const secondary = message.meta?.competition
+          ? String(message.meta.competition)
+          : `RODADA ${message.round}`;
+        meta.innerHTML = message.meta?.competition
+          ? `<span>${escapeHtml(category)}</span><span>RODADA ${escapeHtml(message.round)} · ${escapeHtml(secondary)}</span>`
+          : `<span>${escapeHtml(category)}</span><span>RODADA ${escapeHtml(message.round)}</span>`;
+      }
     }
-    if (title) title.textContent = message.title;
-    if (time) time.textContent = formatMessageTime(message.at);
-    if (body) body.innerHTML = bodyToHtml(message.body);
+    if (title) {
+      if (offerMessage && isLoanOfferMessage(message)) {
+        title.classList.add('is-loan-title');
+        title.innerHTML = '<span>PROPOSTA DE</span><span>EMPRÉSTIMO</span>';
+      } else if (offerMessage) {
+        title.classList.remove('is-loan-title');
+        title.textContent = transferOfferReaderTitle(message);
+      } else {
+        title.classList.remove('is-loan-title');
+        title.textContent = message.title;
+      }
+    }
+    if (time) {
+      time.textContent = formatMessageDateShort(message.at);
+    }
+    if (body) {
+      if (offerMessage) {
+        const fromClub = resolveOfferFromClub(message);
+        let offerText = stripOfferUrgencyLines(message.body);
+        if (fromClub && offerText.startsWith(fromClub)) {
+          offerText = offerText.slice(fromClub.length).replace(/^\s+/, '');
+        }
+        const crest = defaultClubCrestInitials(fromClub);
+        body.innerHTML = fromClub
+          ? `<div class="message-reader-offer-panel">
+              <i class="message-reader-offer-crest" aria-hidden="true">${escapeHtml(crest)}</i>
+              <div class="message-reader-offer-main">
+                <div class="message-reader-offer-team">
+                  <strong class="club-link" data-club="${escapeHtml(fromClub)}" role="button" tabindex="0">${escapeHtml(fromClub)}</strong>
+                  <button type="button" class="message-reader-ver-time" data-club="${escapeHtml(fromClub)}">Ver Time</button>
+                </div>
+                <p>${bodyToHtml(offerText)}</p>
+              </div>
+            </div>`
+          : bodyToHtml(offerText);
+      } else {
+        body.innerHTML = bodyToHtml(message.body);
+      }
+    }
+    syncTransferOfferActions(message);
 
     updateReaderNav();
     updateMessageBadge();
@@ -212,8 +378,12 @@ export function createMessagesFeature(deps) {
     list.innerHTML = items.length
       ? items
           .map(message => {
-            const urgent = isMedicalActionRequired(message);
-            return `<article class="message-item ${message.read ? 'read' : 'unread'} message-${message.category}${urgent ? ' message-action-required' : ''}" data-message-id="${message.id}"><div class="message-item-main"><small>${CATEGORY_LABELS[message.category] || message.category.toUpperCase()} · RODADA ${message.round}${urgent ? ' · AÇÃO' : ''}</small><strong>${escapeHtml(message.title)}</strong></div><time>${formatMessageTime(message.at)}</time></article>`;
+            const urgent = isActionRequiredMessage(message);
+            const listTitle =
+              urgent && message.meta?.playerName
+                ? `${message.title} · ${message.meta.playerName}`
+                : message.title;
+            return `<article class="message-item ${message.read ? 'read' : 'unread'} message-${message.category}${urgent ? ' message-action-required' : ''}" data-message-id="${message.id}"><div class="message-item-main"><small>${CATEGORY_LABELS[message.category] || message.category.toUpperCase()} · RODADA ${message.round}${urgent ? ' · AÇÃO' : ''}</small><strong>${escapeHtml(listTitle)}</strong></div><time>${formatMessageTime(message.at)}</time></article>`;
           })
           .join('')
       : `<div class="messages-empty">Nenhuma ocorrência registrada${messageFilter === 'all' ? ' ainda' : ` na categoria ${CATEGORY_LABELS[messageFilter] || messageFilter}`}.</div>`;
@@ -227,7 +397,7 @@ export function createMessagesFeature(deps) {
     feed.innerHTML = recent.length
       ? recent
           .map(message => {
-            const urgent = isMedicalActionRequired(message);
+            const urgent = isActionRequiredMessage(message);
             return `<div class="dashboard-message-row ${message.read ? 'read' : 'unread'}${urgent ? ' message-action-required' : ''}" data-message-id="${message.id}"><small>${CATEGORY_LABELS[message.category] || message.category}${urgent ? ' · AÇÃO' : ''}</small><strong>${escapeHtml(message.title)}</strong></div>`;
           })
           .join('')
@@ -277,6 +447,8 @@ export function createMessagesFeature(deps) {
       if (!isActionRequiredMessage(message)) return;
       if (match.category && message.category !== match.category) return;
       if (match.type && message.type !== match.type) return;
+      if (match.offerId && message.meta?.offerId !== match.offerId) return;
+      if (match.messageId && message.id !== match.messageId) return;
       if (!message.meta) message.meta = {};
       message.meta.requiresAction = false;
       message.meta.actionResolved = true;
@@ -286,8 +458,101 @@ export function createMessagesFeature(deps) {
     if (changed) {
       refreshMessageViews();
       persistSeason();
+      syncTransferOfferActions(
+        readerIndex >= 0 ? filteredMessages()[readerIndex] : null,
+      );
     }
     return changed;
+  };
+
+  const resolveMessageById = messageId => {
+    if (!messageId) return 0;
+    return resolveActionRequiredMessages({ messageId });
+  };
+
+  const findMessage = matcher => {
+    if (!matcher) return null;
+    if (typeof matcher === 'string') {
+      return careerMessages.find(item => item.id === matcher) || null;
+    }
+    return (
+      careerMessages.find(item => {
+        if (matcher.messageId && item.id === matcher.messageId) return true;
+        if (matcher.offerId && item.meta?.offerId === matcher.offerId) return true;
+        return false;
+      }) || null
+    );
+  };
+
+  /**
+   * Atualiza uma mensagem existente (ex.: resposta a proposta) sem criar outra.
+   * @param {string|{offerId?:string,messageId?:string}} matcher
+   * @param {object} patch
+   */
+  const replaceMessage = (matcher, patch = {}) => {
+    const message = findMessage(matcher);
+    if (!message) return null;
+    if (patch.title != null) message.title = patch.title;
+    if (patch.body != null) message.body = patch.body;
+    if (patch.type != null) message.type = patch.type;
+    if (patch.category != null) message.category = patch.category;
+    if (patch.round != null) message.round = patch.round;
+    if (patch.meta && typeof patch.meta === 'object') {
+      message.meta = { ...(message.meta || {}), ...patch.meta };
+    }
+    if (patch.resolveAction) {
+      if (!message.meta) message.meta = {};
+      message.meta.requiresAction = false;
+      message.meta.actionResolved = true;
+      if (patch.actionResult != null) message.meta.actionResult = patch.actionResult;
+    }
+    message.read = patch.read !== undefined ? !!patch.read : true;
+    if (patch.touchAt !== false) {
+      message.at = getCareerDateIso?.() || new Date().toISOString();
+    }
+    // Mantém a mensagem no topo da caixa após a resposta.
+    const idx = careerMessages.indexOf(message);
+    if (idx > 0) {
+      careerMessages.splice(idx, 1);
+      careerMessages.unshift(message);
+    }
+    refreshMessageViews();
+    persistSeason();
+    if (readerIndex >= 0) {
+      const openId = filteredMessages()[readerIndex]?.id;
+      if (openId === message.id) {
+        const title = $('#messageReaderTitle');
+        const body = $('#messageReaderBody');
+        const time = $('#messageReaderTime');
+        if (title) title.textContent = message.title;
+        if (body) body.innerHTML = bodyToHtml(message.body);
+        if (time) time.textContent = formatMessageTime(message.at);
+        syncTransferOfferActions(message);
+      }
+    }
+    return message;
+  };
+
+  /**
+   * Abre propostas pendentes em sequência (fecha/responde → próxima).
+   * Usado no avanço da janela para não perder oportunidades só na caixa.
+   */
+  const presentTransferActionMessages = ({
+    onlyIds = null,
+    onQueueEmpty = null,
+  } = {}) => {
+    const pending = getTransferActionMessages().filter(
+      message => !onlyIds || onlyIds.includes(message.id),
+    );
+    if (!pending.length) {
+      if (typeof onQueueEmpty === 'function') onQueueEmpty();
+      return false;
+    }
+    transferActionQueue = pending.map(message => message.id);
+    transferActionQueueActive = true;
+    onTransferActionQueueEmpty =
+      typeof onQueueEmpty === 'function' ? onQueueEmpty : null;
+    return openMessageReader(transferActionQueue[0]);
   };
 
   /** Abre o leitor na primeira mensagem médica com ação pendente. */
@@ -333,6 +598,7 @@ export function createMessagesFeature(deps) {
     persistSeason();
     onPush?.(message);
     if (isMedicalActionRequired(message)) onMedicalActionRequired?.(message);
+    if (isTransferActionRequired(message)) onTransferActionRequired?.(message);
     return message;
   };
 
@@ -365,14 +631,29 @@ export function createMessagesFeature(deps) {
     onClick('#messageReaderModal', event => {
       if (event.target.id === 'messageReaderModal') closeMessageReader();
     });
+    onClick('#messageReaderOfferAccept', () => {
+      const offerId = $('#messageReaderTransferActions')?.dataset?.offerId;
+      if (!offerId || typeof onTransferOfferRespond !== 'function') return;
+      onTransferOfferRespond({ offerId, accept: true });
+    });
+    onClick('#messageReaderOfferReject', () => {
+      const offerId = $('#messageReaderTransferActions')?.dataset?.offerId;
+      if (!offerId || typeof onTransferOfferRespond !== 'function') return;
+      onTransferOfferRespond({ offerId, accept: false });
+    });
   };
 
   return {
     moduleVersion: MODULE_VERSIONS.messages,
     getMessages,
     getMedicalActionMessages,
+    getTransferActionMessages,
+    getActionRequiredMessages,
     setPersist,
     pushMessage,
+    replaceMessage,
+    findMessage,
+    presentTransferActionMessages,
     renderMessages,
     renderDashboardMessagesFeed,
     updateMessageBadge,
@@ -380,7 +661,9 @@ export function createMessagesFeature(deps) {
     markAllMessagesRead,
     autoMarkStaleMessages,
     resolveActionRequiredMessages,
+    resolveMessageById,
     openMessageReader,
+    closeMessageReader,
     openMedicalActionMessage,
     bindHandlers,
   };

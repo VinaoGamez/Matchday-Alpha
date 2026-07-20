@@ -3,6 +3,11 @@ import { getSponsors, sponsorLogoSlug } from './economy.js';
 import { allowsExtendedSecondHalfStoppage, rollStoppageMinutes } from './match-clock.js';
 import { isKnockoutShootoutCompetition } from './knockout-shootout.js';
 import { enginePenaltyChance } from './match-tuning.js';
+import {
+  resolveShootoutTakerPool,
+  decideShootoutWinner,
+  shootoutChoiceOptions,
+} from './shootout-takers.js';
 
 const SPONSOR_LOGO_URLS = Object.fromEntries(
   Object.entries(
@@ -544,7 +549,9 @@ export function createLiveMatchOrchestration(deps) {
     const [c0, c1] = shootoutState.clubs, mark = kicks => (kicks || []).map(hit => `<i class="${hit ? 'hit' : 'miss'}">${hit ? '✓' : '✗'}</i>`).join('') || '<i class="pending">·</i>';
     $('#shootoutTitle').textContent = `${c0} ${shootoutGoalsCount(c0)} — ${shootoutGoalsCount(c1)} ${c1}`;
     $('#shootoutTrack').innerHTML = `<article><b>${c0.toUpperCase()}</b><div class="shootout-kicks">${mark(shootoutState.results[c0])}</div></article><article><b>${c1.toUpperCase()}</b><div class="shootout-kicks">${mark(shootoutState.results[c1])}</div></article>`;
-    $('#shootoutHint').textContent = shootoutState.suddenDeath ? 'Morte súbita: cada cobrança pode decidir o confronto.' : 'Disputa alternada — escolha um cobrador diferente a cada vez.';
+    $('#shootoutHint').textContent = shootoutState.suddenDeath
+      ? 'Morte súbita: cada cobrança pode decidir. Se todos cobrarem, a lista reinicia até haver vencedor.'
+      : 'Disputa alternada — escolha um cobrador diferente a cada vez.';
   };
 
   const logShootout = (text, type = '', side = null) => {
@@ -555,25 +562,39 @@ export function createLiveMatchOrchestration(deps) {
 
   const evaluateShootoutWinner = () => {
     const shootoutState = getShootoutState();
-    const [c0, c1] = shootoutState.clubs, g0 = shootoutGoalsCount(c0), g1 = shootoutGoalsCount(c1), a0 = shootoutAttemptsCount(c0), a1 = shootoutAttemptsCount(c1);
-    if (a0 <= 5 && a1 <= 5) {
-      const rem0 = 5 - a0, rem1 = 5 - a1;
-      if (g0 > g1 + rem1) return c0;
-      if (g1 > g0 + rem0) return c1;
-      if (a0 === 5 && a1 === 5) {
-        if (g0 !== g1) return g0 > g1 ? c0 : c1;
-        shootoutState.suddenDeath = true;
+    if (!shootoutState) return null;
+    const decided = decideShootoutWinner({
+      clubs: shootoutState.clubs,
+      results: shootoutState.results,
+      suddenDeath: shootoutState.suddenDeath,
+    });
+    shootoutState.suddenDeath = !!decided.suddenDeath;
+    return decided.winner || null;
+  };
+
+  /** Pool de cobradores; reinicia a lista se todos já cobraram. */
+  const shootoutTakersFor = clubName => {
+    const shootoutState = getShootoutState();
+    if (!shootoutState) return [];
+    shootoutState.usedNames[clubName] = shootoutState.usedNames[clubName] || [];
+    const { takers, recycled, usedNames } = resolveShootoutTakerPool(
+      shootoutLineup(clubName),
+      shootoutCardsFor(clubName),
+      shootoutState.usedNames[clubName],
+    );
+    shootoutState.usedNames[clubName] = usedNames;
+    if (recycled) {
+      logShootout(`Todos já cobraram por ${clubName} — lista de cobradores reiniciada.`, 'penalty');
+      if ($('#shootoutHint')) {
+        $('#shootoutHint').textContent = 'Morte súbita: a lista de cobradores reinicia até haver um vencedor.';
       }
-      return null;
     }
-    if (shootoutState.suddenDeath && a0 === a1 && a0 > 5 && g0 !== g1) return g0 > g1 ? c0 : c1;
-    return null;
+    return takers;
   };
 
   const pickShootoutCpuTaker = clubName => {
-    const shootoutState = getShootoutState();
-    const used = new Set(shootoutState.usedNames[clubName] || []), lineup = shootoutLineup(clubName), cardState = shootoutCardsFor(clubName);
-    const eligible = lineup.map((player, index) => ({ player, index })).filter(({ player, index }) => player.pos !== 'GOL' && !cardState[index]?.red && !used.has(player.name)).map(({ player }) => player).sort((a, b) => b.penaltyTaking - a.penaltyTaking);
+    const eligible = shootoutTakersFor(clubName);
+    if (!eligible.length) return null;
     return eligible[Math.random() < .82 ? 0 : Math.min(1, eligible.length - 1)] || eligible[0];
   };
 
@@ -888,8 +909,7 @@ export function createLiveMatchOrchestration(deps) {
     if (!heading) { heading = document.createElement('div'); heading.className = 'penalty-choice-heading'; section.prepend(heading); }
     const kickNo = shootoutAttemptsCount(kickingClub) + 1;
     heading.innerHTML = `<div><strong>Cobrança ${kickNo} — escolha o batedor</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
-    const used = new Set(shootoutState.usedNames[kickingClub] || []), cardState = shootoutCardsFor(kickingClub);
-    const takers = shootoutLineup(kickingClub).map((player, index) => ({ player, index })).filter(({ player, index }) => player.pos !== 'GOL' && !cardState[index]?.red && !used.has(player.name)).map(({ player }) => player).sort((a, b) => b.penaltyTaking - a.penaltyTaking || b.overall - a.overall).slice(0, 5);
+    const takers = shootoutChoiceOptions(shootoutTakersFor(kickingClub), 5);
     const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (player.penaltyTaking > 85 ? .035 : 0), .56, .94) * 100);
     $('#penaltyTakers').innerHTML = takers.length ? takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR OPÇÃO</i>' : player.penaltyTaking > 85 ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('') : '<p class="shootout-empty">Sem cobradores disponíveis.</p>';
     openPenaltyDuel(
@@ -972,7 +992,20 @@ export function createLiveMatchOrchestration(deps) {
       $('#matchStatus').textContent = `${club} prepara a cobrança…`;
       setTimeout(() => {
         const taker = pickShootoutCpuTaker(club);
-        if (taker) startShootoutCpuKick(club, taker);
+        if (taker) {
+          startShootoutCpuKick(club, taker);
+          return;
+        }
+        // Não pode travar: tenta de novo com pool reiniciado; se ainda falhar, encerra com empate técnico.
+        const retry = pickShootoutCpuTaker(club);
+        if (retry) {
+          startShootoutCpuKick(club, retry);
+          return;
+        }
+        log('Disputa sem cobrador elegível — encerrando por falta de elenco.', 'penalty');
+        const [c0, c1] = shootoutState.clubs;
+        const g0 = shootoutGoalsCount(c0), g1 = shootoutGoalsCount(c1);
+        completePenaltyShootout(g0 >= g1 ? c0 : c1);
       }, Math.max(450, optionsUi.getPaceMs() * 2));
     }
   };

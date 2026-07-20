@@ -4,9 +4,15 @@ import { resolve } from 'node:path';
 const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1];
 const githubPagesBase = repoName ? `/${repoName}/` : './';
 
+/** Mercado: on no build local/testers; off no GitHub Pages até validar. */
+const enableTransfers = process.env.GITHUB_PAGES !== 'true';
+
 export default defineConfig({
   root: '.',
   base: process.env.GITHUB_PAGES === 'true' ? githubPagesBase : './',
+  define: {
+    __MATCHDAY_ENABLE_TRANSFERS__: JSON.stringify(enableTransfers),
+  },
   plugins: [
     {
       name: 'inject-build-time',

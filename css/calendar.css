@@ -240,6 +240,64 @@
 .calendar-legend .away { background: #63d9ff; }
 .calendar-legend .round { background: #397487; }
 .calendar-legend .training { background: #ffc94f; }
+.calendar-legend .transfer-window { background: #3d9a58; }
+.calendar-legend .transfer-deadline { background: #e8a020; }
+
+#calendarAdvanceWeek {
+  min-width: 128px !important;
+}
+
+#calendarAdvanceWeek.is-deadline {
+  background: linear-gradient(180deg, #8a5a12, #5a3a0c) !important;
+  border-color: #e8a020 !important;
+  color: #fff3d0 !important;
+  box-shadow: inset 0 -2px #e8a020 !important;
+}
+
+/* Janela de transferências — faixa visual na grade */
+.calendar-view button.calendar-day.transfer-window:not(.user-home):not(.user-away):not(.outside) {
+  background:
+    linear-gradient(180deg, rgba(45, 120, 70, 0.28), rgba(14, 40, 28, 0.55)),
+    #102a34 !important;
+  box-shadow: inset 0 -2px 0 #2d7a48;
+}
+
+.calendar-view button.calendar-day.transfer-deadline:not(.user-home):not(.user-away):not(.outside) {
+  background:
+    linear-gradient(180deg, rgba(180, 110, 20, 0.32), rgba(40, 28, 10, 0.55)),
+    #2a2010 !important;
+  box-shadow: inset 0 -2px 0 #e8a020;
+}
+
+.calendar-view button.calendar-day.transfer-deadline-day:not(.outside) {
+  animation: calendar-deadline-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes calendar-deadline-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 -2px 0 #e8a020, inset 0 0 0 1px rgba(232, 160, 32, 0.35);
+  }
+  50% {
+    box-shadow: inset 0 -2px 0 #ffc14d, inset 0 0 0 2px rgba(255, 193, 77, 0.55);
+  }
+}
+
+.calendar-day-events .transfer-window-event {
+  width: max-content;
+  max-width: 100%;
+  padding: 3px 5px;
+  border-radius: 3px;
+  background: #1e5a34;
+  color: #b8f0c8;
+  font: 700 7px 'DM Sans', sans-serif;
+  letter-spacing: 0.3px;
+}
+
+.calendar-day-events .transfer-window-event.is-deadline {
+  background: #6a4510;
+  color: #ffe6a8;
+}
 
 .calendar-sidebar {
   display: grid;
@@ -315,6 +373,74 @@
 .agenda-item.free > i {
   background: #173039;
   color: #9ebfc2;
+}
+
+.agenda-item.market-window {
+  border-left: 3px solid #3d9a58;
+  background: linear-gradient(90deg, #142820, transparent);
+}
+
+.agenda-item.market-window.is-deadline {
+  border-left-color: #e8a020;
+  background: linear-gradient(90deg, #2a2010, transparent);
+}
+
+.agenda-item.market-window > i,
+.agenda-item.market-deal > i,
+.agenda-item.market-loan > i,
+.agenda-item.market-interest > i,
+.agenda-item.market-watch > i,
+.agenda-item.market-listed > i,
+.agenda-item.market-free > i,
+.agenda-item.market-idle > i {
+  font-size: 8px;
+}
+
+.agenda-item.market-window > i {
+  background: #1e5a34;
+  color: #b8f0c8;
+}
+
+.agenda-item.market-window.is-deadline > i {
+  background: #6a4510;
+  color: #ffe6a8;
+}
+
+.agenda-item.market-deal > i {
+  background: #2a4a18;
+  color: #b6ff38;
+}
+
+.agenda-item.market-loan > i {
+  background: #1a3a48;
+  color: #63d9ff;
+}
+
+.agenda-item.market-interest > i {
+  background: #4a2818;
+  color: #ffb080;
+}
+
+.agenda-item.market-watch > i,
+.agenda-item.market-listed > i {
+  background: #243840;
+  color: #9ebfc2;
+}
+
+.agenda-item.market-free.coming-soon {
+  opacity: 0.78;
+  border-left: 3px solid #5a6a70;
+}
+
+.agenda-item.market-free > i {
+  background: #2a3034;
+  color: #8aa0a8;
+}
+
+.agenda-market-note {
+  display: block;
+  color: #8aa0a8;
+  font: 500 11px/1.35 'DM Sans', sans-serif;
 }
 
 .agenda-item > div {

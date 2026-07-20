@@ -17,8 +17,97 @@ const formatMoney = value => {
   return `R$ ${amount}`;
 };
 
+const sideLetter = player => {
+  const foot = String(player?.preferredFoot || player?.foot || '').toLowerCase();
+  if (foot.startsWith('l') || foot === 'e' || foot.includes('esquer')) return 'E';
+  if (foot.startsWith('r') || foot === 'd' || foot.includes('direit')) return 'D';
+  const pos = String(player?.pos || '').toUpperCase();
+  if (pos === 'PE') return 'E';
+  if (pos === 'PD') return 'D';
+  return 'A';
+};
+
+const traitCodes = player => {
+  const scores = [
+    ['Fin', Number(player?.finishing) || 0],
+    ['Pas', Number(player?.passing) || 0],
+    ['Vel', Number(player?.speed) || 0],
+    ['Mar', Number(player?.marking) || 0],
+    ['Des', Number(player?.dribble) || 0],
+    ['Cab', Number(player?.heading) || 0],
+  ];
+  scores.sort((a, b) => b[1] - a[1]);
+  return `${scores[0][0]}/${scores[1][0]}`;
+};
+
+const listedMark = listed =>
+  listed
+    ? '<span class="transfers-listed-yes" aria-label="À venda" title="À venda"></span>'
+    : '<span class="transfers-listed-no" aria-label="Não listado" title="Não listado">✕</span>';
+
+const COL_STORAGE = {
+  buy: 'matchday-transfers-col-widths-buy',
+  sell: 'matchday-transfers-col-widths-sell-v2',
+};
+
+/** Larguras padrão (%) — compra: 11 colunas */
+const DEFAULT_BUY_WIDTHS = [20, 18, 6, 3, 5.5, 4, 6, 6, 5, 3.5, 16];
+/** Venda: 10 colunas */
+const DEFAULT_SELL_WIDTHS = [30, 5, 4, 5, 5, 8, 8, 6, 5, 14];
+
 /**
- * UI do mercado de transferências.
+ * Mínimos (%) para não ocultar cabeçalho/dados (botões, nomes, valores).
+ * Compra: Jogador, Clube, Posição, Pé, Overall, Idade, Salário, Passe, Caract., Venda, Ações
+ */
+const MIN_BUY_WIDTHS = [12, 12, 5.5, 3, 5.5, 4, 6, 6, 5, 3.5, 14];
+/** Venda: Jogador, Posição, Pé, Overall, Idade, Salário, Valor, Caract., Venda, Ações */
+const MIN_SELL_WIDTHS = [18, 5, 3, 5, 4, 6, 6, 5, 3.5, 12];
+
+const clampColWidths = (widths, mins, defaults) => {
+  const next = widths.map((value, index) => {
+    const n = Number(value);
+    const base = Number.isFinite(n) && n > 0 ? n : defaults[index];
+    return Math.max(mins[index], base);
+  });
+  const total = next.reduce((sum, value) => sum + value, 0);
+  if (total <= 100.01) return next;
+  // Normaliza mantendo mínimos — corta do maior acima do mínimo
+  let overflow = total - 100;
+  const order = next
+    .map((value, index) => ({ index, spare: value - mins[index] }))
+    .filter(item => item.spare > 0)
+    .sort((a, b) => b.spare - a.spare);
+  for (const item of order) {
+    if (overflow <= 0) break;
+    const cut = Math.min(item.spare, overflow);
+    next[item.index] -= cut;
+    overflow -= cut;
+  }
+  return next;
+};
+
+const loadColWidths = (key, fallback, mins) => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback.slice();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length !== fallback.length) return fallback.slice();
+    return clampColWidths(parsed, mins, fallback);
+  } catch {
+    return fallback.slice();
+  }
+};
+
+const saveColWidths = (key, widths) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(widths));
+  } catch {
+    /* quota / private mode */
+  }
+};
+
+/**
+ * UI do mercado — busca estilo Brasfoot, visual Matchday.
  */
 export function createTransfersFeature(deps) {
   const {
@@ -27,17 +116,86 @@ export function createTransfersFeature(deps) {
     getTransfersEngine,
     getBalance,
     getUserClub,
-    getUserDivision,
     formatBudget,
     pushMessage,
     onDealComplete,
     getCurrentRound,
+    openOfferMessage,
   } = deps;
 
   let tab = 'buy';
-  let filters = { pos: '', division: '', query: '', minOvr: 0 };
+  let filters = {
+    pos: '',
+    division: '',
+    query: '',
+    minOvr: 0,
+    maxOvr: 0,
+    minAge: 0,
+    maxAge: 0,
+    maxPrice: 0,
+    maxWage: 0,
+    listedOnly: false,
+    loanOnly: false,
+    sortBy: 'ovr',
+    sortDir: 'desc',
+  };
   let persistSeason = typeof deps.onPersist === 'function' ? deps.onPersist : () => {};
   let statusText = '';
+  let seededListings = false;
+  /** Índice da página de propostas recebidas (cards por linha). */
+  let incomingOfferIndex = 0;
+  let incomingAutoTimer = null;
+  let incomingHoverPaused = false;
+  const INCOMING_ROTATE_MS = 4200;
+
+  const incomingPageSize = () => {
+    const box = $('#transfersIncomingOffers');
+    const width = box?.clientWidth || 0;
+    if (width < 80) return 4;
+    const sideNav = 84;
+    const minCard = 148;
+    const gap = 8;
+    return Math.max(1, Math.floor((width - sideNav) / (minCard + gap)));
+  };
+
+  const offerKindLabel = offer => {
+    if (offer?.type === 'loan') return 'EMPRÉSTIMO';
+    if (offer?.type === 'sell') return 'VENDA';
+    return 'COMPRA';
+  };
+
+  const stopIncomingAutoRotate = () => {
+    if (incomingAutoTimer) {
+      clearInterval(incomingAutoTimer);
+      incomingAutoTimer = null;
+    }
+  };
+
+  const startIncomingAutoRotate = () => {
+    stopIncomingAutoRotate();
+    const root = $('#transfers');
+    const api = engine();
+    if (!root?.classList.contains('active') || !api?.listPendingOffers) return;
+    const pending = api.listPendingOffers({ status: 'pending' });
+    const pageSize = incomingPageSize();
+    if (pending.length <= pageSize) return;
+    incomingAutoTimer = setInterval(() => {
+      if (incomingHoverPaused) return;
+      if (!$('#transfers')?.classList.contains('active')) {
+        stopIncomingAutoRotate();
+        return;
+      }
+      const list = engine()?.listPendingOffers?.({ status: 'pending' }) || [];
+      const size = incomingPageSize();
+      if (list.length <= size) {
+        stopIncomingAutoRotate();
+        return;
+      }
+      const next = incomingOfferIndex + size;
+      incomingOfferIndex = next >= list.length ? 0 : next;
+      renderIncomingOffers();
+    }, INCOMING_ROTATE_MS);
+  };
 
   const setPersist = fn => {
     persistSeason = typeof fn === 'function' ? fn : () => {};
@@ -51,31 +209,97 @@ export function createTransfersFeature(deps) {
     if (el) el.textContent = statusText;
   };
 
-  const reasonLabel = reason =>
+  const rejectReasonHint = reason =>
     ({
-      market_closed: 'Mercado fechado no momento (partida ou transição em andamento).',
-      cannot_afford: 'Caixa insuficiente para esta oferta.',
-      rejected: 'O clube recusou a oferta (abaixo do valor mínimo).',
-      roster_full: 'Seu elenco está no limite máximo.',
-      min_roster: 'Elenco no mínimo — não é possível vender.',
-      seller_min_roster: 'O clube vendedor não pode ficar abaixo do mínimo.',
-      not_found: 'Jogador não encontrado.',
-      no_buyer: 'Nenhum clube interessado no momento.',
-      no_club: 'Clube inválido.',
-    })[reason] || 'Não foi possível concluir a operação.';
+      contract_long: 'contrato longo',
+      pos_thin: 'poucos na posição',
+      roster_thin: 'elenco curto',
+      good_moment: 'clube em bom momento',
+      rank_strong: 'ranking nacional forte',
+      star: 'peça importante do elenco',
+      bad_moment: 'clube em momento difícil',
+      rank_weak: 'clube precisa de caixa',
+      contract_short: 'contrato curto',
+      pos_depth: 'sobra na posição',
+      listed: 'já listado',
+      injured: 'jogador lesionado',
+      manager_pull: 'interesse no seu técnico',
+    })[reason] || null;
+
+  const reasonLabel = (reason, extra = {}) => {
+    if (reason === 'window_closed') {
+      const next = extra.nextOpenLabel || extra.nextOpenDate;
+      if (next instanceof Date) {
+        const label = next.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        return `Janela de transferências fechada — reabre em ${label}.`;
+      }
+      return next
+        ? `Janela de transferências fechada — reabre em ${next}.`
+        : 'Janela de transferências fechada no momento.';
+    }
+    if (reason === 'offer_too_high') {
+      return extra.askCap
+        ? `Nenhum clube topa este preço. Tente perto de ${formatMoney(extra.askCap)} ou menos.`
+        : 'Preço alto demais — nenhum clube aceitou. Tente baixar.';
+    }
+    if (reason === 'rejected' && Array.isArray(extra.reasons) && extra.reasons.length) {
+      const bits = extra.reasons
+        .map(rejectReasonHint)
+        .filter(Boolean)
+        .slice(0, 2);
+      if (bits.length) return `O clube recusou (${bits.join(', ')}).`;
+    }
+    return (
+      {
+        market_closed: 'Mercado fechado no momento (partida ou transição em andamento).',
+        window_closed: 'Janela de transferências fechada no momento.',
+        cannot_afford: 'Caixa insuficiente para esta oferta.',
+        rejected: 'O clube recusou a oferta (abaixo do valor mínimo).',
+        roster_full: 'Seu elenco está no limite máximo.',
+        min_roster: 'Elenco no mínimo — não é possível vender ou ceder.',
+        seller_min_roster: 'O clube vendedor não pode ficar abaixo do mínimo.',
+        not_found: 'Jogador não encontrado.',
+        no_buyer: 'Nenhum clube interessado no momento.',
+        offer_too_high: 'Preço alto demais — nenhum clube aceitou. Tente baixar.',
+        no_club: 'Clube inválido.',
+        on_loan: 'Jogador está emprestado e não pode ser negociado assim.',
+        not_on_loan: 'Este jogador não está emprestado.',
+        not_loan_listed: 'Jogador não está disponível para empréstimo.',
+        loan_in_limit: 'Limite de 3 empréstimos no elenco atingido.',
+        loan_out_limit: 'Limite de 3 jogadores cedidos por empréstimo atingido.',
+        no_loan_host: 'Nenhum clube disponível para receber o empréstimo.',
+      }[reason] || 'Não foi possível concluir a operação.'
+    );
+  };
+
+  const readFiltersFromDom = () => ({
+    pos: $('#transfersFilterPos')?.value || '',
+    division: $('#transfersFilterDivision')?.value || '',
+    query: String($('#transfersFilterQuery')?.value || '').trim(),
+    minOvr: Number($('#transfersFilterOvr')?.value) || 0,
+    maxOvr: Number($('#transfersFilterMaxOvr')?.value) || 0,
+    minAge: Number($('#transfersFilterMinAge')?.value) || 0,
+    maxAge: Number($('#transfersFilterMaxAge')?.value) || 0,
+    maxPrice: Number($('#transfersFilterMaxPrice')?.value) || 0,
+    maxWage: Number($('#transfersFilterMaxWage')?.value) || 0,
+    listedOnly: Boolean($('#transfersFilterListed')?.checked),
+    loanOnly: Boolean($('#transfersFilterLoan')?.checked),
+    sortBy: filters.sortBy || 'ovr',
+    sortDir: filters.sortDir || 'desc',
+  });
 
   const renderFilters = () => {
     const pos = $('#transfersFilterPos');
     const div = $('#transfersFilterDivision');
     if (pos && !pos.dataset.ready) {
       pos.innerHTML =
-        `<option value="">POSIÇÃO</option>` +
+        `<option value="">Qualquer</option>` +
         POSITIONS.map(item => `<option value="${item}">${item}</option>`).join('');
       pos.dataset.ready = '1';
     }
     if (div && !div.dataset.ready) {
       div.innerHTML =
-        `<option value="">DIVISÃO</option>` +
+        `<option value="">Qualquer</option>` +
         DIVISIONS.map(item => `<option value="${item}">Série ${item}</option>`).join('');
       div.dataset.ready = '1';
     }
@@ -85,6 +309,148 @@ export function createTransfersFeature(deps) {
     if (query) query.value = filters.query || '';
     const ovr = $('#transfersFilterOvr');
     if (ovr) ovr.value = filters.minOvr || '';
+    const maxOvr = $('#transfersFilterMaxOvr');
+    if (maxOvr) maxOvr.value = filters.maxOvr || '';
+    const minAge = $('#transfersFilterMinAge');
+    if (minAge) minAge.value = filters.minAge || '';
+    const maxAge = $('#transfersFilterMaxAge');
+    if (maxAge) maxAge.value = filters.maxAge || '';
+    const maxPrice = $('#transfersFilterMaxPrice');
+    if (maxPrice) maxPrice.value = filters.maxPrice || '';
+    const maxWage = $('#transfersFilterMaxWage');
+    if (maxWage) maxWage.value = filters.maxWage || '';
+    const listed = $('#transfersFilterListed');
+    if (listed) listed.checked = !!filters.listedOnly;
+    const loan = $('#transfersFilterLoan');
+    if (loan) loan.checked = !!filters.loanOnly;
+  };
+
+  const renderLoanSlots = () => {
+    const api = engine();
+    const club = getUserClub?.();
+    const slots = api?.loanSlots?.(club) || { incoming: 0, outgoing: 0, max: 3 };
+    const text = `Empréstimos ${slots.incoming}/${slots.max} · Cedidos ${slots.outgoing}/${slots.max}`;
+    const buyEl = $('#transfersLoanSlots');
+    const sellEl = $('#transfersSellLoanSlots');
+    if (buyEl) buyEl.textContent = text;
+    if (sellEl) sellEl.textContent = text;
+  };
+
+  const setResultCount = n => {
+    const el = $('#transfersResultCount');
+    if (!el) return;
+    const count = Number(n) || 0;
+    el.textContent = count === 1 ? '1 jogador encontrado' : `${count} jogadores encontrados`;
+  };
+
+  const markSortedHeader = () => {
+    document.querySelectorAll('#transfersBuyPanel th[data-sort]').forEach(th => {
+      const active = th.getAttribute('data-sort') === filters.sortBy;
+      th.classList.toggle('is-sorted', active);
+      th.classList.toggle('is-asc', active && filters.sortDir === 'asc');
+      th.classList.toggle('is-desc', active && filters.sortDir === 'desc');
+      th.setAttribute('title', active
+        ? `Ordenado ${filters.sortDir === 'asc' ? 'crescente' : 'decrescente'} — clique para inverter`
+        : 'Clique para ordenar');
+    });
+  };
+
+  const defaultSortDir = key => (key === 'ovr' || key === 'listed' ? 'desc' : 'asc');
+
+  const applyColumnSort = key => {
+    if (!key) return;
+    if (filters.sortBy === key) {
+      filters.sortDir = filters.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      filters.sortBy = key;
+      filters.sortDir = defaultSortDir(key);
+    }
+    renderBuyTable();
+  };
+
+  const applyColgroup = (table, widths) => {
+    if (!table) return null;
+    let group = table.querySelector('colgroup');
+    if (!group) {
+      group = document.createElement('colgroup');
+      table.insertBefore(group, table.firstChild);
+    }
+    group.innerHTML = widths
+      .map((width, index) => `<col data-col-index="${index}" style="width:${width}%">`)
+      .join('');
+    table.classList.add('transfers-table--resizable');
+    return group;
+  };
+
+  const setupColumnResize = (tableSelector, storageKey, defaults, mins) => {
+    const table = document.querySelector(tableSelector);
+    if (!table) return;
+    const widths = loadColWidths(storageKey, defaults, mins);
+    applyColgroup(table, widths);
+
+    const headers = table.querySelectorAll('thead th');
+    headers.forEach((th, index) => {
+      if (index >= widths.length - 1) return; // última coluna: sem puxador (evita esconder ações)
+      th.classList.add('transfers-th-resizable');
+      let handle = th.querySelector('.transfers-col-resizer');
+      if (!handle) {
+        handle = document.createElement('span');
+        handle.className = 'transfers-col-resizer';
+        handle.title = 'Arraste para redimensionar (mínimo para manter os dados visíveis)';
+        th.appendChild(handle);
+      }
+      if (handle.dataset.bound === '1') return;
+      handle.dataset.bound = '1';
+      handle.addEventListener('mousedown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        const startX = event.clientX;
+        const startWidths = loadColWidths(storageKey, defaults, mins);
+        const tableWidth = table.getBoundingClientRect().width || 1;
+        const neighbor = index + 1;
+        document.body.classList.add('transfers-col-resizing');
+
+        const onMove = moveEvent => {
+          const dxPct = ((moveEvent.clientX - startX) / tableWidth) * 100;
+          const next = startWidths.slice();
+          let proposed = startWidths[index] + dxPct;
+          proposed = Math.max(mins[index], proposed);
+          let delta = proposed - startWidths[index];
+          const neighborFloor = mins[neighbor];
+          if (startWidths[neighbor] - delta < neighborFloor) {
+            delta = startWidths[neighbor] - neighborFloor;
+            proposed = startWidths[index] + delta;
+          }
+          next[index] = proposed;
+          next[neighbor] = startWidths[neighbor] - delta;
+          const clamped = clampColWidths(next, mins, defaults);
+          applyColgroup(table, clamped);
+        };
+
+        const onUp = () => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          document.body.classList.remove('transfers-col-resizing');
+          const cols = [...table.querySelectorAll('colgroup col')].map(col =>
+            Number.parseFloat(String(col.style.width).replace('%', '')),
+          );
+          saveColWidths(storageKey, clampColWidths(cols, mins, defaults));
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+      });
+    });
+  };
+
+  const ensureSeedListings = () => {
+    if (seededListings) return;
+    const api = engine();
+    if (!api?.seedAiListings) return;
+    const n = api.seedAiListings();
+    const nLoan = api.seedAiLoanListings?.() || 0;
+    seededListings = true;
+    if (n > 0 || nLoan > 0) persistSeason();
   };
 
   const renderBuyTable = () => {
@@ -92,36 +458,65 @@ export function createTransfersFeature(deps) {
     if (!body) return;
     const api = engine();
     if (!api) {
-      body.innerHTML = '<div class="transfers-empty">Motor de transferências indisponível.</div>';
+      body.innerHTML =
+        '<tr><td class="transfers-empty" colspan="11">Motor de transferências indisponível.</td></tr>';
+      setResultCount(0);
       return;
     }
+    ensureSeedListings();
     const rows = api.listBuyCandidates({
       pos: filters.pos || null,
       division: filters.division || null,
       query: filters.query || '',
       minOvr: Number(filters.minOvr) || 0,
-      listedOnly: false,
+      maxOvr: Number(filters.maxOvr) || 0,
+      minAge: Number(filters.minAge) || 0,
+      maxAge: Number(filters.maxAge) || 0,
+      maxPrice: Number(filters.maxPrice) || 0,
+      maxWage: Number(filters.maxWage) || 0,
+      listedOnly: !!filters.listedOnly,
+      loanOnly: !!filters.loanOnly,
+      sortBy: filters.sortBy || 'ovr',
+      sortDir: filters.sortDir || 'desc',
     });
+    setResultCount(rows.length);
+    markSortedHeader();
+    renderLoanSlots();
     if (!rows.length) {
-      body.innerHTML = '<div class="transfers-empty">Nenhum jogador encontrado com estes filtros.</div>';
-      return;
-    }
-    body.innerHTML = rows
-      .slice(0, 80)
-      .map(row => {
-        const p = row.player;
-        return `<article class="transfers-row" data-buy-id="${escapeHtml(row.playerId)}">
-          <div class="transfers-row-main">
-            <strong>${escapeHtml(p.name)}</strong>
-            <small>${escapeHtml(p.pos)} · ${p.age} anos · OVR ${p.overall} · ${escapeHtml(row.clubName)} · Série ${row.division}</small>
-          </div>
-          <div class="transfers-row-meta">
-            <span>${formatMoney(row.price)}</span>
+      body.innerHTML =
+        '<tr><td class="transfers-empty" colspan="11">Nenhum jogador encontrado com estes filtros.</td></tr>';
+    } else {
+      body.innerHTML = rows
+        .slice(0, 200)
+        .map(row => {
+          const p = row.player;
+          const wage = Number(p.wage || row.wage) || 0;
+          const canLoan = !!p.loanListed;
+          return `<tr>
+          <td class="col-name">${escapeHtml(p.name)}${canLoan ? ' <small class="transfers-loan-tag">EMPR.</small>' : ''}</td>
+          <td class="col-club" title="${escapeHtml(row.clubName)}">${escapeHtml(row.clubName)}</td>
+          <td>${escapeHtml(p.pos)}</td>
+          <td>${escapeHtml(sideLetter(p))}</td>
+          <td class="col-force">${escapeHtml(p.overall)}</td>
+          <td>${escapeHtml(p.age)}</td>
+          <td>${escapeHtml(formatMoney(wage))}</td>
+          <td class="col-passe">${escapeHtml(formatMoney(row.price))}</td>
+          <td class="col-traits">${escapeHtml(traitCodes(p))}</td>
+          <td>${listedMark(!!p.listed)}</td>
+          <td class="transfers-actions-cell">
+            ${canLoan ? `<button type="button" class="transfers-action secondary" data-loan-id="${escapeHtml(row.playerId)}">EMPRESTAR</button>` : ''}
             <button type="button" class="transfers-action" data-buy-id="${escapeHtml(row.playerId)}">COMPRAR</button>
-          </div>
-        </article>`;
-      })
-      .join('');
+          </td>
+        </tr>`;
+        })
+        .join('');
+    }
+    setupColumnResize(
+      '#transfersBuyPanel .transfers-table',
+      COL_STORAGE.buy,
+      DEFAULT_BUY_WIDTHS,
+      MIN_BUY_WIDTHS,
+    );
   };
 
   const renderSellTable = () => {
@@ -129,54 +524,182 @@ export function createTransfersFeature(deps) {
     if (!body) return;
     const api = engine();
     if (!api) {
-      body.innerHTML = '<div class="transfers-empty">Motor de transferências indisponível.</div>';
+      body.innerHTML =
+        '<tr><td class="transfers-empty" colspan="10">Motor de transferências indisponível.</td></tr>';
+      setResultCount(0);
       return;
     }
     const rows = api.listSellCandidates();
-    body.innerHTML = rows.length
-      ? rows
-          .map(row => {
-            const p = row.player;
-            return `<article class="transfers-row" data-sell-id="${escapeHtml(row.playerId)}">
-              <div class="transfers-row-main">
-                <strong>${escapeHtml(p.name)}</strong>
-                <small>${escapeHtml(p.pos)} · ${p.age} anos · OVR ${p.overall}${row.listed ? ' · LISTADO' : ''}</small>
-              </div>
-              <div class="transfers-row-meta">
-                <span>${formatMoney(row.value)}</span>
-                <button type="button" class="transfers-action secondary" data-list-id="${escapeHtml(row.playerId)}" data-listed="${row.listed ? '1' : '0'}">${row.listed ? 'DESLISTAR' : 'LISTAR'}</button>
-                <button type="button" class="transfers-action" data-sell-id="${escapeHtml(row.playerId)}">VENDER</button>
-              </div>
-            </article>`;
-          })
-          .join('')
-      : '<div class="transfers-empty">Seu elenco está vazio.</div>';
+    setResultCount(rows.length);
+    renderLoanSlots();
+    if (!rows.length) {
+      body.innerHTML =
+        '<tr><td class="transfers-empty" colspan="10">Nenhum jogador no elenco para negociar.</td></tr>';
+    } else {
+      body.innerHTML = rows
+        .map(row => {
+          const p = row.player;
+          const wage = Number(p.wage) || 0;
+          const price = row.listed && row.askingPrice > 0 ? row.askingPrice : row.value;
+          const onLoan = !!row.onLoan;
+          const loanTag = onLoan
+            ? ` <small class="transfers-loan-tag">← ${escapeHtml(row.loanFrom || 'emp.')}</small>`
+            : row.loanListed
+              ? ' <small class="transfers-loan-tag">EMPR.</small>'
+              : '';
+          const actions = onLoan
+            ? `<button type="button" class="transfers-action secondary" data-return-loan-id="${escapeHtml(row.playerId)}">DEVOLVER</button>`
+            : `<button type="button" class="transfers-action secondary" data-list-id="${escapeHtml(row.playerId)}" data-listed="${row.listed ? '1' : '0'}">${row.listed ? 'RETIRAR' : 'LISTAR'}</button>
+            <button type="button" class="transfers-action secondary" data-loan-list-id="${escapeHtml(row.playerId)}" data-loan-listed="${row.loanListed ? '1' : '0'}">${row.loanListed ? 'RET. EMPR.' : 'EMPRESTAR'}</button>
+            <button type="button" class="transfers-action" data-sell-id="${escapeHtml(row.playerId)}">VENDER</button>`;
+          return `<tr>
+          <td class="col-name">${escapeHtml(p.name)}${loanTag}</td>
+          <td>${escapeHtml(p.pos)}</td>
+          <td>${escapeHtml(sideLetter(p))}</td>
+          <td class="col-force">${escapeHtml(p.overall)}</td>
+          <td>${escapeHtml(p.age)}</td>
+          <td>${escapeHtml(formatMoney(wage))}</td>
+          <td class="col-passe">${escapeHtml(formatMoney(price))}</td>
+          <td class="col-traits">${escapeHtml(traitCodes(p))}</td>
+          <td>${listedMark(!!row.listed)}</td>
+          <td class="transfers-actions-cell">${actions}</td>
+        </tr>`;
+        })
+        .join('');
+    }
+    setupColumnResize(
+      '#transfersSellPanel .transfers-table',
+      COL_STORAGE.sell,
+      DEFAULT_SELL_WIDTHS,
+      MIN_SELL_WIDTHS,
+    );
+  };
+
+  const closeWindowReport = () => {
+    $('#transfersWindowReportModal')?.classList.add('hidden');
+  };
+
+  const showWindowReport = report => {
+    const modal = $('#transfersWindowReportModal');
+    if (!modal || !report) return;
+    const title = $('#transfersWindowReportTitle');
+    const summary = $('#transfersWindowReportSummary');
+    const nameEl = $('#transfersWindowReportBiggestName');
+    const metaEl = $('#transfersWindowReportBiggestMeta');
+    const feeEl = $('#transfersWindowReportBiggestFee');
+    const list = $('#transfersWindowReportList');
+    if (title) title.textContent = `Relatório · ${report.label || 'Janela'}`;
+    if (summary) {
+      summary.textContent =
+        report.dealCount > 0
+          ? `${report.dealCount} transferência${report.dealCount === 1 ? '' : 's'} à vista · volume ${formatMoney(report.totalFees)}.`
+          : 'Nenhuma transferência à vista registrada nesta janela.';
+    }
+    if (report.biggest) {
+      if (nameEl) nameEl.textContent = report.biggest.playerName || '—';
+      if (metaEl) {
+        metaEl.textContent = `${report.biggest.from || '—'} → ${report.biggest.to || '—'}`;
+      }
+      if (feeEl) feeEl.textContent = formatMoney(report.biggest.fee);
+      $('#transfersWindowReportBiggest')?.classList.remove('is-empty');
+    } else {
+      if (nameEl) nameEl.textContent = 'Sem negócios destacados';
+      if (metaEl) metaEl.textContent = 'O mercado ficou quieto nesta janela.';
+      if (feeEl) feeEl.textContent = '—';
+      $('#transfersWindowReportBiggest')?.classList.add('is-empty');
+    }
+    if (list) {
+      list.innerHTML = (report.deals || [])
+        .map(
+          deal =>
+            `<li><strong>${escapeHtml(deal.playerName)}</strong><span>${escapeHtml(deal.from)} → ${escapeHtml(deal.to)}</span><em>${formatMoney(deal.fee)}</em></li>`,
+        )
+        .join('');
+    }
+    modal.classList.remove('hidden');
   };
 
   const renderHeader = () => {
     const bal = $('#transfersBalance');
     const open = $('#transfersMarketState');
     const api = engine();
-    if (bal && formatBudget && getBalance) {
-      const clubName = getUserClub?.();
-      // balance via getBalance needs club object — deps may pass getUserBalance number
-      if (typeof getBalance === 'function') {
-        try {
-          bal.textContent = formatBudget(getBalance());
-        } catch {
-          bal.textContent = '—';
-        }
+    if (bal && formatBudget && typeof getBalance === 'function') {
+      try {
+        bal.textContent = formatBudget(getBalance());
+      } catch {
+        bal.textContent = '—';
       }
     }
     if (open && api) {
-      const isOpen = api.marketOpen();
-      open.textContent = isOpen ? 'MERCADO ABERTO' : 'MERCADO FECHADO';
+      const status = api.marketStatus?.() || { open: api.marketOpen(), label: null };
+      const isOpen = !!status.open;
+      const phase = status.phase;
+      open.textContent = phase?.isDeadlineDay
+        ? 'DEADLINE DAY'
+        : status.label || (isOpen ? 'MERCADO ABERTO' : 'MERCADO FECHADO');
       open.classList.toggle('is-closed', !isOpen);
+      open.classList.toggle('is-deadline', !!phase?.isDeadlineWeek && isOpen);
+      if (!isOpen && status.reason === 'window_closed' && status.nextOpenLabel) {
+        open.title = `Janela fechada — reabre em ${status.nextOpenLabel}`;
+      } else if (isOpen && phase?.isDeadlineDay) {
+        open.title = 'Último dia da janela — última chance de negociar';
+      } else if (isOpen) {
+        open.title = 'Mercado aberto (janela CBF)';
+      } else {
+        open.title = 'Mercado indisponível';
+      }
     }
-    const clubLine = $('#transfersClubLine');
-    if (clubLine) {
-      clubLine.textContent = `${getUserClub?.() || '—'} · Série ${getUserDivision?.() || '—'}`;
+  };
+
+  const $$tabs = () => {
+    document.querySelectorAll('[data-transfers-tab]').forEach(button => {
+      button.classList.toggle('is-active', button.dataset.transfersTab === tab);
+    });
+  };
+
+  const renderIncomingOffers = () => {
+    const box = $('#transfersIncomingOffers');
+    const api = engine();
+    if (!box || !api?.listPendingOffers) return;
+    const pending = api.listPendingOffers({ status: 'pending' });
+    const pageSize = incomingPageSize();
+    if (!pending.length) {
+      stopIncomingAutoRotate();
+      incomingHoverPaused = false;
+      box.classList.add('hidden');
+      box.innerHTML = '';
+      incomingOfferIndex = 0;
+      return;
     }
+    if (incomingOfferIndex >= pending.length) {
+      incomingOfferIndex = Math.max(0, pending.length - 1);
+    }
+    if (incomingOfferIndex < 0) incomingOfferIndex = 0;
+    const pageStart = Math.floor(incomingOfferIndex / pageSize) * pageSize;
+    incomingOfferIndex = pageStart;
+    const visible = pending.slice(pageStart, pageStart + pageSize);
+    const canPrev = pageStart > 0;
+    const canNext = pageStart + pageSize < pending.length;
+    const cards = visible
+      .map(offer => {
+        const kind = offerKindLabel(offer);
+        return `<article class="transfers-incoming-card" data-offer-id="${escapeHtml(offer.id)}">
+          <strong class="transfers-incoming-name">${escapeHtml(offer.playerName)}</strong>
+          <div class="transfers-incoming-meta">
+            <span class="transfers-incoming-kind">${kind}</span>
+            <button type="button" class="transfers-incoming-view" data-incoming-view="${escapeHtml(offer.id)}" aria-label="Ver proposta de ${escapeHtml(offer.playerName)}">VER</button>
+          </div>
+        </article>`;
+      })
+      .join('');
+    box.classList.remove('hidden');
+    box.innerHTML = `
+      <div class="transfers-incoming-carousel">
+        <button type="button" class="transfers-incoming-nav" data-incoming-prev ${canPrev ? '' : 'disabled'} aria-label="Propostas anteriores">‹</button>
+        <div class="transfers-incoming-row" style="--incoming-cols:${pageSize}">${cards}</div>
+        <button type="button" class="transfers-incoming-nav" data-incoming-next ${canNext ? '' : 'disabled'} aria-label="Próximas propostas">›</button>
+      </div>`;
+    startIncomingAutoRotate();
   };
 
   const render = () => {
@@ -184,6 +707,7 @@ export function createTransfersFeature(deps) {
     if (!root) return;
     root.classList.remove('coming-soon-view');
     renderHeader();
+    renderIncomingOffers();
     renderFilters();
     $$tabs();
     if (tab === 'sell') {
@@ -198,66 +722,184 @@ export function createTransfersFeature(deps) {
     setStatus(statusText);
   };
 
-  const $$tabs = () => {
-    const buttons = document.querySelectorAll('[data-transfers-tab]');
-    buttons.forEach(button => {
-      button.classList.toggle('is-active', button.dataset.transfersTab === tab);
-    });
+  let offerState = null;
+
+  const parseMoneyInput = raw => {
+    const digits = String(raw ?? '').replace(/\D/g, '');
+    if (!digits) return 0;
+    return Math.round(Number(digits));
   };
 
-  const confirmBuy = playerId => {
-    const api = engine();
-    if (!api) return;
-    const found = api.findPlayerInWorld(playerId);
-    if (!found) {
-      setStatus(reasonLabel('not_found'));
+  const formatOfferInput = value => {
+    const amount = Math.max(0, Math.round(Number(value) || 0));
+    return amount.toLocaleString('pt-BR');
+  };
+
+  const closeOfferModal = () => {
+    offerState = null;
+    $('#transfersOfferModal')?.classList.add('hidden');
+  };
+
+  const updateOfferHint = () => {
+    const hint = $('#transfersOfferHint');
+    const input = $('#transfersOfferInput');
+    if (!hint || !input || !offerState) return;
+    const offer = parseMoneyInput(input.value);
+    const { ask, value, mode } = offerState;
+    if (!offer) {
+      hint.textContent = 'Digite um valor para negociar.';
+      hint.className = 'transfers-offer-hint';
       return;
     }
-    const price =
-      found.player.listed && found.player.askingPrice > 0
-        ? found.player.askingPrice
-        : found.player.marketValue;
-    const ok = window.confirm(
-      `Contratar ${found.player.name} (${found.clubName}) por ${formatMoney(price)}?`,
-    );
-    if (!ok) return;
-    const result = api.buyPlayer(playerId, price);
-    if (!result.ok) {
-      setStatus(reasonLabel(result.reason) + (result.fee ? ` (${formatMoney(result.fee)})` : ''));
-      if (result.reason === 'rejected' && result.floor) {
-        setStatus(`Oferta recusada. Mínimo aproximado: ${formatMoney(result.floor)}.`);
+    if (mode === 'buy') {
+      const api = engine();
+      const found = api?.findPlayerInWorld?.(offerState.playerId);
+      if (found && api.evaluateSellerAccept) {
+        const verdict = api.evaluateSellerAccept(found.player, offer, found.club, {
+          clubName: found.clubName,
+        });
+        if (verdict.accept) {
+          let text =
+            offer >= ask
+              ? 'Oferta no pedido ou acima — alta chance de aceite.'
+              : 'Oferta abaixo do pedido, mas ainda pode ser aceita.';
+          if (verdict.playerPull) {
+            text += ' O jogador gostaria de trabalhar com seu técnico.';
+          }
+          hint.textContent = text;
+          hint.className = 'transfers-offer-hint is-good';
+          return;
+        }
+        const hard = (verdict.reasons || [])
+          .map(rejectReasonHint)
+          .filter(Boolean)
+          .slice(0, 1);
+        hint.textContent = hard.length
+          ? `Oferta baixa — o clube tende a recusar (${hard[0]}).`
+          : 'Oferta baixa demais — o clube tende a recusar.';
+        hint.className = 'transfers-offer-hint is-bad';
+        return;
       }
-      render();
+      if (offer >= ask) {
+        hint.textContent = 'Oferta no pedido ou acima.';
+        hint.className = 'transfers-offer-hint is-good';
+      } else if (offer >= value * 0.85) {
+        hint.textContent = 'Oferta próxima do mercado — negociação possível.';
+        hint.className = 'transfers-offer-hint is-warn';
+      } else {
+        hint.textContent = 'Oferta bem abaixo do mercado.';
+        hint.className = 'transfers-offer-hint is-bad';
+      }
       return;
     }
-    pushMessage?.({
-      category: 'transfer',
-      type: 'deal',
-      title: 'Contratação concluída',
-      body: `${result.player.name} chegou ao ${result.to} por ${formatMoney(result.fee)} (vindo de ${result.from}).`,
-      round: getCurrentRound?.() || 1,
-      meta: { competition: 'Mercado', playerId: result.player.playerId, fee: result.fee },
-    });
-    setStatus(`Contratado: ${result.player.name} · ${formatMoney(result.fee)}`);
-    onDealComplete?.(result);
-    persistSeason();
-    render();
+    // sell
+    if (offer >= value * 1.15) {
+      hint.textContent = 'Preço alto — pode não haver comprador disposto.';
+      hint.className = 'transfers-offer-hint is-warn';
+    } else if (offer >= value) {
+      hint.textContent = 'Preço no valor de mercado — boa chance de comprador.';
+      hint.className = 'transfers-offer-hint is-good';
+    } else if (offer >= value * 0.85) {
+      hint.textContent = 'Preço um pouco abaixo do mercado — ainda negociável.';
+      hint.className = 'transfers-offer-hint is-warn';
+    } else {
+      hint.textContent = 'Preço baixo — vende mais fácil, mas rende menos.';
+      hint.className = 'transfers-offer-hint is-warn';
+    }
   };
 
-  const confirmSell = playerId => {
+  const openOfferModal = ({ mode, playerId, name, clubName, pos, overall, age, ask, value, wage }) => {
+    offerState = { mode, playerId, ask, value, wage };
+    const modal = $('#transfersOfferModal');
+    if (!modal) return;
+    $('#transfersOfferEyebrow').textContent = mode === 'buy' ? 'NEGOCIAÇÃO · COMPRA' : 'NEGOCIAÇÃO · VENDA';
+    $('#transfersOfferTitle').textContent =
+      mode === 'buy' ? 'Oferta de contratação' : 'Preço de venda';
+    $('#transfersOfferPlayer').textContent = name || '—';
+    $('#transfersOfferMeta').textContent = [
+      clubName,
+      pos,
+      overall != null ? `OVR ${overall}` : null,
+      age != null ? `${age} anos` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    $('#transfersOfferAsk').textContent =
+      mode === 'buy'
+        ? `${formatMoney(ask)}${ask !== value ? ` · merc. ${formatMoney(value)}` : ''}`
+        : formatMoney(value);
+    $('#transfersOfferWage').textContent = formatMoney(wage || 0);
+    try {
+      $('#transfersOfferBalance').textContent = formatBudget?.(getBalance?.()) || '—';
+    } catch {
+      $('#transfersOfferBalance').textContent = '—';
+    }
+    $('#transfersOfferInputLabel').textContent =
+      mode === 'buy' ? 'Sua oferta (R$)' : 'Preço pedido na venda (R$)';
+    $('#transfersOfferInput').value = formatOfferInput(ask || value);
+    $('#transfersOfferError').textContent = '';
+    $('#transfersOfferSubmit').textContent = mode === 'buy' ? 'ENVIAR OFERTA' : 'CONFIRMAR VENDA';
+    modal.classList.remove('hidden');
+    updateOfferHint();
+    queueMicrotask(() => {
+      const input = $('#transfersOfferInput');
+      input?.focus();
+      input?.select();
+    });
+  };
+
+  const submitOffer = () => {
+    if (!offerState) return;
     const api = engine();
     if (!api) return;
-    const row = api.listSellCandidates().find(item => item.playerId === playerId);
-    if (!row) {
-      setStatus(reasonLabel('not_found'));
+    const offer = parseMoneyInput($('#transfersOfferInput')?.value);
+    const errorEl = $('#transfersOfferError');
+    if (!offer || offer <= 0) {
+      if (errorEl) errorEl.textContent = 'Informe um valor válido para a oferta.';
       return;
     }
-    const ok = window.confirm(`Vender ${row.player.name} por cerca de ${formatMoney(row.value)}?`);
-    if (!ok) return;
-    const result = api.sellPlayer(playerId, row.value);
-    if (!result.ok) {
-      setStatus(reasonLabel(result.reason));
+    if (errorEl) errorEl.textContent = '';
+
+    if (offerState.mode === 'buy') {
+      const result = api.buyPlayer(offerState.playerId, offer);
+      if (!result.ok) {
+        if (result.reason === 'rejected' && result.floor) {
+          const why = reasonLabel('rejected', { reasons: result.reasons });
+          if (errorEl) {
+            errorEl.textContent = `${why} Tente perto de ${formatMoney(result.floor)} ou mais.`;
+          }
+          setStatus(`Oferta recusada. Mínimo aproximado: ${formatMoney(result.floor)}.`);
+          updateOfferHint();
+          return;
+        }
+        const msg = reasonLabel(result.reason, result);
+        if (errorEl) {
+          errorEl.textContent = msg + (result.fee ? ` (${formatMoney(result.fee)})` : '');
+        }
+        setStatus(msg);
+        return;
+      }
+      pushMessage?.({
+        category: 'transfer',
+        type: 'deal',
+        title: 'Contratação concluída',
+        body: `${result.player.name} chegou ao ${result.to} por ${formatMoney(result.fee)} (vindo de ${result.from}).`,
+        round: getCurrentRound?.() || 1,
+        meta: { competition: 'Mercado', playerId: result.player.playerId, fee: result.fee },
+      });
+      setStatus(`Contratado: ${result.player.name} · ${formatMoney(result.fee)}`);
+      closeOfferModal();
+      onDealComplete?.(result);
+      persistSeason();
       render();
+      return;
+    }
+
+    const result = api.sellPlayer(offerState.playerId, offer);
+    if (!result.ok) {
+      const msg = reasonLabel(result.reason, result);
+      if (errorEl) errorEl.textContent = msg;
+      setStatus(msg);
       return;
     }
     pushMessage?.({
@@ -269,56 +911,299 @@ export function createTransfersFeature(deps) {
       meta: { competition: 'Mercado', playerId: result.player.playerId, fee: result.fee },
     });
     setStatus(`Vendido: ${result.player.name} → ${result.to} · ${formatMoney(result.fee)}`);
+    closeOfferModal();
     onDealComplete?.(result);
     persistSeason();
     render();
   };
 
+  const confirmBuy = playerId => {
+    const api = engine();
+    if (!api) return;
+    const found = api.findPlayerInWorld(playerId);
+    if (!found) {
+      setStatus(reasonLabel('not_found'));
+      return;
+    }
+    const value = Number(found.player.marketValue) || 0;
+    const ask =
+      found.player.listed && found.player.askingPrice > 0
+        ? Number(found.player.askingPrice)
+        : value;
+    openOfferModal({
+      mode: 'buy',
+      playerId,
+      name: found.player.name,
+      clubName: found.clubName,
+      pos: found.player.pos,
+      overall: found.player.overall,
+      age: found.player.age,
+      ask,
+      value,
+      wage: found.player.wage,
+    });
+  };
+
+  const confirmSell = playerId => {
+    const api = engine();
+    if (!api) return;
+    const row = api.listSellCandidates().find(item => item.playerId === playerId);
+    if (!row) {
+      setStatus(reasonLabel('not_found'));
+      return;
+    }
+    const value = Number(row.value) || 0;
+    const ask = row.listed && row.askingPrice > 0 ? Number(row.askingPrice) : value;
+    openOfferModal({
+      mode: 'sell',
+      playerId,
+      name: row.player.name,
+      clubName: getUserClub?.() || 'Seu clube',
+      pos: row.player.pos,
+      overall: row.player.overall,
+      age: row.player.age,
+      ask,
+      value,
+      wage: row.player.wage,
+    });
+  };
+
   const toggleList = (playerId, currentlyListed) => {
     const api = engine();
     if (!api) return;
-    const result = api.setListed(playerId, !currentlyListed);
+    if (currentlyListed) {
+      const result = api.setListed(playerId, false);
+      if (!result.ok) {
+        setStatus(reasonLabel(result.reason));
+        return;
+      }
+      setStatus(`${result.player.name} removido da lista`);
+      persistSeason();
+      render();
+      return;
+    }
+    const row = api.listSellCandidates().find(item => item.playerId === playerId);
+    const suggested = Math.round(Number(row?.value) || Number(row?.player?.marketValue) || 0);
+    const raw = window.prompt(
+      `Preço pedido para listar ${row?.player?.name || 'jogador'} (sugerido ${formatMoney(suggested)}):`,
+      String(suggested || ''),
+    );
+    if (raw == null) return;
+    const asking = Number(String(raw).replace(/\D/g, '')) || suggested;
+    const result = api.setListed(playerId, true, asking);
     if (!result.ok) {
       setStatus(reasonLabel(result.reason));
       return;
     }
+    setStatus(`${result.player.name} listado por ${formatMoney(result.player.askingPrice)}`);
+    persistSeason();
+    render();
+  };
+
+  const confirmLoanIn = playerId => {
+    const api = engine();
+    if (!api) return;
+    const found = api.findPlayerInWorld(playerId);
+    if (!found) {
+      setStatus(reasonLabel('not_found'));
+      return;
+    }
+    const slots = api.loanSlots?.(getUserClub?.()) || { incoming: 0, max: 3 };
+    const ok = window.confirm(
+      `Emprestar ${found.player.name} de ${found.clubName} até o fim da temporada?\nEmpréstimos no elenco: ${slots.incoming}/${slots.max}`,
+    );
+    if (!ok) return;
+    const result = api.loanPlayer(playerId);
+    if (!result.ok) {
+      setStatus(reasonLabel(result.reason));
+      render();
+      return;
+    }
+    pushMessage?.({
+      category: 'transfer',
+      type: 'loan',
+      title: 'Empréstimo concluído',
+      body: `${result.player.name} chega por empréstimo de ${result.from} até o fim da temporada.`,
+      round: getCurrentRound?.() || 1,
+      meta: { competition: 'Mercado', playerId: result.player.playerId, loan: true },
+    });
+    setStatus(`Emprestado: ${result.player.name} ← ${result.from}`);
+    onDealComplete?.(result);
+    persistSeason();
+    render();
+  };
+
+  const toggleLoanList = (playerId, currentlyListed) => {
+    const api = engine();
+    if (!api) return;
+    const result = api.setLoanListed(playerId, !currentlyListed);
+    if (!result.ok) {
+      setStatus(reasonLabel(result.reason));
+      render();
+      return;
+    }
     setStatus(
-      result.player.listed
-        ? `${result.player.name} listado por ${formatMoney(result.player.askingPrice)}`
-        : `${result.player.name} removido da lista`,
+      result.player.loanListed
+        ? `${result.player.name} disponível para empréstimo`
+        : `${result.player.name} retirado da lista de empréstimo`,
     );
     persistSeason();
     render();
   };
 
+  const confirmReturnLoan = playerId => {
+    const api = engine();
+    if (!api) return;
+    const row = api.listSellCandidates().find(item => item.playerId === playerId);
+    if (!row) {
+      setStatus(reasonLabel('not_found'));
+      return;
+    }
+    const ok = window.confirm(
+      `Devolver ${row.player.name} ao ${row.loanFrom || 'clube de origem'} agora?`,
+    );
+    if (!ok) return;
+    const result = api.returnLoanPlayer(playerId);
+    if (!result.ok) {
+      setStatus(reasonLabel(result.reason));
+      render();
+      return;
+    }
+    setStatus(`Devolvido: ${result.player.name} → ${result.to}`);
+    onDealComplete?.(result);
+    persistSeason();
+    render();
+  };
+
+  const applySearch = () => {
+    filters = readFiltersFromDom();
+    render();
+  };
+
   const bindHandlers = () => {
+    onClick('#transfersWindowReportClose', () => closeWindowReport());
+    onClick('#transfersWindowReportOk', () => closeWindowReport());
+    onClick('#transfersWindowReportModal', event => {
+      if (event.target?.id === 'transfersWindowReportModal') closeWindowReport();
+    });
+    const incomingBox = $('#transfersIncomingOffers');
+    incomingBox?.addEventListener('pointerover', event => {
+      if (event.target.closest?.('.transfers-incoming-card')) incomingHoverPaused = true;
+    });
+    incomingBox?.addEventListener('pointerout', event => {
+      const nextCard = event.relatedTarget?.closest?.('.transfers-incoming-card');
+      if (!nextCard) incomingHoverPaused = false;
+    });
+    onClick('#transfersIncomingOffers', event => {
+      const pageSize = incomingPageSize();
+      if (event.target.closest('[data-incoming-prev]')) {
+        if (incomingOfferIndex > 0) {
+          incomingOfferIndex = Math.max(0, incomingOfferIndex - pageSize);
+          renderIncomingOffers();
+        }
+        return;
+      }
+      if (event.target.closest('[data-incoming-next]')) {
+        const pending = engine()?.listPendingOffers?.({ status: 'pending' }) || [];
+        const next = incomingOfferIndex + pageSize;
+        incomingOfferIndex = next >= pending.length ? 0 : next;
+        renderIncomingOffers();
+        return;
+      }
+      const view = event.target.closest('[data-incoming-view]');
+      if (view && typeof openOfferMessage === 'function') {
+        const offerId = view.getAttribute('data-incoming-view');
+        const offer = engine()?.findPendingOffer?.(offerId) || { id: offerId };
+        openOfferMessage(offer);
+      }
+    });
+    window.addEventListener('resize', () => {
+      if ($('#transfers')?.classList.contains('active')) renderIncomingOffers();
+    });
     onClick('#transfersTabs', event => {
       const button = event.target.closest('[data-transfers-tab]');
       if (!button) return;
       tab = button.dataset.transfersTab === 'sell' ? 'sell' : 'buy';
       render();
     });
-    onClick('#transfersApplyFilters', () => {
-      filters = {
-        pos: $('#transfersFilterPos')?.value || '',
-        division: $('#transfersFilterDivision')?.value || '',
-        query: $('#transfersFilterQuery')?.value || '',
-        minOvr: Number($('#transfersFilterOvr')?.value) || 0,
-      };
-      render();
+    onClick('#transfersApplyFilters', () => applySearch());
+    const queryInput = $('#transfersFilterQuery');
+    queryInput?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        applySearch();
+      }
     });
-    onClick('#transfersBuyBody', event => {
-      const button = event.target.closest('[data-buy-id]');
+
+    onClick('#transfersOfferClose', () => closeOfferModal());
+    onClick('#transfersOfferCancel', () => closeOfferModal());
+    onClick('#transfersOfferSubmit', () => submitOffer());
+    onClick('#transfersOfferModal', event => {
+      if (event.target?.id === 'transfersOfferModal') closeOfferModal();
+      const quick = event.target.closest('[data-offer-quick]');
+      if (!quick || !offerState) return;
+      const kind = quick.getAttribute('data-offer-quick');
+      const base = offerState.ask || offerState.value || 0;
+      let next = base;
+      if (kind === '-10') next = Math.round(base * 0.9);
+      else if (kind === '+10') next = Math.round(base * 1.1);
+      else if (kind === 'ask') next = offerState.ask || base;
+      else if (kind === 'value') next = offerState.value || base;
+      const input = $('#transfersOfferInput');
+      if (input) input.value = formatOfferInput(next);
+      $('#transfersOfferError').textContent = '';
+      updateOfferHint();
+    });
+    $('#transfersOfferInput')?.addEventListener('input', () => {
+      const input = $('#transfersOfferInput');
+      if (!input) return;
+      const amount = parseMoneyInput(input.value);
+      const caretAtEnd = input.selectionStart === input.value.length;
+      input.value = amount ? formatOfferInput(amount) : '';
+      if (caretAtEnd) input.setSelectionRange(input.value.length, input.value.length);
+      updateOfferHint();
+    });
+    $('#transfersOfferInput')?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submitOffer();
+      }
+      if (event.key === 'Escape') closeOfferModal();
+    });
+
+    onClick('#transfersBuyPanel', event => {
+      if (event.target.closest('.transfers-col-resizer')) return;
+      const sortTh = event.target.closest('th[data-sort]');
+      if (sortTh) {
+        applyColumnSort(sortTh.getAttribute('data-sort') || 'ovr');
+        return;
+      }
+      const loanBtn = event.target.closest('button[data-loan-id]');
+      if (loanBtn) {
+        confirmLoanIn(loanBtn.dataset.loanId);
+        return;
+      }
+      const button = event.target.closest('button[data-buy-id]');
       if (!button) return;
       confirmBuy(button.dataset.buyId);
     });
     onClick('#transfersSellBody', event => {
-      const sell = event.target.closest('[data-sell-id]');
+      const ret = event.target.closest('button[data-return-loan-id]');
+      if (ret) {
+        confirmReturnLoan(ret.dataset.returnLoanId);
+        return;
+      }
+      const loanList = event.target.closest('button[data-loan-list-id]');
+      if (loanList) {
+        toggleLoanList(loanList.dataset.loanListId, loanList.dataset.loanListed === '1');
+        return;
+      }
+      const sell = event.target.closest('button[data-sell-id]');
       if (sell) {
         confirmSell(sell.dataset.sellId);
         return;
       }
-      const list = event.target.closest('[data-list-id]');
+      const list = event.target.closest('button[data-list-id]');
       if (list) toggleList(list.dataset.listId, list.dataset.listed === '1');
     });
   };
@@ -328,5 +1213,6 @@ export function createTransfersFeature(deps) {
     render,
     bindHandlers,
     setPersist,
+    showWindowReport,
   };
 }

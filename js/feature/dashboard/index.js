@@ -49,6 +49,10 @@ export function createDashboardFeature(deps) {
     isSponsorChoicePending,
     onRequestSponsorPicker,
     canReopenLivePostMatch,
+    getTransferWindowPhase,
+    isTransferMarketOpen,
+    advanceTransferCalendar,
+    showTransferWindowReport,
   } = deps;
 
   let leaderMode = 'scorers';
@@ -370,6 +374,7 @@ export function createDashboardFeature(deps) {
     const simBtn = $('#simulateRemainder');
     const inspectBtn = $('#inspectOpponent');
     const calendarBtn = $('#openDashboardCalendar');
+    const transferAdvanceBtn = $('#advanceTransferCalendar');
     const matchCard = playBtn?.closest('.match') || document.querySelector('#dashboard .match');
     matchCard?.classList.toggle('season-ended', !!fullyComplete);
     const cardTitle = $('#nextMatchCardTitle');
@@ -378,6 +383,12 @@ export function createDashboardFeature(deps) {
     const sponsorPending = typeof isSponsorChoicePending === 'function' && isSponsorChoicePending();
     // Só após fechar o resumo da partida recém-jogada (ainda sem SAIR / avançar rodada).
     const livePostMatch = typeof canReopenLivePostMatch === 'function' && canReopenLivePostMatch();
+    const transferPhase =
+      typeof getTransferWindowPhase === 'function' ? getTransferWindowPhase() : null;
+    const transferOpen =
+      typeof isTransferMarketOpen === 'function'
+        ? !!isTransferMarketOpen()
+        : !!transferPhase?.active;
 
     // Temporada fechada: o CTA precisa ficar visível para reabrir o balanço / avançar.
     // Com pós-jogo pendente: esconde JOGAR PARTIDA (mesmo fluxo do PÓS-JOGO) e mostra só PÓS-JOGO.
@@ -402,7 +413,6 @@ export function createDashboardFeature(deps) {
     }
     if (simBtn) simBtn.classList.toggle('hidden', !idle);
     if (inspectBtn) inspectBtn.classList.toggle('hidden', idle || fullyComplete || !display);
-    if (calendarBtn) calendarBtn.classList.toggle('hidden', idle || fullyComplete);
 
     const userUpcomingGames = pendingUserSchedule().slice(0, CLUB_UPCOMING_ROWS).map(entry => entry.game);
 
@@ -432,14 +442,36 @@ export function createDashboardFeature(deps) {
       const leagueNext = leagueUserGameForRound(currentRound);
       const onMatchDay = sameCalendarDay(details.date, careerCalendarDate);
       const todayLabel = `HOJE · ${formatDashboardDate(careerCalendarDate)}`;
+      const showTransferAdvance =
+        !idle && !fullyComplete && !sponsorPending && !livePostMatch && !onMatchDay && transferOpen;
+      const showMatchDayBtn =
+        !idle && !fullyComplete && !sponsorPending && !livePostMatch && onMatchDay;
 
       if (playBtn && !sponsorPending) {
         playBtn.disabled = !onMatchDay;
-        playBtn.title = onMatchDay ? 'Disputar a partida agendada para hoje' : 'Avance até o dia do jogo para disputar a partida';
+        playBtn.title = onMatchDay
+          ? 'Disputar a partida agendada para hoje'
+          : showTransferAdvance
+            ? 'Avance a janela de transferências no Dashboard até o dia do jogo'
+            : 'Avance no calendário até o dia do jogo para disputar a partida';
+      }
+      if (transferAdvanceBtn) {
+        transferAdvanceBtn.classList.toggle('hidden', !showTransferAdvance);
+        if (showTransferAdvance) {
+          transferAdvanceBtn.textContent =
+            transferPhase?.mode === 'day' ? 'AVANÇAR DIA' : 'AVANÇAR SEMANA';
+          transferAdvanceBtn.classList.toggle('is-deadline', !!transferPhase?.isDeadlineWeek);
+          transferAdvanceBtn.title = transferPhase?.isDeadlineDay
+            ? 'Último dia da janela — avance para encerrar e ver o relatório'
+            : transferPhase?.isDeadlineWeek
+              ? `Deadline Day · ${transferPhase.daysLeft} dia(s) restantes`
+              : `${transferPhase?.label || 'Janela'} · ${transferPhase?.daysLeft ?? '—'} dias restantes`;
+        }
       }
       if (calendarBtn) {
-        calendarBtn.disabled = onMatchDay;
-        calendarBtn.title = onMatchDay ? 'Você já está no dia do jogo' : `Simular treinos e avançar até ${details.display}`;
+        calendarBtn.classList.toggle('hidden', !showMatchDayBtn);
+        calendarBtn.disabled = false;
+        calendarBtn.title = 'Você está no dia do jogo — dispute a partida';
       }
 
       setNextMatchCompetition(game, userDivision);
@@ -474,7 +506,13 @@ export function createDashboardFeature(deps) {
           : [
               `Calendário · ${formatDashboardDate(careerCalendarDate)}`,
               `Próximo jogo · ${details.display} · ${details.time}`,
-              daysUntil > 0 ? `Use Dia de Jogo para avançar (${daysUntil} ${daysUntil === 1 ? 'dia' : 'dias'})` : 'Use Dia de Jogo para avançar',
+              showTransferAdvance
+                ? daysUntil > 0
+                  ? `Use Avançar Semana/Dia na janela (${daysUntil} ${daysUntil === 1 ? 'dia' : 'dias'} até o jogo)`
+                  : 'Use Avançar Semana/Dia na janela de transferências'
+                : daysUntil > 0
+                  ? `Avance no calendário (${daysUntil} ${daysUntil === 1 ? 'dia' : 'dias'} até o jogo)`
+                  : 'Avance no calendário até o dia do jogo',
             ]
       );
     } else if (fullyComplete) {
@@ -485,6 +523,12 @@ export function createDashboardFeature(deps) {
     }
 
     if (!fullyComplete) hideSeasonReviewBoard();
+
+    // Fora do bloco "display": esconde avanço/Dia de Jogo em idle, temporada fechada, etc.
+    if (!display || idle || fullyComplete || sponsorPending || livePostMatch) {
+      transferAdvanceBtn?.classList.add('hidden');
+      calendarBtn?.classList.add('hidden');
+    }
 
     $('#clubUpcomingMatches').innerHTML = userUpcomingGames.length
       ? userUpcomingGames
@@ -698,6 +742,11 @@ export function createDashboardFeature(deps) {
       if (!button) return;
       const report = dashboardReportGames.get(button.dataset.matchReport);
       if (report) openCalendarMatchReport(report);
+    });
+    onClick('#advanceTransferCalendar', () => {
+      if (typeof advanceTransferCalendar !== 'function') return;
+      // Relatório de janela e propostas urgentes são apresentados pelo motor.
+      advanceTransferCalendar();
     });
   };
 

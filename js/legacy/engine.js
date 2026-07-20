@@ -12,6 +12,17 @@ import { collectWorldRosters, applyWorldRosters, stampWorldPlayers } from '../en
 import { createTransfersEngine } from '../engine/transfers.js';
 import { createTransfersFeature } from '../feature/transfers/index.js';
 import {
+  normalizeDevelopmentState,
+  emptyDevelopmentState,
+  rollPotential,
+  rollSquadAge,
+  ensureCalendarDevelopmentPulses,
+  runDevelopmentPulse,
+  advancePlayerAges,
+  PULSE_IDS,
+} from '../engine/player-development.js';
+import { playerKey as historyPlayerKey } from '../engine/player-match-stats.js';
+import {
   loadCareerSave,
   loadSeasonSave,
   isSeasonValidForCareer,
@@ -413,11 +424,11 @@ export async function bootEngine({ bus } = {}) {
     return Math.round(weighted[role]??a.overallBase);
   };
   function generatedPlayer(role,index,clubPower,division='A'){
-    const limits={A:[64,92],B:[58,86],C:[52,80],D:[45,75]}[division],potentialCaps={A:97,B:92,C:87,D:83},age=int(17,36),ageModifier=age<=19?-4:age<=21?-2:age<=26?1:age<=29?2:age<=32?0:age<=34?-2:-5,overallBase=clamp(int(clubPower-6,clubPower+6)+ageModifier,...limits),attacking=['PE','PD','ATA','MEI','MC'].includes(role),defensive=['ZAG','LAT','VOL'].includes(role),keeper=role==='GOL',value=(base,spread=8)=>clamp(int(base-spread,base+spread),5,99);
+    const limits={A:[64,92],B:[58,86],C:[52,80],D:[45,75]}[division],age=rollSquadAge(gameRandom),ageModifier=age<=19?-4:age<=21?-2:age<=26?1:age<=29?2:age<=32?0:age<=34?-2:-5,overallBase=clamp(int(clubPower-6,clubPower+6)+ageModifier,...limits),attacking=['PE','PD','ATA','MEI','MC'].includes(role),defensive=['ZAG','LAT','VOL'].includes(role),keeper=role==='GOL',value=(base,spread=8)=>clamp(int(base-spread,base+spread),5,99);
     const first=firstNames[(index+int(0,firstNames.length-1))%firstNames.length],last=lastNames[(index*3+int(0,lastNames.length-1))%lastNames.length],secondLast=gameRandom()<.16?` ${lastNames[(index*7+int(0,lastNames.length-1))%lastNames.length]}`:'';
     const attributes={overallBase,dribble:value(attacking?overallBase+3:overallBase-15),speed:value(['LAT','PE','PD','ATA'].includes(role)?overallBase+7:overallBase-2),marking:value(defensive?overallBase+5:overallBase-18),tackling:value(defensive?overallBase+5:overallBase-19),finishing:value(attacking?overallBase+5:overallBase-21),passing:value(['MC','MEI','VOL','LAT'].includes(role)?overallBase+3:overallBase-8),heading:value(['ZAG','ATA','VOL'].includes(role)?overallBase+3:overallBase-9),positioning:keeper?value(overallBase+4):0,penaltySaving:keeper?value(overallBase):0,reflexes:keeper?value(overallBase+5):0};
     const signatureOptions={GOL:['reflexes','positioning','penaltySaving'],ZAG:['marking','tackling','heading'],LAT:['speed','tackling','passing','dribble'],VOL:['tackling','marking','passing'],MC:['passing','dribble','tackling','finishing'],MEI:['passing','dribble','finishing'],PE:['speed','dribble','finishing'],PD:['speed','dribble','finishing'],ATA:['finishing','heading','speed']}[role],signature=signatureOptions[int(0,signatureOptions.length-1)];attributes[signature]=clamp(attributes[signature]+int(4,9),5,99);
-    const overall=clamp(generatedOverall(role,attributes),...limits),growth=age<=19?int(9,18):age<=22?int(6,14):age<=25?int(3,9):age<=28?int(1,5):int(0,2),potential=clamp(overall+growth,overall,potentialCaps[division]),attackAverage=(attributes.dribble+attributes.speed+attributes.finishing+attributes.passing+attributes.heading)/5,rolePlaymaking=role==='GOL'||role==='ZAG'?Math.min(40,overall-28):role==='VOL'?overall-4:role==='LAT'||role==='ATA'?overall-10:overall+5,creationMultiplier=1+rnd(.005,.015)*(attackAverage>=75?1:-1),heightRanges={GOL:[184,199],ZAG:[180,196],LAT:[168,187],VOL:[174,191],MC:[168,188],MEI:[165,185],PE:[164,184],PD:[164,184],ATA:[174,194]},height=int(...heightRanges[role]),footDraw=gameRandom(),preferredFoot=footDraw<.055?'Ambidestro':role==='PE'?(footDraw<.62?'Esquerdo':'Direito'):role==='PD'?(footDraw<.18?'Esquerdo':'Direito'):(footDraw<.18?'Esquerdo':'Direito'),personalities=['Disciplinado','Determinado','Equilibrado','Líder','Competitivo','Tranquilo'];
+    const overall=clamp(generatedOverall(role,attributes),...limits),potential=rollPotential(overall,age,division,gameRandom),attackAverage=(attributes.dribble+attributes.speed+attributes.finishing+attributes.passing+attributes.heading)/5,rolePlaymaking=role==='GOL'||role==='ZAG'?Math.min(40,overall-28):role==='VOL'?overall-4:role==='LAT'||role==='ATA'?overall-10:overall+5,creationMultiplier=1+rnd(.005,.015)*(attackAverage>=75?1:-1),heightRanges={GOL:[184,199],ZAG:[180,196],LAT:[168,187],VOL:[174,191],MC:[168,188],MEI:[165,185],PE:[164,184],PD:[164,184],ATA:[174,194]},height=int(...heightRanges[role]),footDraw=gameRandom(),preferredFoot=footDraw<.055?'Ambidestro':role==='PE'?(footDraw<.62?'Esquerdo':'Direito'):role==='PD'?(footDraw<.18?'Esquerdo':'Direito'):(footDraw<.18?'Esquerdo':'Direito'),personalities=['Disciplinado','Determinado','Equilibrado','Líder','Competitivo','Tranquilo'];
     // `index` é só seed de nome/RNG — a camisa é atribuída depois com assignSquadJerseyNumbers.
     const p={name:`${first} ${last}${secondLast}`,pos:role,age,overall,potential,height,preferredFoot,personality:personalities[int(0,personalities.length-1)],injuryProneness:clamp(int(5,25)+(age>=31?int(3,10):0),5,38),injuryHistory:[],workload:{minutesLast7Days:0,minutesLast14Days:0,matchesLast14Days:0,consecutiveStarts:0,highIntensityLoad:0,lastMatchRound:0},dribble:attributes.dribble,speed:attributes.speed,marking:attributes.marking,tackling:attributes.tackling,finishing:attributes.finishing,passing:attributes.passing,heading:attributes.heading,positioning:attributes.positioning,penaltySaving:attributes.penaltySaving,reflexes:attributes.reflexes,freeKick:Math.min(85,value(['MC','MEI','PE','PD'].includes(role)?overall-24:overall-38,10)),penaltyTaking:Math.min(85,value(['MC','MEI','PE','PD','ATA'].includes(role)?overall-7:overall-25,10)),playmaking:clamp(Math.round(rolePlaymaking*creationMultiplier),5,role==='GOL'||role==='ZAG'?40:role==='VOL'||role==='LAT'||role==='ATA'?90:100),fatigue:100,number:0};
     const chance=specialistChance[division];
@@ -1248,6 +1259,7 @@ export async function bootEngine({ bus } = {}) {
   };
   reconcileCurrentRound();
   let persistSeason=()=>{};
+  let respondToIncomingTransferOffer=()=>{};
   const openMedicalActionFlow=()=>{
     messages.openMedicalActionMessage?.();
     processPostMatchMedicalQueue?.();
@@ -1264,7 +1276,23 @@ export async function bootEngine({ bus } = {}) {
       // Abre leitor + modal de tratamento quando a ação médica chega.
       queueMicrotask(()=>openMedicalActionFlow());
     },
+    onTransferActionRequired:message=>{
+      // Durante avanço da janela: acumula sync e apresenta ao final (fila).
+      if(suppressTransferOfferPopup){
+        if(message?.id)pendingTransferOfferPopupIds.push(message.id);
+        return;
+      }
+      queueMicrotask(()=>{
+        messages.updateMessageBadge?.();
+        // Evita abrir o leitor a cada rodada na simulação idle.
+        if(typeof nonHumanSimRunning!=='undefined'&&nonHumanSimRunning)return;
+        messages.presentTransferActionMessages?.();
+      });
+    },
+    onTransferOfferRespond:opts=>respondToIncomingTransferOffer(opts),
   });
+  let suppressTransferOfferPopup=false;
+  let pendingTransferOfferPopupIds=[];
   const pushMessage=messages.pushMessage.bind(messages);
   const renderMessages=messages.renderMessages.bind(messages);
   const renderDashboardMessagesFeed=messages.renderDashboardMessagesFeed.bind(messages);
@@ -1339,11 +1367,13 @@ export async function bootEngine({ bus } = {}) {
     const [year,month,day]=savedSeason.careerCalendarDate.split('-').map(Number);
     if(year&&month&&day)careerCalendarDate=new Date(year,month-1,day,12);
   }
+  let onCareerCalendarAdvanced=()=>{};
   const advanceCareerCalendarTo=date=>{
     if(!date)return;
     careerCalendarDate=new Date(date);
     careerCalendarDate.setHours(12,0,0,0);
     autoMarkStaleMessages?.();
+    onCareerCalendarAdvanced();
   };
   const sameCalendarDay=(left,right)=>left.getFullYear()===right.getFullYear()&&left.getMonth()===right.getMonth()&&left.getDate()===right.getDate();
   const cupDate=(month,day)=>new Date(careerSeason,month-1,day,12);
@@ -1692,7 +1722,141 @@ export async function bootEngine({ bus } = {}) {
     userUpcomingGames=pendingUserSchedule().slice(0,5).map(entry=>entry.game);
     nextUserGame=nextPendingUserEntry()?.game||null;
   };
-  const renderRoster = () => $('#playerList').innerHTML = squad.map(p => `<div class="player-row roster-expanded"><span>${playerNameCell(p.name,p,{allCompetitions:true})}</span><span class="badge">${p.pos}</span><span>${p.age}</span><span>${p.potential ?? p.overall}</span><span>${p.height ? `${p.height} cm` : '—'}</span><span>${p.preferredFoot || '—'}</span><span>${p.personality || '—'}</span><span>${p.injuryProneness ?? '—'}</span><span>${p.overall}</span><span>${p.dribble}</span><span>${p.speed}</span><span>${p.marking}</span><span>${p.tackling}</span><span>${p.finishing}</span><span>${p.passing}</span><span>${p.heading}</span><span>${outfield(p.positioning)}</span><span>${outfield(p.penaltySaving)}</span><span>${outfield(p.reflexes)}</span><span>${p.freeKick}</span><span>${p.penaltyTaking}</span><span>${p.playmaking}</span><span class="roster-fatigue"><i><b style="width:${clamp(p.fatigue,0,100)}%"></b></i><em>${Math.round(p.fatigue)}%</em></span></div>`).join('');
+  let rosterSort={key:'pos',dir:'asc'};
+  let rosterFilters={pos:'',foot:'',personality:''};
+  const rosterSortValue=(p,key)=>{
+    switch(key){
+      case 'name':return String(p.name||'');
+      case 'pos':return String(p.pos||'');
+      case 'age':return Number(p.age)||0;
+      case 'height':return Number(p.height)||0;
+      case 'foot':return String(p.preferredFoot||'');
+      case 'personality':return String(p.personality||'');
+      case 'ovr':return Number(p.overall)||0;
+      case 'speed':return Number(p.speed)||0;
+      case 'dribble':return Number(p.dribble)||0;
+      case 'marking':return Number(p.marking)||0;
+      case 'tackling':return Number(p.tackling)||0;
+      case 'heading':return Number(p.heading)||0;
+      case 'finishing':return Number(p.finishing)||0;
+      case 'passing':return Number(p.passing)||0;
+      case 'playmaking':return Number(p.playmaking)||0;
+      case 'freeKick':return Number(p.freeKick)||0;
+      case 'penaltyTaking':return Number(p.penaltyTaking)||0;
+      case 'positioning':return Number(p.positioning)||0;
+      case 'penaltySaving':return Number(p.penaltySaving)||0;
+      case 'reflexes':return Number(p.reflexes)||0;
+      case 'fatigue':return Number(p.fatigue)||0;
+      default:return 0;
+    }
+  };
+  const syncRosterFilterOptions=()=>{
+    const fill=(sel,values,allLabel,current)=>{
+      if(!sel)return;
+      const opts=['<option value="">'+allLabel+'</option>']
+        .concat([...values].sort((a,b)=>a.localeCompare(b,'pt-BR')).map(v=>`<option value="${v}">${v}</option>`));
+      sel.innerHTML=opts.join('');
+      sel.value=[...sel.options].some(o=>o.value===current)?current:'';
+    };
+    const pos=new Set(),foot=new Set(),personality=new Set();
+    squad.forEach(p=>{
+      if(p.pos)pos.add(p.pos);
+      if(p.preferredFoot)foot.add(p.preferredFoot);
+      if(p.personality)personality.add(p.personality);
+    });
+    fill($('#rosterFilters [data-roster-filter="pos"]'),pos,'Todas',rosterFilters.pos);
+    fill($('#rosterFilters [data-roster-filter="foot"]'),foot,'Todos',rosterFilters.foot);
+    fill($('#rosterFilters [data-roster-filter="personality"]'),personality,'Todos',rosterFilters.personality);
+  };
+  const ROSTER_ATTR_KEYS_OUTFIELD=['speed','dribble','marking','tackling','heading','finishing','passing','playmaking','freeKick','penaltyTaking'];
+  /** Top 3 atributos do jogador (GOL prioriza stats de goleiro; linha usa campo). */
+  const topRosterAttrKeys=(player,limit=3)=>{
+    const keys=player?.pos==='GOL'
+      ?['positioning','penaltySaving','reflexes','passing','speed','dribble','marking','tackling','heading','finishing','playmaking','freeKick','penaltyTaking']
+      :ROSTER_ATTR_KEYS_OUTFIELD;
+    return new Set(
+      keys
+        .map(key=>({key,value:Number(player?.[key])}))
+        .filter(row=>Number.isFinite(row.value)&&row.value>0)
+        .sort((a,b)=>b.value-a.value||a.key.localeCompare(b.key))
+        .slice(0,limit)
+        .map(row=>row.key),
+    );
+  };
+  const rosterAttrCell=(player,key,groupClass,display,topKeys)=>{
+    const top=topKeys.has(key);
+    return `<span class="${groupClass}${top?' is-top-attr':''}">${display}</span>`;
+  };
+  const renderRoster=()=>{
+    const list=$('#playerList');
+    if(!list)return;
+    syncRosterFilterOptions();
+    let rows=squad.slice();
+    if(rosterFilters.pos)rows=rows.filter(p=>p.pos===rosterFilters.pos);
+    if(rosterFilters.foot)rows=rows.filter(p=>p.preferredFoot===rosterFilters.foot);
+    if(rosterFilters.personality)rows=rows.filter(p=>p.personality===rosterFilters.personality);
+    const dir=rosterSort.dir==='asc'?1:-1;
+    const key=rosterSort.key;
+    rows.sort((a,b)=>{
+      const va=rosterSortValue(a,key),vb=rosterSortValue(b,key);
+      if(typeof va==='string'||typeof vb==='string'){
+        return String(va).localeCompare(String(vb),'pt-BR')*dir||String(a.name||'').localeCompare(String(b.name||''),'pt-BR');
+      }
+      return (va-vb)*dir||String(a.name||'').localeCompare(String(b.name||''),'pt-BR');
+    });
+    list.innerHTML=rows.map(p=>{
+      const top=topRosterAttrKeys(p);
+      return `<div class="player-row roster-expanded">
+      <span>${playerNameCell(p.name,p,{allCompetitions:true})}</span>
+      <span class="badge">${p.pos}</span>
+      <span>${p.age}</span>
+      <span>${p.overall}</span>
+      <span>${p.height?`${p.height} cm`:'—'}</span>
+      <span>${p.preferredFoot||'—'}</span>
+      <span>${p.personality||'—'}</span>
+      ${rosterAttrCell(p,'speed','roster-group-phys',p.speed,top)}
+      ${rosterAttrCell(p,'dribble','roster-group-phys',p.dribble,top)}
+      ${rosterAttrCell(p,'marking','roster-group-def',p.marking,top)}
+      ${rosterAttrCell(p,'tackling','roster-group-def',p.tackling,top)}
+      ${rosterAttrCell(p,'heading','roster-group-def',p.heading,top)}
+      ${rosterAttrCell(p,'finishing','roster-group-atk',p.finishing,top)}
+      ${rosterAttrCell(p,'passing','roster-group-atk',p.passing,top)}
+      ${rosterAttrCell(p,'playmaking','roster-group-atk',p.playmaking,top)}
+      ${rosterAttrCell(p,'freeKick','roster-group-set',p.freeKick,top)}
+      ${rosterAttrCell(p,'penaltyTaking','roster-group-set',p.penaltyTaking,top)}
+      ${rosterAttrCell(p,'positioning','roster-group-gk',outfield(p.positioning),top)}
+      ${rosterAttrCell(p,'penaltySaving','roster-group-gk',outfield(p.penaltySaving),top)}
+      ${rosterAttrCell(p,'reflexes','roster-group-gk',outfield(p.reflexes),top)}
+      <span class="roster-fatigue"><i><b style="width:${clamp(p.fatigue,0,100)}%"></b></i><em>${Math.round(p.fatigue)}%</em></span>
+    </div>`;
+    }).join('');
+    $$('#rosterHead [data-roster-sort]').forEach(btn=>{
+      const active=btn.dataset.rosterSort===rosterSort.key;
+      btn.classList.toggle('is-sorted',active);
+      btn.classList.toggle('is-asc',active&&rosterSort.dir==='asc');
+      btn.classList.toggle('is-desc',active&&rosterSort.dir==='desc');
+    });
+  };
+  onClick('#rosterHead',event=>{
+    const sortBtn=event.target.closest('[data-roster-sort]');
+    if(!sortBtn)return;
+    const key=sortBtn.dataset.rosterSort;
+    if(rosterSort.key===key)rosterSort.dir=rosterSort.dir==='asc'?'desc':'asc';
+    else{
+      rosterSort.key=key;
+      rosterSort.dir=['name','pos','foot','personality'].includes(key)?'asc':'desc';
+    }
+    renderRoster();
+  });
+  on('#rosterFilters','change',event=>{
+    const sel=event.target.closest('[data-roster-filter]');
+    if(!sel)return;
+    const kind=sel.getAttribute('data-roster-filter');
+    if(kind==='pos'||kind==='foot'||kind==='personality'){
+      rosterFilters[kind]=sel.value||'';
+      renderRoster();
+    }
+  });
   renderRoster();
   const leagueRow=(row,index)=>`<div class="league-row ${row.club === userClub ? 'highlight' : ''}" data-club="${row.club}" role="button" tabindex="0"><span>${userDivision==='D'?index+1:clubs[row.club].position}</span><span class="club-link">${row.club}</span><span>${row.played}</span><span>${row.wins}</span><span>${row.draws}</span><span>${row.losses}</span><span>${row.goalDiff>=0?'+':''}${row.goalDiff}</span><span>${row.points}</span></div>`;
   // leagueTable preenchido por renderChampionshipPage após helpers de fase.
@@ -1898,6 +2062,7 @@ export async function bootEngine({ bus } = {}) {
   let championshipSerieDMode='knockout'; // groups | knockout (só quando mata-mata existe)
   let openChampionship=()=>{};
   let calendarView,dashboard;
+  let transfersEngine=null;
   calendarView=createCalendarViewFeature({
     $,$$,onClick,writeJson,
     getUserClub:()=>userClub,
@@ -1938,11 +2103,14 @@ export async function bootEngine({ bus } = {}) {
     findMatchLog:query=>playerHistory?.findMatchLog?.(query)||null,
     formatMatchRating,
     formatVenueCrowdLine,
+    getMarketDayBrief:date=>transfersEngine?.getMarketDayBrief?.(date)||null,
   });
   const {renderCalendar,openCalendarMatchReport,calendarGameResult,openDashboardCalendarView,setSelectedCalendarDate}=calendarView;
   onCupScheduleChanged=calendarView.onCupScheduleChanged;
   // Flags de partida ao vivo — declaradas cedo: refreshSeasonPresentation / PÓS-JOGO leem antes do bloco do motor.
   let matchStarted=false, matchFinished=false, roundCommitted=false;
+  let advanceTransferCalendarFn=()=>({ok:false,reason:'no_club'});
+  let transfersUi=null;
   dashboard=createDashboardFeature({
     $,$$,onClick,
     getUserClub:()=>userClub,
@@ -1988,6 +2156,10 @@ export async function bootEngine({ bus } = {}) {
       if(!(matchStarted&&matchFinished&&!roundCommitted))return false;
       return !!$('#matchModal')?.classList.contains('hidden');
     },
+    getTransferWindowPhase:()=>transfersEngine?.getWindowPhase?.()||null,
+    isTransferMarketOpen:()=>!!transfersEngine?.marketStatus?.()?.open,
+    advanceTransferCalendar:(...args)=>advanceTransferCalendarFn(...args),
+    showTransferWindowReport:report=>transfersUi?.showWindowReport?.(report),
   });
   let openSponsorPickerIfPending=()=>{};
   const {renderDashboardMiniTable,renderDashboardUpcoming,renderUserMatchPresentation,renderLeaders,renderRecentResults}=dashboard;
@@ -2132,7 +2304,26 @@ export async function bootEngine({ bus } = {}) {
     savedNewGame.worldRosters=collectWorldRosters(clubs,{skipClub:userClub});
     writeJson(SAVE_KEYS.career,{...savedNewGame});
   };
-  const transfersEngine=FEATURES.transfers?createTransfersEngine({
+  const clubFormFromHistory=clubName=>{
+    const form=[];
+    for(let index=seasonRoundHistory.length-1;index>=0&&form.length<5;index--){
+      const games=seasonRoundHistory[index]?.games||[];
+      const game=games.find(item=>involvesClub(item,clubName));
+      if(!game||game.homeGoals==null||game.awayGoals==null)continue;
+      const home=game.home===clubName;
+      const goals=home?game.homeGoals:game.awayGoals;
+      const opp=home?game.awayGoals:game.homeGoals;
+      form.unshift(goals>opp?'W':goals<opp?'L':'D');
+    }
+    return form;
+  };
+  const formatTransferMoney=value=>{
+    const amount=Math.round(Number(value)||0);
+    if(amount>=1_000_000)return `R$ ${(amount/1_000_000).toFixed(amount>=10_000_000?0:1)} mi`;
+    if(amount>=1_000)return `R$ ${(amount/1_000).toFixed(0)} mil`;
+    return `R$ ${amount}`;
+  };
+  transfersEngine=FEATURES.transfers?createTransfersEngine({
     getClubs:()=>clubs,
     getUserClub:()=>userClub,
     getCareerSeason:()=>careerSeason,
@@ -2140,6 +2331,35 @@ export async function bootEngine({ bus } = {}) {
     credit,
     canAfford,
     isMarketOpen:()=>!(matchStarted&&!matchFinished)&&!seasonTransitionPrepared,
+    getCurrentRound:()=>currentRound,
+    getSeasonRoundCount:()=>seasonMaxRound(),
+    getCareerDate:()=>careerCalendarDate,
+    initialPendingOffers:validSavedSeason&&Array.isArray(savedSeason.pendingTransferOffers)
+      ?savedSeason.pendingTransferOffers.map(item=>({...item}))
+      :[],
+    initialSeasonDeals:validSavedSeason&&Array.isArray(savedSeason.seasonTransferDeals)
+      ?savedSeason.seasonTransferDeals.map(item=>({...item}))
+      :[],
+    resolveOfferMessage:messageId=>messages.resolveMessageById?.(messageId),
+    getNationalRank:clubName=>{
+      const ranking=currentNationalRanking();
+      const position=ranking.findIndex(entry=>entry.club===clubName)+1;
+      if(!position)return { position: ranking.length || 1, total: ranking.length || 1, size: ranking.length || 1 };
+      return { position, total: ranking.length, size: ranking.length };
+    },
+    getClubForm:clubFormFromHistory,
+    getUserManager:()=>{
+      const manager=managerRanking.byClub(userClub)||managerRanking.byName(careerProfile?.managerName);
+      if(!manager)return null;
+      const entry=managerRanking.resolveEntry(manager,{
+        getClubDivision:name=>clubs[name]?.division||userDivision,
+      });
+      return {
+        reputation:Number(manager.reputation??60)||60,
+        total:Number(entry?.total??manager.reputation??60)||60,
+        name:manager.name||null,
+      };
+    },
     onAfterTransfer:result=>{
       if(result?.ok&&result.player){
         const hist=playerHistory?.getPlayer?.(playerKey(result.player));
@@ -2155,16 +2375,263 @@ export async function bootEngine({ bus } = {}) {
       try{renderEnvironmentCard();}catch{/* boot */}
     },
   }):null;
-  const transfersUi=FEATURES.transfers?createTransfersFeature({
+  const notifyIncomingTransferOffers=offers=>{
+    (offers||[]).forEach(offer=>{
+      const isLoan=offer.type==='loan';
+      const title=isLoan?'PROPOSTA DE EMPRÉSTIMO':'PROPOSTA DE COMPRA';
+      const body=isLoan
+        ?`${offer.fromClub} quer ${offer.playerName} por empréstimo até o fim da temporada.`
+        :`${offer.fromClub} oferece ${formatTransferMoney(offer.fee)} por ${offer.playerName}.`;
+      const msg=pushMessage({
+        category:'transfer',
+        type:'incoming-offer',
+        title,
+        body,
+        round:currentRound,
+        meta:{
+          competition:'Mercado',
+          requiresAction:true,
+          offerId:offer.id,
+          offerType:offer.type,
+          playerId:offer.playerId,
+          playerName:offer.playerName,
+          fromClub:offer.fromClub,
+          fee:offer.fee,
+          expiresRound:offer.expiresRound,
+        },
+      });
+      if(msg)transfersEngine?.attachOfferMessageId?.(offer.id,msg.id);
+    });
+  };
+  const processAiMarketTickCore=({quietDigest=false}={})=>{
+    if(!transfersEngine)return null;
+    const expired=transfersEngine.expirePendingOffers(currentRound)||[];
+    expired.forEach(offer=>{
+      const body=`A proposta do ${offer.fromClub} por ${offer.playerName} expirou sem resposta.`;
+      const replaced=messages.replaceMessage?.(
+        { offerId:offer.id, messageId:offer.messageId },
+        {
+          type:'offer-expired',
+          title:'Proposta expirada',
+          body,
+          resolveAction:true,
+          actionResult:'expired',
+          meta:{ competition:'Mercado', offerId:offer.id, playerId:offer.playerId },
+        },
+      );
+      if(!replaced){
+        pushMessage({
+          category:'transfer',
+          type:'offer-expired',
+          title:'Proposta expirada',
+          body,
+          round:currentRound,
+          meta:{competition:'Mercado',offerId:offer.id,playerId:offer.playerId},
+        });
+      }
+    });
+    if(!transfersEngine.marketOpen())return { expired, tick: null };
+    const tick=transfersEngine.runAiMarketTick();
+    if(tick?.digest?.total&&!quietDigest){
+      pushMessage({
+        category:'transfer',
+        type:'market-digest',
+        title:'Mercado movimentado',
+        body:`Mercado: ${tick.digest.total} negócio${tick.digest.total===1?'':'s'} entre clubes (${tick.digest.buyCount||0} compra${(tick.digest.buyCount||0)===1?'':'s'}, ${tick.digest.loanCount||0} empréstimo${(tick.digest.loanCount||0)===1?'':'s'}).`,
+        round:currentRound,
+        meta:{competition:'Mercado'},
+      });
+    }
+    if(tick?.offers?.length)notifyIncomingTransferOffers(tick.offers);
+    return { expired, tick };
+  };
+  const presentTransferOffersAfterAdvance=(result={})=>{
+    const showReport=()=>{
+      if(result?.report)transfersUi?.showWindowReport?.(result.report);
+    };
+    pendingTransferOfferPopupIds=[];
+    // Todas as propostas ainda pendentes — evita perder oportunidade só na caixa.
+    const opened=messages.presentTransferActionMessages?.({
+      onQueueEmpty:showReport,
+    });
+    if(!opened)showReport();
+    return !!opened;
+  };
+  const processAiMarketAfterRound=()=>{
+    if(!transfersEngine)return;
+    try{
+      processAiMarketTickCore({quietDigest:false});
+      transfersUi?.render?.();
+    }catch{/* mercado off / boot */}
+  };
+  /**
+   * Avanço de tempo na janela (estilo FIFA Career): semana, ou dia na última semana (Deadline Day).
+   * No fechamento da janela, devolve relatório com a maior transferência.
+   */
+  const advanceTransferCalendar=()=>{
+    if(!transfersEngine||!savedNewGame)return { ok:false, reason:'no_club' };
+    if(pendingSponsorChoice){openSponsorPickerIfPending();return { ok:false, reason:'sponsor' };}
+    if(matchStarted&&!matchFinished)return { ok:false, reason:'market_closed' };
+    if(seasonTransitionPrepared)return { ok:false, reason:'market_closed' };
+    rebuildCalendarGames();
+    const phaseBefore=transfersEngine.getWindowPhase?.()||{};
+    if(!phaseBefore.active)return { ok:false, reason:'window_closed', status:transfersEngine.marketStatus() };
+    const daysToAdvance=phaseBefore.mode==='day'?1:7;
+    const seasonEnd=seasonEndDate();
+    let simulatedDays=0;
+    let stoppedMatch=null;
+    suppressTransferOfferPopup=true;
+    pendingTransferOfferPopupIds=[];
+    try{
+      for(let step=0;step<daysToAdvance;step++){
+        const nextDay=new Date(careerCalendarDate);
+        nextDay.setDate(nextDay.getDate()+1);
+        nextDay.setHours(12,0,0,0);
+        if(nextDay>seasonEnd)break;
+        const pendingMatch=userMatchOnDate(nextDay);
+        if(pendingMatch){
+          applyTrainingDay(trainingTypeForDate(nextDay));
+          advanceCareerCalendarTo(nextDay);
+          advanceCupThroughDate(nextDay);
+          simulatedDays+=1;
+          stoppedMatch=pendingMatch;
+          pushMatchDayBrief(pendingMatch);
+          break;
+        }
+        applyTrainingDay(trainingTypeForDate(nextDay));
+        advanceCareerCalendarTo(nextDay);
+        advanceCupThroughDate(nextDay);
+        simulatedDays+=1;
+        try{
+          if(transfersEngine.marketOpen())processAiMarketTickCore({quietDigest:phaseBefore.mode==='week'});
+        }catch{/* tick */}
+      }
+    }finally{
+      suppressTransferOfferPopup=false;
+    }
+    setSelectedCalendarDate(careerCalendarDate);
+    const phaseAfter=transfersEngine.getWindowPhase?.()||{};
+    let report=null;
+    if(phaseBefore.active&&!phaseAfter.active){
+      report=transfersEngine.buildWindowClosingReport({
+        windowKey:phaseBefore.windowKey,
+        label:phaseBefore.label,
+      });
+      pushMessage({
+        category:'transfer',
+        type:'window-report',
+        title:`Relatório · ${phaseBefore.label||'Janela'}`,
+        body:report.biggest
+          ?`Janela encerrada. Maior transferência: ${report.biggest.playerName} (${report.biggest.from} → ${report.biggest.to}) por ${formatTransferMoney(report.biggest.fee)}. ${report.dealCount} negócios · total ${formatTransferMoney(report.totalFees)}.`
+          :`Janela encerrada sem transferências à vista registradas no mercado.`,
+        round:currentRound,
+        meta:{competition:'Mercado',report},
+      });
+    }
+    persistSeason(true);
+    refreshSeasonPresentation();
+    transfersUi?.render?.();
+    const result={
+      ok:true,
+      days:simulatedDays,
+      mode:phaseBefore.mode,
+      phaseBefore,
+      phaseAfter,
+      report,
+      stoppedMatch,
+      newOfferIds:[...new Set(pendingTransferOfferPopupIds)].filter(Boolean),
+    };
+    presentTransferOffersAfterAdvance(result);
+    return result;
+  };
+  advanceTransferCalendarFn=advanceTransferCalendar;
+  respondToIncomingTransferOffer=({offerId,accept}={})=>{
+    if(!transfersEngine||!offerId)return;
+    const result=accept
+      ?transfersEngine.acceptIncomingOffer(offerId)
+      :transfersEngine.rejectIncomingOffer(offerId);
+    if(!result?.ok){
+      const errBody=`Não foi possível ${accept?'aceitar':'recusar'} a proposta (${result?.reason||'erro'}).`;
+      const replacedErr=messages.replaceMessage?.(
+        { offerId },
+        {
+          type:'offer-error',
+          title:'Proposta não concluída',
+          body:errBody,
+          resolveAction:false,
+          meta:{ competition:'Mercado', offerId },
+        },
+      );
+      if(!replacedErr){
+        pushMessage({
+          category:'transfer',
+          type:'offer-error',
+          title:'Proposta não concluída',
+          body:errBody,
+          round:currentRound,
+          meta:{competition:'Mercado',offerId},
+        });
+      }
+      return;
+    }
+    const offer=result.offer;
+    const accepted=!!(accept&&result.deal);
+    const title=accepted
+      ?(offer.type==='loan'?'Empréstimo aceito':'Venda aceita')
+      :'Proposta recusada';
+    const body=accepted
+      ?(offer.type==='loan'
+        ?`${offer.playerName} foi cedido por empréstimo ao ${offer.fromClub}.`
+        :`${offer.playerName} foi vendido ao ${offer.fromClub} por ${formatTransferMoney(offer.fee)}.`)
+      :`Você recusou a proposta do ${offer.fromClub} por ${offer.playerName}.`;
+    const replaced=messages.replaceMessage?.(
+      { offerId:offer.id, messageId:offer.messageId },
+      {
+        type:accepted?'deal':'offer-rejected',
+        title,
+        body,
+        resolveAction:true,
+        actionResult:accepted?'accepted':'rejected',
+        meta:{
+          competition:'Mercado',
+          offerId:offer.id,
+          playerId:offer.playerId,
+          requiresAction:false,
+          actionResolved:true,
+        },
+      },
+    );
+    if(!replaced){
+      pushMessage({
+        category:'transfer',
+        type:accepted?'deal':'offer-rejected',
+        title,
+        body,
+        round:currentRound,
+        meta:{competition:'Mercado',offerId:offer.id,playerId:offer.playerId},
+      });
+    }
+    if(accepted&&clubs[userClub])clubStatus.syncFinancesFromBudget(clubs[userClub],userDivision);
+    messages.closeMessageReader?.();
+    persistSeason(true);
+    transfersUi?.render?.();
+    renderEnvironmentCard();
+  };
+  transfersUi=FEATURES.transfers?createTransfersFeature({
     $,
     onClick,
+    on,
     getTransfersEngine:()=>transfersEngine,
     getBalance:()=>getBalance(clubs[userClub]),
     getUserClub:()=>userClub,
-    getUserDivision:()=>userDivision,
     formatBudget,
     pushMessage,
     getCurrentRound:()=>currentRound,
+    onTransferOfferRespond:opts=>respondToIncomingTransferOffer(opts),
+    openOfferMessage:offer=>{
+      const msg=messages.findMessage?.({ messageId:offer?.messageId, offerId:offer?.id });
+      if(msg)messages.openMessageReader?.(msg.id);
+    },
     onDealComplete:()=>{
       if(clubs[userClub])clubStatus.syncFinancesFromBudget(clubs[userClub],userDivision);
       persistSeason(true);
@@ -2845,6 +3312,54 @@ export async function bootEngine({ bus } = {}) {
     const histStore=playerHistory.getStore();
     if(histStore.season==null)histStore.season=careerSeason;
   }
+  let playerDevelopment=normalizeDevelopmentState(
+    validSavedSeason?savedSeason?.playerDevelopment:null,
+    careerSeason,
+  );
+  const getDevelopmentSeasonBucket=player=>{
+    const key=historyPlayerKey(player);
+    if(!key)return null;
+    return playerHistory.getPlayer(key)?.seasons?.[String(careerSeason)]||null;
+  };
+  const applyDevelopmentPulseResult=result=>{
+    if(!result||result.skipped)return false;
+    playerDevelopment=result.state;
+    if(clubs[userClub]?.roster){
+      squad.splice(0,squad.length,...clubs[userClub].roster);
+      try{syncCareerRosters();}catch{/* boot */}
+    }
+    return true;
+  };
+  const syncCalendarDevelopmentPulses=()=>{
+    if(!savedNewGame)return;
+    const {state,results}=ensureCalendarDevelopmentPulses({
+      clubs,
+      date:careerCalendarDate,
+      season:careerSeason,
+      state:playerDevelopment,
+      getSeasonBucket:getDevelopmentSeasonBucket,
+    });
+    playerDevelopment=state;
+    if(results.some(item=>!item.skipped)){
+      if(clubs[userClub]?.roster){
+        squad.splice(0,squad.length,...clubs[userClub].roster);
+        try{syncCareerRosters();}catch{/* boot */}
+      }
+    }
+  };
+  const runSeasonEndDevelopmentPulse=()=>{
+    if(!savedNewGame)return;
+    const result=runDevelopmentPulse({
+      clubs,
+      pulseId:PULSE_IDS.seasonEnd,
+      season:careerSeason,
+      state:playerDevelopment,
+      getSeasonBucket:getDevelopmentSeasonBucket,
+    });
+    applyDevelopmentPulseResult(result);
+  };
+  onCareerCalendarAdvanced=syncCalendarDevelopmentPulses;
+  syncCalendarDevelopmentPulses();
   const liveSideMapsToFixture=game=>{
     if(!liveMatchGame||!game)return {swap:false};
     if(game.home!==liveMatchGame.home||game.away!==liveMatchGame.away)return {swap:false};
@@ -4312,6 +4827,16 @@ export async function bootEngine({ bus } = {}) {
       userFormation:formation,
       userLineupOrder:clubs[activeUserClub]?.roster?.map(player=>player.name)||[],
       careerMessages:messages.getMessages().map(message=>({...message})),
+      pendingTransferOffers:FEATURES.transfers&&transfersEngine?.snapshotPendingOffers
+        ?transfersEngine.snapshotPendingOffers()
+        :(validSavedSeason&&Array.isArray(savedSeason?.pendingTransferOffers)
+          ?savedSeason.pendingTransferOffers.map(item=>({...item}))
+          :[]),
+      seasonTransferDeals:FEATURES.transfers&&transfersEngine?.snapshotSeasonDeals
+        ?transfersEngine.snapshotSeasonDeals()
+        :(validSavedSeason&&Array.isArray(savedSeason?.seasonTransferDeals)
+          ?savedSeason.seasonTransferDeals.map(item=>({...item}))
+          :[]),
       scorers:slimLeaderboard(allScorers,'goals'),
       assistants:slimLeaderboard(allAssistants,'assists'),
       serieDGroups,
@@ -4340,6 +4865,12 @@ export async function bootEngine({ bus } = {}) {
       seasonRoundHistory:compactRoundHistory(seasonRoundHistory,activeUserClub),
       competitionRoundHistory:compactCompetitions,
       seasonTransitionPrepared:!!seasonTransitionPrepared,
+      playerDevelopment:{
+        season:playerDevelopment?.season??careerSeason,
+        pulsesDone:Array.isArray(playerDevelopment?.pulsesDone)?[...playerDevelopment.pulsesDone]:[],
+        yearDeltaByPlayer:{...(playerDevelopment?.yearDeltaByPlayer||{})},
+        snapByPlayer:{...(playerDevelopment?.snapByPlayer||{})},
+      },
       pendingDivisionTeams:pendingDivisionTeams?{
         A:[...(pendingDivisionTeams.A||[])],
         B:[...(pendingDivisionTeams.B||[])],
@@ -4435,6 +4966,22 @@ export async function bootEngine({ bus } = {}) {
     if(isOnPendingMatchDay()){
       renderCalendar();
       return {stopped:'match'};
+    }
+    // Com janela aberta: mesma rotina do Dashboard (semana / Deadline Day + tick IA + relatório).
+    const transferPhase=transfersEngine?.getWindowPhase?.()||{};
+    if(transferPhase.active){
+      const result=advanceTransferCalendar();
+      // Relatório / propostas: advanceTransferCalendar já apresenta na tela.
+      renderCalendar();
+      if(!result?.ok)return {stopped:result?.reason||'failed',days:0,transfer:true,result};
+      return {
+        stopped:result.stoppedMatch?'match':null,
+        game:result.stoppedMatch||null,
+        days:result.days||0,
+        transfer:true,
+        mode:result.mode,
+        report:result.report||null,
+      };
     }
     const seasonEnd=seasonEndDate();
     let simulatedDays=0;
@@ -4922,6 +5469,8 @@ export async function bootEngine({ bus } = {}) {
       }
       skipPersistOnUnload=true;
       pruneClubMemory(clubs,nationalRankingEntries);
+      advancePlayerAges(clubs);
+      playerDevelopment=emptyDevelopmentState((savedNewGame.season||2026)+1);
       const foundingClubName=savedNewGame.foundingClubName||savedNewGame.clubName||userClub;
       const careerClubHistory=[...new Set([
         ...(Array.isArray(savedNewGame.careerClubHistory)?savedNewGame.careerClubHistory:[]),
@@ -4993,6 +5542,18 @@ export async function bootEngine({ bus } = {}) {
     return !hasPendingUserFixtures();
   };
   const prepareSeasonTransition=()=>{
+    // Empréstimos voltam ao clube de origem no fechamento da temporada.
+    try{
+      const returnedLoans=transfersEngine?.returnExpiredLoans?.()||0;
+      if(returnedLoans>0){
+        if(clubs[userClub]){
+          assignSquadJerseyNumbers(clubs[userClub].roster);
+          squad.splice(0,squad.length,...clubs[userClub].roster);
+        }
+        syncCareerRosters();
+      }
+      transfersEngine?.clearSeasonDeals?.();
+    }catch{/* boot / mercado off */}
     const a=ranked('A'),b=ranked('B'),c=ranked('C'),relA=a.slice(-4),promB=[b[0],b[1],playoffEdge(b[2],b[5],'B'),playoffEdge(b[3],b[4],'B')],relB=b.slice(-4),promC=c.slice(0,4),relCCount=serieCRelegationCountForTransition(c.length,careerSeason+1),relC=c.slice(-relCCount);let promD=[...(dKnockout.promoted||[])];if(promD.length<SERIE_D_PROMOTIONS){const groupWinners=serieDGroups.map(group=>group.map(name=>nationalCompetitions.D.standings.find(row=>row.club===name)).sort((x,y)=>y.points-x.points||y.wins-x.wins||y.goalDiff-x.goalDiff)[0]?.club).filter(Boolean);promD=[...new Set([...promD,...groupWinners])].slice(0,SERIE_D_PROMOTIONS);}
     const next={A:[...divisionTeams.A.filter(name=>!relA.includes(name)),...promB],B:[...divisionTeams.B.filter(name=>!promB.includes(name)&&!relB.includes(name)),...relA,...promC],C:[...divisionTeams.C.filter(name=>!promC.includes(name)&&!relC.includes(name)),...relB,...promD],D:[...divisionTeams.D.filter(name=>!promD.includes(name)),...relC]};
     const used=new Set(Object.values(next).flat());generatedClubPool.filter(name=>!used.has(name)&&name!==userClub).some(name=>{if(next.D.length>=SERIE_D_CLUBS)return true;next.D.push(name);used.add(name);return false;});
@@ -5017,6 +5578,7 @@ export async function bootEngine({ bus } = {}) {
     ensureBudget(userClubState,userDivision);
     let budgetAfter=getBalance(userClubState);
     if(!seasonTransitionPrepared){
+      runSeasonEndDevelopmentPulse();
       credit(userClubState,prize.total,{reason:'season_prize',label:`Premiação temporada ${careerSeason}`,meta:{lines:prize.lines}});
       userClubState.wageShortfall=false;
       clubStatus.syncFinancesFromBudget(userClubState,userDivision);
@@ -5151,6 +5713,7 @@ export async function bootEngine({ bus } = {}) {
       const completedSeason=currentRound===38||(userDivision==='D'&&currentRound===22);if(userDivision==='D'&&currentRound===22)finishRemainingNationalRounds(23);
       if(!alreadyRecorded)currentRound++;
       reconcileCurrentRound();
+      if(!alreadyRecorded)processAiMarketAfterRound();
       const cupReferenceDate=completedSeason?new Date(careerSeason,11,31,12):fixtureDate(clamp(currentRound,1,championshipFixtures.length));
       advanceCupThroughDate(cupReferenceDate);
       if(completedSeason)finalizeNationalRankingSeason();
@@ -5203,6 +5766,7 @@ export async function bootEngine({ bus } = {}) {
     if(userDivision==='D'&&currentRound===22&&!competitionRoundHistory.A.some(item=>item.round>=23))finishRemainingNationalRounds(23);
     currentRound++;
     reconcileCurrentRound();
+    processAiMarketAfterRound();
     const cupReferenceDate=completedSeasonNow?new Date(careerSeason,11,31,12):fixtureDate(clamp(currentRound,1,Math.max(championshipFixtures.length,currentRound,1)));
     advanceCupThroughDate(cupReferenceDate);
     roundPreviewResults={};
