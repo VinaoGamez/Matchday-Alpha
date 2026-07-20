@@ -117,7 +117,7 @@ export function showUpdateAlertIfNeeded(buildVersion = BUILD_VERSION) {
   if (!modal || !title || !versionLine || !topics) return;
 
   title.textContent = notes?.title || 'Matchday Football foi atualizado';
-  versionLine.textContent = `Versão Alpha · ${formatReleaseDate(notes?.date || new Date().toISOString().slice(0, 10))}`;
+  versionLine.textContent = `${buildVersion} · ${formatReleaseDate(notes?.date || new Date().toISOString().slice(0, 10))}`;
   topics.innerHTML = renderTopics(notes?.topics);
 
   const close = () => dismissUpdateAlert(buildVersion);

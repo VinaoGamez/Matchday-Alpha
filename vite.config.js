@@ -4,8 +4,8 @@ import { resolve } from 'node:path';
 const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1];
 const githubPagesBase = repoName ? `/${repoName}/` : './';
 
-/** Mercado: on no build local/testers; off no GitHub Pages até validar. */
-const enableTransfers = process.env.GITHUB_PAGES !== 'true';
+/** Mercado ativo em todos os builds (local + GitHub Pages). */
+const enableTransfers = process.env.MATCHDAY_DISABLE_TRANSFERS !== 'true';
 
 export default defineConfig({
   root: '.',

@@ -1,6 +1,35 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.00',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T03:15:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Versão',
+        items: [
+          'Nova nomenclatura das atualizações: Alpha V.1.00 (próximas sobem de 0.05 em 0.05).',
+        ],
+      },
+      {
+        label: 'Mercado',
+        items: [
+          'Mercado de transferências ativo também no GitHub Pages (não só no build local).',
+          'Funil de propostas da IA calibrado: ~4 por janela, pico de 2 pendentes, expiração em 4 dias.',
+        ],
+      },
+      {
+        label: 'Temporada e UI',
+        items: [
+          'Corrigidos crashes da simulação idle e do balanço/próxima temporada (Série D).',
+          'Calendário alinhado ao dia de carreira; pós-jogo com AVANÇAR e CLASSIFICAÇÃO sem consumir a rodada.',
+          'Tabelas no visual MatchDay; limpeza mais agressiva quando a cota do localStorage estoura.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'alpha-02-tester-35',
     date: '2026-07-20',
     publishedAt: '2026-07-20T03:00:00-03:00',

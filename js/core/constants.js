@@ -1,5 +1,8 @@
-/** Build e versões de save — contrato estável entre módulos. */
-export const BUILD_VERSION = 'alpha-02-tester-35';
+/**
+ * Build pública para testers.
+ * Nomenclatura: Alpha V.X.YY — sobe +0.05 a cada publicação (1.00 → 1.05 → …).
+ */
+export const BUILD_VERSION = 'Alpha V.1.00';
 
 export const SAVE_KEYS = {
   career: 'matchday-new-game',
@@ -68,6 +71,6 @@ export const FEATURES = {
   calendarRoutines: true,
   medicalTreatment: true,
   externalTunnel: true,
-  /** Mercado: on no dist local; off no GitHub Pages (CI com GITHUB_PAGES=true). */
+  /** Mercado ativo em local e GitHub Pages. */
   transfers: readTransfersFlag(),
 };
