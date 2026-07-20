@@ -1,6 +1,18 @@
 /** Notas exibidas no alerta de atualização para testers. */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.20',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T05:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Elenco',
+        items: ['Tag EMPR. de jogador emprestado agora em laranja.'],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.15',
     date: '2026-07-20',
     publishedAt: '2026-07-20T04:55:00-03:00',
