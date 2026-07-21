@@ -5,6 +5,21 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.43',
+    date: '2026-07-21',
+    publishedAt: '2026-07-21T14:55:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Clima do clube',
+        items: [
+          'Com atrasos ou caixa no vermelho, a torcida esfria e o vestiário fica mais tenso.',
+          'Ao sair da crise, há um alívio leve por algumas rodadas.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.38',
     date: '2026-07-21',
     publishedAt: '2026-07-21T13:30:00-03:00',

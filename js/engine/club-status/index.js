@@ -1,9 +1,15 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
-import { initialBudget, estimateRoundCostBill, bankLoanBalance } from '../economy.js';
+import {
+  initialBudget,
+  estimateRoundCostBill,
+  bankLoanBalance,
+  getBankLoan,
+} from '../economy.js';
 import { STATUS_MAX, STATUS_MIN } from './constants.js';
 import * as environmentRules from './rules/environment.js';
 import * as supportRules from './rules/support.js';
 import * as boardRules from './rules/board.js';
+import { resolveFinanceMood } from './rules/finance-mood.js';
 import { syncFromBudget as syncFinancesRule } from './rules/finances.js';
 
 /**
@@ -170,6 +176,17 @@ export function createClubStatusEngine(deps) {
       const overdrawn = balance < 0;
       const runwayRounds = overdrawn ? -1 : wageBill > 0 ? balance / wageBill : 99;
       const overdraftStreak = Math.max(0, Math.round(Number(user.overdraftStreak) || 0));
+      const loan = getBankLoan(user);
+      const mood = resolveFinanceMood({
+        delinquencyStreak: loan?.delinquencyStreak || 0,
+        overdraftStreak,
+        wageShortfall: !!user.wageShortfall,
+        restricted: !!user.financialRestriction?.active,
+        wasInCrisis: !!user.financeMoodInCrisis,
+        reliefRoundsRemaining: user.financeMoodReliefRounds || 0,
+      });
+      user.financeMoodInCrisis = mood.inCrisis;
+      user.financeMoodReliefRounds = mood.reliefRoundsRemaining;
       applyDeltas(user, {
         board:
           boardRules.financePressureDelta({
@@ -184,6 +201,8 @@ export function createClubStatusEngine(deps) {
             finances: user.finances,
             clamp,
           }),
+        support: mood.support,
+        environment: mood.environment,
       });
       persistAndNotify();
     }

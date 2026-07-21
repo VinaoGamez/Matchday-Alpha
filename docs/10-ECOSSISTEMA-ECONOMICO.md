@@ -134,8 +134,8 @@ Ver simulação: `node scripts/bank-loan-risk-sim.mjs` e doc 09.
 |---------|------------------|----------------------|
 | **Saúde financeira** | Solidez vista pelo banco e pela mesa | Caixa vs baseline da série, runway, dívida bancária (haircut), shortfalls |
 | **Diretoria** | Emprego do técnico | Sofre com finanças baixas, runway curta, shortfall e streak de overdraft (~5–6 rodadas no vermelho = crise forte); não demite *só* por 1–2 rodadas no negativo |
-| **Ambiente** | Clima interno / performance de campo | Hoje quase sem laço direto com dinheiro; indireto via elenco e resultados |
-| **Torcida** | Apoio e público | Bilheteria (lotação); pouco ligada a atraso de salário ainda |
+| **Ambiente** | Clima interno / performance de campo | Resultados + pressão financeira (atraso/OD) por rodada |
+| **Torcida** | Apoio e público | Bilheteria (lotação) + pressão financeira (atraso/OD); restrição de mercado piora um pouco |
 
 **Fins de ciclo:** **demissão** (propostas) ou **falência formal** do clube (sem propostas, save limpo) — ver doc 09.
 
@@ -188,7 +188,6 @@ Essa ordem faz o banco competir com a folha pelo caixa restante — realismo del
 
 **Ainda frouxo / futuro (não bloqueia a visão):**
 
-- saldo negativo / atraso → Torcida / Ambiente;  
 - name rights como receita, não só gasto;  
 - base / vendas futuras / merchandising;  
 - split de salário em empréstimo de jogador (clube de origem × clube atual);  

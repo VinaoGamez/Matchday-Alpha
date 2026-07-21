@@ -2,7 +2,7 @@
  * Build pública para testers.
  * Nomenclatura: Alpha V.X.YY — sobe +0.05 a cada publicação (1.00 → 1.05 → …).
  */
-export const BUILD_VERSION = 'Alpha V.1.38';
+export const BUILD_VERSION = 'Alpha V.1.43';
 
 export const SAVE_KEYS = {
   career: 'matchday-new-game',
@@ -45,7 +45,7 @@ export const MODULE_VERSIONS = {
   matchLiveOrchestration: 5,
   matchLiveSession: 6,
   liveMatchPersist: 2,
-  clubStatus: 8,
+  clubStatus: 9,
   managerRanking: 2,
   seasonGoals: 2,
   managerJob: 2,
