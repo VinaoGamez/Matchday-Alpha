@@ -222,7 +222,24 @@ a.office-sponsor-logo.is-link:hover,a.office-sponsor-logo.is-link:focus-visible{
 .stadium-name-rights-btn{flex:none;padding:7px 12px;border:1px solid #3a6b78;border-radius:6px;background:#0d2430;color:#72e1ff;font:700 10px DM Sans,sans-serif;letter-spacing:.5px;cursor:pointer}
 .stadium-name-rights-btn:hover{border-color:#72e1ff;color:#edf8f5}
 .stadium-name-rights-meta{margin:0 0 14px;color:#8eb8c2;font:600 11px DM Sans,sans-serif;line-height:1.35}
+.stadium-composition-meta{margin:0 0 8px;color:#9eb6b8;font:600 11px/1.45 DM Sans,sans-serif}
+.stadium-name-rights-btn:disabled{opacity:.45;cursor:not-allowed}
 .stadium-gate-hint{margin:12px 0 0;color:#7fa8b0;font-size:10px;line-height:1.4}
+.stadium-visual-mount{margin-top:14px;flex:1;display:flex;flex-direction:column;min-height:180px}
+.stadium-visual{flex:1;display:flex;flex-direction:column;border:1px solid #234650;border-radius:10px;overflow:hidden;background:#0a1820;transition:border-color .35s ease,box-shadow .45s ease}
+.stadium-visual--tier-7,.stadium-visual--tier-8{border-color:#3a6b78;box-shadow:0 0 24px rgba(114,225,255,.08)}
+.stadium-visual--upgraded{animation:stadiumVisualPulse .65s ease}
+.stadium-visual-frame{position:relative;flex:1;min-height:150px;background:linear-gradient(180deg,#0a1820 0%,#0f222a 100%)}
+.stadium-visual-img{width:100%;height:100%;min-height:150px;object-fit:cover;object-position:center 62%;display:block;transition:opacity .45s ease,transform .55s ease}
+.stadium-visual--upgraded .stadium-visual-img{transform:scale(1.02)}
+.stadium-visual-badge{position:absolute;left:10px;bottom:10px;display:grid;gap:2px;padding:7px 10px;border-radius:6px;background:rgba(10,24,32,.82);border:1px solid #3a6b78;backdrop-filter:blur(4px)}
+.stadium-visual-badge span{color:#72e1ff;font:700 9px DM Sans,sans-serif;letter-spacing:.5px}
+.stadium-visual-badge strong{color:#edf8f5;font:700 12px Barlow Condensed,sans-serif;letter-spacing:.4px}
+.stadium-visual-caption{margin:0;padding:8px 12px 4px;border-top:1px solid #1e3a44;color:#9eb6b8;font:600 10px/1.4 DM Sans,sans-serif;text-align:center}
+.stadium-visual-next{margin:0;padding:0 12px 10px;color:#7fa8b0;font:600 9px/1.35 DM Sans,sans-serif;text-align:center}
+.stadium-summary-card .stadium-summary-body{display:flex;flex-direction:column;flex:1;min-height:0}
+.stadium-summary-card{min-height:460px}
+@keyframes stadiumVisualPulse{0%{box-shadow:0 0 0 rgba(114,225,255,0)}45%{box-shadow:0 0 28px rgba(114,225,255,.22)}100%{box-shadow:0 0 0 rgba(114,225,255,0)}}
 .stadium-ticket-row{grid-template-columns:minmax(0,1.2fr) 72px 120px}
 .stadium-ticket-price{justify-self:end;color:#b6ff38;font:700 16px Barlow Condensed,sans-serif;white-space:nowrap}
 .stadium-ticket-controls{justify-self:end;display:flex;gap:6px}

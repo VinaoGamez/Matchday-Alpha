@@ -8,6 +8,34 @@ import {
   resolveOverdraftRate,
   getBankLoan,
 } from './bank-loan.js';
+import {
+  STADIUM_SECTOR_MODEL,
+  STADIUM_SECTOR_DEFS,
+  STRUCTURE_UPGRADE,
+  PITCH_SECTOR_UPGRADE,
+  ensureStadiumSectors,
+  getSectorLevel,
+  effectiveSectorMax,
+  divisionAllowsSector,
+  structureLevelLabel,
+  computeSectorBreakdown,
+  stadiumInvestmentCost,
+  estimateStadiumOpsFromSectors,
+  estimateGateReceiptSectors,
+  getStadiumInvestments,
+  canOfferStadiumNaming,
+  sectorSeats,
+} from './stadium-sectors.js';
+import {
+  generateNamingOffers,
+  assignNamingContract,
+  creditNamingRound,
+  estimateNamingRound,
+  getNamingRights,
+  namingStatusLabel,
+  namingPenaltyMultiplier,
+  NAMING_OFFER_COUNT,
+} from './stadium-naming.js';
 
 /** Orçamento inicial por divisão (R$ fictícios). Calibrado v5. */
 export const INITIAL_BUDGET_BY_DIVISION = {
@@ -504,6 +532,9 @@ export function ensureStaffContract(club, {
 export function estimateStadiumOpsBill(club, division = club?.division || 'A') {
   if (!club) return 0;
   ensureStadium(club, division);
+  if (Number(club.stadiumSectorModel) === STADIUM_SECTOR_MODEL) {
+    return estimateStadiumOpsFromSectors(club, division);
+  }
   const base = STADIUM_OPS_BASE_BY_DIVISION[division] ?? STADIUM_OPS_BASE_BY_DIVISION.D;
   const perThousand = STADIUM_OPS_PER_THOUSAND_SEATS[division] ?? STADIUM_OPS_PER_THOUSAND_SEATS.D;
   const cap = STADIUM_OPS_SOFT_CAP[division] ?? STADIUM_OPS_SOFT_CAP.D;
@@ -996,33 +1027,10 @@ export function ensureBudget(club, division = 'A') {
   return club.budget;
 }
 
-/** Garante campos do estádio (capacidade, estrutura, gramado, ingressos). */
-export function ensureStadium(club, division = 'A') {
+/** Garante campos do estádio (setores, estrutura, gramado, ingressos). */
+export function ensureStadium(club, division = 'A', options = {}) {
   if (!club || typeof club !== 'object') return null;
-  const cfg = STADIUM_CAPACITY_BY_DIVISION[division] || STADIUM_CAPACITY_BY_DIVISION.A;
-  if (!Number.isFinite(Number(club.stadiumCapacityLevel))) {
-    club.stadiumCapacityLevel = 0;
-  } else {
-    club.stadiumCapacityLevel = Math.max(0, Math.min(5, Math.round(Number(club.stadiumCapacityLevel))));
-  }
-  if (!Number.isFinite(Number(club.stadiumCapacity))) {
-    club.stadiumCapacity = cfg.base + club.stadiumCapacityLevel * cfg.step;
-  } else {
-    club.stadiumCapacity = Math.max(cfg.base, Math.min(cfg.max, Math.round(Number(club.stadiumCapacity))));
-  }
-  if (!Number.isFinite(Number(club.stadiumStructure))) {
-    // Usuário legado com gramado médio (2) precisa de estrutura ≥ 1.
-    const migratedPitch = getPitchLevel(club);
-    club.stadiumStructure = Math.max(1, migratedPitch - 1);
-  } else {
-    club.stadiumStructure = getStructureLevel(club);
-  }
-  const pitchLevel = getPitchLevel(club);
-  const pitchCeiling = maxPitchForStructure(club.stadiumStructure);
-  if (pitchLevel > pitchCeiling) {
-    club.stadiumStructure = Math.min(5, Math.max(club.stadiumStructure, pitchLevel - 1));
-  }
-  setPitchLevel(club, Math.min(getPitchLevel(club), maxPitchForStructure(club.stadiumStructure)));
+  ensureStadiumSectors(club, division, options);
   if (!club.stadiumName || typeof club.stadiumName !== 'string') {
     club.stadiumName = 'Estádio Solar';
   }
@@ -1037,13 +1045,16 @@ export function ensureStadium(club, division = 'A') {
       cups: clampTicket('cups', club.ticketPrices.cups),
     };
   }
+  setPitchLevel(club, Math.min(getPitchLevel(club), maxPitchForStructure(getStructureLevel(club))));
   return {
     name: club.stadiumName,
     capacity: club.stadiumCapacity,
-    capacityLevel: club.stadiumCapacityLevel,
+    sectors: { ...(club.stadiumSectors || {}) },
     structure: club.stadiumStructure,
+    structureLabel: structureLevelLabel(getStructureLevel(club)),
     pitchLevel: club.pitchLevel,
     pitchCondition: club.pitchCondition,
+    investments: getStadiumInvestments(club),
     ticketPrices: { ...club.ticketPrices },
   };
 }
@@ -1145,6 +1156,7 @@ export function serviceOverdraft(club, { division = 'C', round = null } = {}) {
 const EMPTY_SEASON_INFLOWS = () => ({
   gate: 0,
   sponsorship: 0,
+  naming: 0,
   tv: 0,
   prize: 0,
   bank_loan: 0,
@@ -1169,6 +1181,7 @@ const seasonCashflowCategory = (type, reason) => {
   if (type === 'credit') {
     if (reason === 'gate_receipt') return ['inflows', 'gate'];
     if (reason === 'sponsorship') return ['inflows', 'sponsorship'];
+    if (reason === 'naming_rights') return ['inflows', 'naming'];
     if (reason === 'tv_rights' || reason === 'tv_advance') return ['inflows', 'tv'];
     if (reason === 'season_prize') return ['inflows', 'prize'];
     if (reason === 'bank_loan') return ['inflows', 'bank_loan'];
@@ -1377,9 +1390,195 @@ export function listUpgrades(club) {
   return listCatalog(CLUB_UPGRADES, club);
 }
 
-/** Lista upgrades do Estádio (gramado / capacidade). */
-export function listStadiumUpgrades(club) {
-  return listCatalog(STADIUM_UPGRADES, club);
+/** Lista investimentos do Estádio (estrutura + setores + gramado). */
+export function listStadiumUpgrades(club, division = club?.division || 'A') {
+  if (!club) return [];
+  ensureStadium(club, division);
+  const rows = [];
+  const structure = getStructureLevel(club);
+
+  const pushRow = ({
+    id,
+    label,
+    description,
+    level,
+    maxLevel,
+    effectiveMax,
+    cost,
+    locked = false,
+    lockLabel = 'Em breve',
+    structureCapped = false,
+    divisionLocked = false,
+    maxed = false,
+  }) => {
+    const blocked = locked || maxed || structureCapped || divisionLocked;
+    rows.push({
+      id,
+      label,
+      shortLabel: label.split(' ')[0].toUpperCase(),
+      description,
+      level,
+      maxLevel,
+      effectiveMax,
+      maxed,
+      structureCapped,
+      divisionLocked,
+      locked,
+      lockLabel,
+      cost: blocked ? 0 : cost,
+      affordable: !blocked && canAfford(club, cost),
+      costLabel: locked
+        ? lockLabel
+        : divisionLocked
+          ? 'Série'
+          : maxed
+            ? 'Máximo'
+            : structureCapped
+              ? 'Estrutura'
+              : formatBudget(cost),
+    });
+  };
+
+  const sLevel = structure;
+  pushRow({
+    id: 'structure',
+    label: STRUCTURE_UPGRADE.label,
+    description: `${STRUCTURE_UPGRADE.description} Atual: ${structureLevelLabel(sLevel)}.`,
+    level: sLevel,
+    maxLevel: STRUCTURE_UPGRADE.maxLevel,
+    effectiveMax: STRUCTURE_UPGRADE.maxLevel,
+    cost: stadiumInvestmentCost(STRUCTURE_UPGRADE, sLevel, division),
+    maxed: sLevel >= STRUCTURE_UPGRADE.maxLevel,
+  });
+
+  for (const sectorId of Object.keys(STADIUM_SECTOR_DEFS)) {
+    const def = STADIUM_SECTOR_DEFS[sectorId];
+    const allowed = divisionAllowsSector(division, sectorId);
+    const level = getSectorLevel(club, sectorId);
+    const effectiveMax = effectiveSectorMax(club, division, sectorId);
+    const unlock = def.unlockStructure;
+    const structureCapped = allowed && level >= effectiveMax && level < def.maxLevel;
+    const divisionLocked = !allowed;
+    const locked = divisionLocked || structure < unlock;
+    const lockLabel = divisionLocked
+      ? 'Indisponível nesta série'
+      : `Exige ${structureLevelLabel(unlock)}`;
+    const maxed = allowed && level >= effectiveMax && effectiveMax >= def.maxLevel;
+    const previewSeats = sectorSeats(sectorId, Math.max(level, 1), division);
+    pushRow({
+      id: `sector_${sectorId}`,
+      label: def.label,
+      description: `${def.description} · ~${previewSeats.toLocaleString('pt-BR')} lug. (nível ${level}).`,
+      level,
+      maxLevel: def.maxLevel,
+      effectiveMax,
+      cost: !locked && !maxed && level < effectiveMax ? stadiumInvestmentCost(def, Math.max(0, level), division) : 0,
+      locked: locked && !maxed,
+      lockLabel,
+      structureCapped: structureCapped && !divisionLocked,
+      divisionLocked,
+      maxed,
+    });
+  }
+
+  const pitchLevel = getPitchLevel(club);
+  const pitchEffective = maxPitchForStructure(structure);
+  pushRow({
+    id: 'pitch',
+    label: PITCH_SECTOR_UPGRADE.label,
+    description: `${PITCH_SECTOR_UPGRADE.description} Atual: ${pitchTierLabel(club)}.`,
+    level: pitchLevel,
+    maxLevel: PITCH_SECTOR_UPGRADE.maxLevel,
+    effectiveMax: pitchEffective,
+    cost: stadiumInvestmentCost(PITCH_SECTOR_UPGRADE, pitchLevel, division),
+    maxed: pitchLevel >= PITCH_SECTOR_UPGRADE.maxLevel,
+    structureCapped: pitchLevel >= pitchEffective && pitchLevel < PITCH_SECTOR_UPGRADE.maxLevel,
+  });
+
+  return rows;
+}
+
+function bumpStadiumInvestments(club) {
+  club.stadiumInvestments = getStadiumInvestments(club) + 1;
+}
+
+export function purchaseStadiumUpgrade(club, upgradeId, division = club?.division || 'A') {
+  if (!club) return { ok: false, error: 'no_club' };
+  ensureStadium(club, division);
+
+  // Compat legado: capacidade → popular
+  const resolvedId = upgradeId === 'capacity' ? 'sector_popular' : upgradeId;
+
+  if (resolvedId === 'structure') {
+    const level = getStructureLevel(club);
+    if (level >= STRUCTURE_UPGRADE.maxLevel) return { ok: false, error: 'max_level', balance: getBalance(club) };
+    const cost = stadiumInvestmentCost(STRUCTURE_UPGRADE, level, division);
+    const payment = spend(club, cost, {
+      reason: 'upgrade:structure',
+      label: STRUCTURE_UPGRADE.label,
+      meta: { fromLevel: level, toLevel: level + 1 },
+    });
+    if (!payment.ok) return payment;
+    club.stadiumStructure = level + 1;
+    bumpStadiumInvestments(club);
+    ensureStadium(club, division);
+    return { ok: true, balance: payment.balance, cost, level: club.stadiumStructure, upgradeId: 'structure' };
+  }
+
+  if (resolvedId === 'pitch') {
+    const level = getPitchLevel(club);
+    const ceiling = maxPitchForStructure(getStructureLevel(club));
+    if (level >= PITCH_SECTOR_UPGRADE.maxLevel) return { ok: false, error: 'max_level', balance: getBalance(club) };
+    if (level >= ceiling) return { ok: false, error: 'structure_cap', balance: getBalance(club) };
+    const cost = stadiumInvestmentCost(PITCH_SECTOR_UPGRADE, level, division);
+    const payment = spend(club, cost, {
+      reason: 'upgrade:pitch',
+      label: PITCH_SECTOR_UPGRADE.label,
+      meta: { fromLevel: level, toLevel: level + 1 },
+    });
+    if (!payment.ok) return payment;
+    setPitchLevel(club, level + 1);
+    bumpStadiumInvestments(club);
+    return { ok: true, balance: payment.balance, cost, level: getPitchLevel(club), upgradeId: 'pitch' };
+  }
+
+  if (resolvedId.startsWith('sector_')) {
+    const sectorId = resolvedId.slice('sector_'.length);
+    const def = STADIUM_SECTOR_DEFS[sectorId];
+    if (!def) return { ok: false, error: 'unknown_upgrade' };
+    if (!divisionAllowsSector(division, sectorId)) {
+      return { ok: false, error: 'division_locked', balance: getBalance(club) };
+    }
+    if (getStructureLevel(club) < def.unlockStructure) {
+      return { ok: false, error: 'structure_cap', balance: getBalance(club) };
+    }
+    const level = getSectorLevel(club, sectorId);
+    const effectiveMax = effectiveSectorMax(club, division, sectorId);
+    if (level >= effectiveMax) return { ok: false, error: 'max_level', balance: getBalance(club) };
+    const cost = stadiumInvestmentCost(def, Math.max(0, level), division);
+    const payment = spend(club, cost, {
+      reason: `upgrade:sector:${sectorId}`,
+      label: def.label,
+      meta: { sectorId, fromLevel: level, toLevel: level + 1 },
+    });
+    if (!payment.ok) return payment;
+    if (!club.stadiumSectors) club.stadiumSectors = {};
+    club.stadiumSectors[sectorId] = level + 1;
+    bumpStadiumInvestments(club);
+    ensureStadium(club, division);
+    return {
+      ok: true,
+      balance: payment.balance,
+      cost,
+      level: club.stadiumSectors[sectorId],
+      upgradeId: resolvedId,
+    };
+  }
+
+  if (STADIUM_UPGRADES[resolvedId]) {
+    return purchaseUpgrade(club, resolvedId);
+  }
+  return { ok: false, error: 'unknown_upgrade' };
 }
 
 /**
@@ -1410,11 +1609,6 @@ export function purchaseUpgrade(club, upgradeId) {
     level: upgrade.getLevel(club),
     cost,
   };
-}
-
-export function purchaseStadiumUpgrade(club, upgradeId) {
-  if (!STADIUM_UPGRADES[upgradeId]) return { ok: false, error: 'unknown_upgrade' };
-  return purchaseUpgrade(club, upgradeId);
 }
 
 export function getTicketPrices(club) {
@@ -1542,12 +1736,44 @@ export function estimateFillRate(club, channel = 'national', options = {}) {
 export function estimateGateReceipt(club, { channel = 'national', division = 'A', game = null, capacity = null } = {}) {
   ensureStadium(club, division);
   const resolvedChannel = game ? ticketChannelFromGame(game) : channel;
+  const attraction = competitionAttraction(game);
+
+  if (Number(club.stadiumSectorModel) === STADIUM_SECTOR_MODEL) {
+    const noise = game ? fixtureAttendanceNoise(game) : resolvedChannel === 'cups' ? 0.02 : 0;
+    const base = estimateGateReceiptSectors(club, {
+      channel: resolvedChannel,
+      division,
+      game,
+      gateScale: GATE_REVENUE_SCALE,
+      ticketPrices: club.ticketPrices,
+      ticketRanges: TICKET_PRICE_RANGE,
+      environment: club.environment,
+      support: club.support,
+    });
+    const boost = attraction.boost + noise;
+    const attendance = Math.round(base.attendance * (1 + boost * 0.45));
+    const cap = base.capacity || Math.max(1000, Number(capacity) || Number(club.stadiumCapacity) || 1000);
+    const clampedAttendance = Math.min(cap, Math.max(0, attendance));
+    const revenue =
+      base.attendance > 0
+        ? Math.round(base.revenue * (clampedAttendance / base.attendance))
+        : base.revenue;
+    return {
+      ...base,
+      channel: resolvedChannel,
+      attendance: clampedAttendance,
+      fillRate: cap > 0 ? clampedAttendance / cap : base.fillRate,
+      revenue,
+      capacity: cap,
+      attraction,
+    };
+  }
+
   const fill = estimateFillRate(club, resolvedChannel, { game });
   const cap = Math.max(1000, Number(capacity) || Number(club.stadiumCapacity) || 12_000);
   const attendance = Math.round(cap * fill);
   const price = club.ticketPrices[resolvedChannel] ?? TICKET_PRICE_RANGE[resolvedChannel].default;
   const revenue = Math.round(attendance * price * GATE_REVENUE_SCALE);
-  const attraction = competitionAttraction(game);
   return {
     channel: resolvedChannel,
     attendance,
@@ -1966,6 +2192,32 @@ export function creditSponsorInstallment(club, { round = null, installments = nu
     paidInstallments: club.sponsors.paidInstallments,
     paidAmount: club.sponsors.paidAmount,
   };
+}
+
+/**
+ * Credita naming do estádio (rodada nacional). Idempotente por `round`.
+ */
+export function creditNamingInstallment(club, { round = null, division = 'A', season = null } = {}) {
+  const result = creditNamingRound(club, { round, division, season });
+  if (!result.ok || result.skipped || !(result.amount > 0)) return result;
+  const naming = getNamingRights(club);
+  const mult = result.multiplier ?? 1;
+  const pct = mult < 1 ? ` · ${Math.round(mult * 100)}%` : '';
+  credit(club, result.amount, {
+    reason: 'naming_rights',
+    label:
+      round != null
+        ? `Naming · ${naming?.sponsor || 'Patrocinador'}${pct} · Rod. ${round}`
+        : `Naming · ${naming?.sponsor || 'Patrocinador'}${pct}`,
+    meta: {
+      sponsor: naming?.sponsor,
+      basePerRound: naming?.basePerRound,
+      multiplier: mult,
+      round,
+      amount: result.amount,
+    },
+  });
+  return result;
 }
 
 /**
@@ -2732,6 +2984,14 @@ export function createEconomyEngine() {
     normalizeSponsorContract,
     estimateSponsorInstallment,
     creditSponsorInstallment,
+    creditNamingInstallment,
+    generateNamingOffers,
+    assignNamingContract,
+    estimateNamingRound,
+    getNamingRights,
+    namingStatusLabel,
+    namingPenaltyMultiplier,
+    SPONSOR_POOL,
     ensureSeasonCashflow,
     getSeasonCashflowStatement,
     ensureTvRights,
@@ -2793,6 +3053,10 @@ export function createEconomyEngine() {
     listStadiumUpgrades,
     purchaseUpgrade,
     purchaseStadiumUpgrade,
+    computeSectorBreakdown,
+    canOfferStadiumNaming,
+    getStadiumInvestments,
+    structureLevelLabel,
     getTicketPrices,
     adjustTicketPrice,
     setTicketPrice,

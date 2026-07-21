@@ -2,6 +2,7 @@ import { MODULE_VERSIONS } from '../../core/constants.js';
 import { sponsorExternalUrl, sponsorLogoSlug } from '../../engine/economy.js';
 import { seasonGoalLiveProgress } from '../../engine/season-goals.js';
 import { seasonGoalGauge } from '../season-summary/goal-gauge.js';
+import { mountStadiumVisual } from './stadium-visual.js';
 
 const SPONSOR_LOGO_URLS = Object.fromEntries(
   Object.entries(
@@ -15,6 +16,21 @@ const SPONSOR_LOGO_URLS = Object.fromEntries(
     return [file, url];
   }),
 );
+
+const NAMING_MODAL_HTML = `
+<div id="namingPickerModal" class="modal hidden">
+  <div class="modal-card sponsor-picker-modal naming-picker-modal">
+    <label>NAMING DO ESTÁDIO</label>
+    <h2 id="namingPickerTitle">Parceiro de naming</h2>
+    <p id="namingPickerLead" class="sponsor-picker-lead">O nome do estádio continua o seu. Escolha um patrocinador — receita por rodada nacional.</p>
+    <div id="namingPickerGrid" class="sponsor-picker-grid master"></div>
+    <p id="namingPickerError" class="sponsor-picker-error"></p>
+    <div class="sponsor-picker-actions">
+      <button type="button" id="closeNamingPicker" class="sponsor-picker-reroll">FECHAR</button>
+      <button type="button" id="confirmNamingPicker" disabled>FECHAR CONTRATO →</button>
+    </div>
+  </div>
+</div>`;
 
 /**
  * Escritório + Estádio — orçamento/investimentos e gestão da arena.
@@ -57,8 +73,16 @@ export function createEconomyFeature(deps) {
     getPitchLevel,
     maxPitchForStructure,
     pitchTierLabel,
-    purchaseStadiumNameRights,
-    nameRightsCost,
+    structureLevelLabel,
+    computeSectorBreakdown,
+    canOfferStadiumNaming,
+    getStadiumInvestments,
+    generateNamingOffers,
+    assignNamingContract,
+    estimateNamingRound,
+    getNamingRights,
+    namingStatusLabel,
+    SPONSOR_POOL,
     TICKET_PRICE_RANGE,
     getUserClub,
     getClubs,
@@ -80,36 +104,151 @@ export function createEconomyFeature(deps) {
     return club;
   };
 
+  let namingOffers = [];
+  let selectedNamingIndex = -1;
+  let namingModalReady = false;
+
+  const namingLogoHtml = name => {
+    const slug = sponsorLogoSlug(name);
+    const url = slug ? SPONSOR_LOGO_URLS[slug] : null;
+    if (url) return `<img src="${url}" alt="" width="56" height="56" loading="lazy">`;
+    return `<span class="sponsor-picker-fallback">${String(name || '?').slice(0, 2).toUpperCase()}</span>`;
+  };
+
+  const ensureNamingModal = () => {
+    if ($('#namingPickerModal')) return;
+    document.body.insertAdjacentHTML('beforeend', NAMING_MODAL_HTML);
+  };
+
+  const renderNamingOffers = () => {
+    const grid = $('#namingPickerGrid');
+    const confirm = $('#confirmNamingPicker');
+    const err = $('#namingPickerError');
+    if (!grid) return;
+    if (err) err.textContent = '';
+    grid.innerHTML = namingOffers
+      .map(
+        (offer, index) => `<button type="button" class="sponsor-picker-card${selectedNamingIndex === index ? ' selected' : ''}" data-naming-offer="${index}">
+          ${namingLogoHtml(offer.sponsor)}
+          <strong>${offer.sponsor}</strong>
+          <small>${formatBudget(offer.perRound)}/rodada</small>
+        </button>`,
+      )
+      .join('');
+    if (confirm) confirm.disabled = selectedNamingIndex < 0;
+  };
+
+  const closeNamingModal = () => {
+    $('#namingPickerModal')?.classList.add('hidden');
+    selectedNamingIndex = -1;
+  };
+
+  const openNamingModal = () => {
+    const club = userClubState();
+    if (!club) return;
+    const division = getUserDivision?.() || club.division || 'A';
+    const season = getCareerSeason?.() ?? 1;
+    const active = getNamingRights?.(club);
+    if (active?.sponsor && Number(active.season) === Number(season)) {
+      pushMessage?.({
+        category: 'club',
+        type: 'budget',
+        title: 'Naming ativo',
+        body: `${namingStatusLabel?.(club, division) || active.sponsor} Nome do estádio: ${club.stadiumName || '—'}.`,
+        round: getCurrentRound?.() ?? 1,
+        meta: { competition: 'Estádio' },
+      });
+      return;
+    }
+    if (!canOfferStadiumNaming?.(club, division)) return;
+    ensureNamingModal();
+    namingOffers =
+      generateNamingOffers?.(club, division, { pool: SPONSOR_POOL || [], random: Math.random }) || [];
+    if (!namingOffers.length) {
+      pushMessage?.({
+        category: 'club',
+        type: 'budget',
+        title: 'Naming indisponível',
+        body: 'Não há patrocinadores disponíveis (evita conflito com Master/Secundários).',
+        round: getCurrentRound?.() ?? 1,
+        meta: { competition: 'Estádio' },
+      });
+      return;
+    }
+    selectedNamingIndex = -1;
+    renderNamingOffers();
+    $('#namingPickerModal')?.classList.remove('hidden');
+  };
+
+  const bindNamingModal = () => {
+    if (namingModalReady) return;
+    ensureNamingModal();
+    onClick('#namingPickerGrid', event => {
+      const card = event.target.closest('[data-naming-offer]');
+      if (!card) return;
+      selectedNamingIndex = Number(card.dataset.namingOffer);
+      renderNamingOffers();
+    });
+    onClick('#closeNamingPicker', closeNamingModal);
+    onClick('#confirmNamingPicker', () => {
+      const club = userClubState();
+      if (!club || selectedNamingIndex < 0) return;
+      const offer = namingOffers[selectedNamingIndex];
+      const division = getUserDivision?.() || club.division || 'A';
+      const season = getCareerSeason?.() ?? 1;
+      const result = assignNamingContract?.(club, offer, { season, division });
+      if (!result?.ok) {
+        const err = $('#namingPickerError');
+        if (err) err.textContent = 'Não foi possível fechar o contrato.';
+        return;
+      }
+      closeNamingModal();
+      pushMessage?.({
+        category: 'club',
+        type: 'budget',
+        title: `Naming · ${offer.sponsor}`,
+        body: `${formatBudget(offer.perRound)}/rodada nacional. Estádio continua "${club.stadiumName || '—'}".`,
+        round: getCurrentRound?.() ?? 1,
+        meta: { competition: 'Estádio' },
+      });
+      renderStadium();
+      renderOffice();
+      onBudgetChanged?.();
+    });
+    namingModalReady = true;
+  };
+
   const renderUpgradeRows = (listEl, rows, buyAttr) => {
     if (!listEl) return;
     listEl.innerHTML = rows
       .map(row => {
         const locked = !!row.locked;
         const structureCapped = !!row.structureCapped;
-        const levelText = locked
-          ? '—'
-          : structureCapped
-            ? `${row.level}/${row.maxLevel}`
-            : `${row.level}/${row.maxLevel}`;
-        const disabled = locked || row.maxed || structureCapped || !row.affordable;
+        const divisionLocked = !!row.divisionLocked;
+        const levelText = locked ? '—' : `${row.level}/${row.maxLevel}`;
+        const disabled = locked || row.maxed || structureCapped || divisionLocked || !row.affordable;
         const title = locked
-          ? 'Disponível em atualização futura'
-          : structureCapped
-            ? 'Melhore a estrutura do estádio para liberar o próximo nível de gramado'
-            : row.maxed
-              ? 'Nível máximo'
-              : row.affordable
-                ? `Investir ${row.costLabel}`
-                : `Saldo insuficiente (${row.costLabel})`;
+          ? row.lockLabel || 'Disponível em atualização futura'
+          : divisionLocked
+            ? 'Setor indisponível nesta série'
+            : structureCapped
+              ? 'Melhore a estrutura do estádio para liberar o próximo nível'
+              : row.maxed
+                ? 'Nível máximo'
+                : row.affordable
+                  ? `Investir ${row.costLabel}`
+                  : `Saldo insuficiente (${row.costLabel})`;
         const actionLabel = locked
-          ? 'EM BREVE'
+          ? row.lockLabel?.slice(0, 12).toUpperCase() || 'EM BREVE'
           : row.maxed
             ? 'MÁX'
-            : structureCapped
-              ? 'ESTRUTURA'
-              : row.costLabel;
-        const buyAttrHtml = locked || structureCapped ? '' : `${buyAttr}="${row.id}"`;
-        return `<div class="economy-invest-row${row.maxed ? ' maxed' : ''}${locked ? ' locked' : ''}${structureCapped ? ' structure-capped' : ''}" data-upgrade="${row.id}">
+            : divisionLocked
+              ? 'SÉRIE'
+              : structureCapped
+                ? 'ESTRUTURA'
+                : row.costLabel;
+        const buyAttrHtml = locked || structureCapped || divisionLocked ? '' : `${buyAttr}="${row.id}"`;
+        return `<div class="economy-invest-row${row.maxed ? ' maxed' : ''}${locked ? ' locked' : ''}${structureCapped ? ' structure-capped' : ''}${divisionLocked ? ' division-locked' : ''}" data-upgrade="${row.id}">
           <div>
             <b>${row.label}</b>
             <small>${row.description}</small>
@@ -541,31 +680,65 @@ export function createEconomyFeature(deps) {
     const capacityEl = $('#stadiumCapacityValue');
     const structureEl = $('#stadiumStructureValue');
     const pitchEl = $('#stadiumPitchValue');
-    const pitchCapEl = $('#stadiumPitchCapValue');
+    const investmentsEl = $('#stadiumInvestmentsValue');
+    const compositionEl = $('#stadiumCompositionMeta');
     const gateNatEl = $('#stadiumGateNational');
     const gateCupEl = $('#stadiumGateCups');
     const hintEl = $('#stadiumGateHint');
+    const namingBtn = $('#openStadiumNameRights');
+    const rightsMeta = $('#stadiumNameRightsMeta');
     const national = estimateGateReceipt(club, { channel: 'national', division });
     const cups = estimateGateReceipt(club, { channel: 'cups', division });
-    const structureLevel = getStructureLevel?.(club) ?? (Number(club.stadiumStructure) || 0);
-    const pitchLevel = getPitchLevel?.(club) ?? (Number(club.pitchLevel) || 0);
-    const pitchCap = maxPitchForStructure?.(structureLevel) ?? Math.min(5, structureLevel + 1);
+    const structureLevel = getStructureLevel?.(club) ?? 0;
     if (nameEl) nameEl.textContent = club.stadiumName || 'Estádio Solar';
-    const rightsMeta = $('#stadiumNameRightsMeta');
-    if (rightsMeta && nameRightsCost) {
-      rightsMeta.textContent = `Name Rights: ${formatBudget(nameRightsCost(division))} · único jeito de renomear durante a campanha.`;
+    if (structureEl) {
+      structureEl.textContent = `${structureLevelLabel?.(structureLevel) || structureLevel} (${structureLevel}/5)`;
     }
+    if (investmentsEl) investmentsEl.textContent = String(getStadiumInvestments?.(club) ?? 0);
     if (capacityEl) capacityEl.textContent = formatCapacity(club.stadiumCapacity);
-    if (structureEl) structureEl.textContent = `${structureLevel}/5`;
     if (pitchEl) pitchEl.textContent = pitchTierLabel?.(club) || 'Médio';
-    if (pitchCapEl) pitchCapEl.textContent = `${pitchLevel}/${pitchCap}`;
+    if (compositionEl && computeSectorBreakdown) {
+      const { rows, total } = computeSectorBreakdown(club, division);
+      compositionEl.textContent =
+        rows.length > 0
+          ? rows
+              .map(r => `${r.label} ${Math.round(r.share * 100)}% (${formatCapacity(r.seats)})`)
+              .join(' · ')
+          : 'Sem setores ativos.';
+    }
     if (gateNatEl) gateNatEl.textContent = formatBudget(national.revenue);
     if (gateCupEl) gateCupEl.textContent = formatBudget(cups.revenue);
     if (hintEl) {
       const env = Math.round(Number(club.environment) || 0);
-      hintEl.textContent = `Lotação no dia do jogo varia com Ambiente (${env}%), torcida, preço e fase (mata-mata agudo enche mais). Estimativa média: Nacional ${Math.round(national.fillRate * 100)}% · Copas ${Math.round(cups.fillRate * 100)}%. Gramado limitado pela estrutura (${structureLevel}/5).`;
+      hintEl.textContent = `Estimativa média · Ambiente ${env}% · Nacional ${Math.round(national.fillRate * 100)}% lotação · Copas ${Math.round(cups.fillRate * 100)}%. Setores premium elevam o ticket médio.`;
     }
-    renderUpgradeRows($('#stadiumUpgradesList'), listStadiumUpgrades(club), 'data-buy-stadium');
+    if (namingBtn && rightsMeta) {
+      const season = getCareerSeason?.() ?? 1;
+      const active = getNamingRights?.(club);
+      const hasContract = active?.sponsor && Number(active.season) === Number(season);
+      const eligible = canOfferStadiumNaming?.(club, division);
+      if (hasContract) {
+        namingBtn.disabled = false;
+        namingBtn.textContent = 'NAMING ATIVO';
+        rightsMeta.textContent = `${namingStatusLabel?.(club, division) || ''} Nome do estádio: ${club.stadiumName || '—'}.`;
+      } else if (eligible) {
+        namingBtn.disabled = false;
+        namingBtn.textContent = 'NEGOCIAR NAMING';
+        rightsMeta.textContent =
+          'Parceiro paga por rodada. Seu estádio mantém o nome escolhido no Novo Jogo.';
+      } else {
+        namingBtn.disabled = true;
+        namingBtn.textContent = 'NAMING';
+        rightsMeta.textContent =
+          namingStatusLabel?.(club, division) ||
+          'Naming só na Série A ou B, com estrutura intermediária e 2 investimentos.';
+      }
+    }
+    renderUpgradeRows($('#stadiumUpgradesList'), listStadiumUpgrades(club, division), 'data-buy-stadium');
+    mountStadiumVisual($('#stadiumVisualMount'), club, division, {
+      getStructureLevel,
+      getPitchLevel,
+    });
     renderTickets(club);
   };
 
@@ -611,6 +784,7 @@ export function createEconomyFeature(deps) {
   const INFLOW_CATEGORIES = [
     { key: 'gate', label: 'Bilheteria', match: reason => reason === 'gate_receipt' },
     { key: 'sponsorship', label: 'Patrocínios', match: reason => reason === 'sponsorship' },
+    { key: 'naming', label: 'Naming', match: reason => reason === 'naming_rights' },
     {
       key: 'tv',
       label: 'Direitos de TV',
@@ -973,6 +1147,12 @@ export function createEconomyFeature(deps) {
       prevention: 'Programa de prevenção',
       pitch: 'Manutenção do gramado',
       structure: 'Estrutura do estádio',
+      pitch: 'Manutenção do gramado',
+      sector_popular: 'Popular',
+      sector_stands: 'Arquibancada',
+      sector_seats: 'Cadeiras numeradas',
+      sector_boxes: 'Camarotes',
+      sector_vip: 'VIP / Hospitality',
       capacity: 'Expansão de capacidade',
     })[upgradeId] || upgradeId;
 
@@ -1155,7 +1335,57 @@ export function createEconomyFeature(deps) {
     onClick('#stadiumUpgradesList', event => {
       const button = event.target.closest('[data-buy-stadium]');
       if (!button || button.disabled) return;
-      handlePurchase(button.dataset.buyStadium, purchaseStadiumUpgrade || purchaseUpgrade);
+      const club = userClubState();
+      if (!club) return;
+      const division = getUserDivision?.() || club.division || 'A';
+      const upgradeId = button.dataset.buyStadium;
+      const buyFn = purchaseStadiumUpgrade || purchaseUpgrade;
+      const result = buyFn.length >= 3 ? buyFn(club, upgradeId, division) : buyFn(club, upgradeId);
+      if (!result.ok) {
+        if (result.error === 'insufficient_funds') {
+          pushMessage?.({
+            category: 'club',
+            type: 'budget',
+            title: 'Orçamento insuficiente',
+            body: 'Não há saldo para este investimento. Espere a premiação/bilheteria ou escolha um upgrade mais barato.',
+            round: getCurrentRound?.() ?? 1,
+            meta: { competition: 'Finanças' },
+          });
+        } else if (result.error === 'structure_cap') {
+          pushMessage?.({
+            category: 'club',
+            type: 'budget',
+            title: 'Estrutura insuficiente',
+            body: 'Invista na estrutura do estádio para liberar este setor ou nível de gramado.',
+            round: getCurrentRound?.() ?? 1,
+            meta: { competition: 'Estádio' },
+          });
+        } else if (result.error === 'division_locked') {
+          pushMessage?.({
+            category: 'club',
+            type: 'budget',
+            title: 'Série inferior',
+            body: 'Este setor não está disponível na sua divisão atual.',
+            round: getCurrentRound?.() ?? 1,
+            meta: { competition: 'Estádio' },
+          });
+        }
+        renderOffice();
+        renderStadium();
+        onBudgetChanged?.();
+        return;
+      }
+      pushMessage?.({
+        category: 'club',
+        type: 'budget',
+        title: `Investimento · ${upgradeTitle(upgradeId)}`,
+        body: `Gasto de ${formatBudget(result.cost)}. Nível ${result.level}. Orçamento atual: ${formatBudget(result.balance)}.`,
+        round: getCurrentRound?.() ?? 1,
+        meta: { competition: 'Estádio', upgradeId },
+      });
+      renderOffice();
+      renderStadium();
+      onBudgetChanged?.();
     });
 
     onClick('#stadiumTicketsList', event => {
@@ -1169,45 +1399,8 @@ export function createEconomyFeature(deps) {
     });
 
     onClick('#openStadiumNameRights', () => {
-      const club = userClubState();
-      if (!club || !purchaseStadiumNameRights) return;
-      const division = getUserDivision?.() || club.division || 'A';
-      const cost = nameRightsCost?.(division) ?? 0;
-      const next = window.prompt(
-        `Novo nome do estádio (custa ${formatBudget(cost)}):`,
-        club.stadiumName || '',
-      );
-      if (next == null) return;
-      const result = purchaseStadiumNameRights(club, next, { division });
-      if (!result.ok) {
-        const body =
-          result.error === 'insufficient_funds'
-            ? `Saldo insuficiente. Name Rights custa ${formatBudget(result.cost ?? cost)}.`
-            : result.error === 'same_name'
-              ? 'Informe um nome diferente do atual.'
-              : 'Use um nome com pelo menos 3 caracteres.';
-        pushMessage?.({
-          category: 'club',
-          type: 'budget',
-          title: 'Name Rights',
-          body,
-          round: getCurrentRound?.() ?? 1,
-          meta: { competition: 'Estádio' },
-        });
-        renderStadium();
-        onBudgetChanged?.();
-        return;
-      }
-      pushMessage?.({
-        category: 'club',
-        type: 'budget',
-        title: `Name Rights · ${result.name}`,
-        body: `Estádio renomeado por ${formatBudget(result.cost)}. Orçamento atual: ${formatBudget(result.balance)}.`,
-        round: getCurrentRound?.() ?? 1,
-        meta: { competition: 'Estádio' },
-      });
-      renderStadium();
-      onBudgetChanged?.();
+      bindNamingModal();
+      openNamingModal();
     });
 
     onClick('#openOfficeFromDashboard', () => openView?.('office'));
@@ -1230,6 +1423,7 @@ export function createEconomyFeature(deps) {
     bindHandlers,
     init: () => {
       bindHandlers();
+      bindNamingModal();
       renderOffice();
       renderStadium();
     },

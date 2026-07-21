@@ -5,6 +5,30 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.48',
+    date: '2026-07-21',
+    publishedAt: '2026-07-21T17:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Estádio',
+        items: [
+          'A arena agora evolui por setores — Popular, Arquibancada, Cadeiras, Camarotes e VIP — cada um com preço e lotação próprios.',
+          'Novos jogos começam com estádio menor; investir na estrutura destrava setores e expande a bilheteria.',
+          'Ilustração do estádio na aba Estádio muda conforme você investe (8 níveis visuais).',
+          'Saves antigos migram automaticamente para o novo modelo de setores.',
+        ],
+      },
+      {
+        label: 'Naming do estádio',
+        items: [
+          'Na Série A ou B, com estrutura e investimentos suficientes, você pode fechar parceiro de naming — receita por rodada nacional.',
+          'O nome do estádio continua o seu; o patrocinador aparece como parceiro. Na crise financeira, a receita cai ou zera.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.43',
     date: '2026-07-21',
     publishedAt: '2026-07-21T14:55:00-03:00',

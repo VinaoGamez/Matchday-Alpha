@@ -217,29 +217,31 @@
       </div>
     </section>
     <section id="stadium" class="view stadium-view">
-      <div class="title"><p>INFRAESTRUTURA E BILHETERIA</p><h1>Estádio</h1><span>Consulte a estrutura, invista no gramado e na capacidade, e defina os preços de ingresso.</span></div>
+      <div class="title"><p>INFRAESTRUTURA E BILHETERIA</p><h1>Estádio</h1><span>Estrutura destrava setores; capacidade e ticket médio vêm da composição da arena.</span></div>
       <div class="office-stadium-layout">
         <article class="card stadium-summary-card">
           <label>ESTÁDIO</label>
           <div class="stadium-summary-body">
             <div class="stadium-name-row">
               <strong id="stadiumNameLabel">Estádio Solar</strong>
-              <button type="button" id="openStadiumNameRights" class="stadium-name-rights-btn">NAME RIGHTS</button>
+              <button type="button" id="openStadiumNameRights" class="stadium-name-rights-btn">NAMING</button>
             </div>
-            <p id="stadiumNameRightsMeta" class="stadium-name-rights-meta">Renomear o estádio tem custo por divisão.</p>
+            <p id="stadiumNameRightsMeta" class="stadium-name-rights-meta">Parceiro de naming — receita por rodada (nome do estádio é seu).</p>
             <div class="office-stats stadium-summary-stats">
               <div><small>CAPACIDADE</small><b id="stadiumCapacityValue">—</b></div>
               <div><small>ESTRUTURA</small><b id="stadiumStructureValue">—</b></div>
               <div><small>GRAMADO</small><b id="stadiumPitchValue">—</b></div>
-              <div><small>TETO GRAMADO</small><b id="stadiumPitchCapValue">—</b></div>
+              <div><small>INVESTIMENTOS</small><b id="stadiumInvestmentsValue">—</b></div>
               <div><small>BILHETERIA NAC.</small><b id="stadiumGateNational">—</b></div>
               <div><small>BILHETERIA COPA</small><b id="stadiumGateCups">—</b></div>
             </div>
-            <p id="stadiumGateHint" class="stadium-gate-hint">Preço alto reduz público; preço baixo enche mais o estádio.</p>
+            <p id="stadiumCompositionMeta" class="stadium-composition-meta">—</p>
+            <p id="stadiumGateHint" class="stadium-gate-hint">Ticket médio varia com a composição dos setores (popular enche mais; VIP paga mais).</p>
+            <div id="stadiumVisualMount" class="stadium-visual-mount"></div>
           </div>
         </article>
         <article class="card stadium-upgrades" id="stadiumUpgrades" aria-label="Melhorias do estádio">
-          <label>MELHORIAS DO ESTÁDIO</label>
+          <label>INVESTIMENTOS DO ESTÁDIO</label>
           <div class="economy-invest-head"><span>MELHORIA</span><span>NÍVEL</span><span>INVESTIR</span></div>
           <div id="stadiumUpgradesList" class="economy-investments-list"></div>
         </article>

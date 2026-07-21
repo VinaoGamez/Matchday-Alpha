@@ -281,6 +281,10 @@ export async function bootEngine({ bus } = {}) {
     getPitchLevel,
     maxPitchForStructure,
     pitchTierLabel,
+    structureLevelLabel,
+    computeSectorBreakdown,
+    canOfferStadiumNaming,
+    getStadiumInvestments,
     credit,
     spend,
     canAfford,
@@ -314,6 +318,13 @@ export async function bootEngine({ bus } = {}) {
     nameRightsCost,
     estimateSponsorInstallment,
     creditSponsorInstallment,
+    creditNamingInstallment,
+    generateNamingOffers,
+    assignNamingContract,
+    estimateNamingRound,
+    getNamingRights,
+    namingStatusLabel,
+    SPONSOR_POOL,
     ensureTvRights,
     estimateTvInstallment,
     estimateTvRemaining,
@@ -326,6 +337,7 @@ export async function bootEngine({ bus } = {}) {
     getSponsors,
     getTvRights,
     TICKET_PRICE_RANGE,
+    sponsorLogoSlug,
   } = economy;
   let economyUi;
   // Declarados cedo: playerUnavailable / orderRosterForFormation leem durante o boot.
@@ -630,16 +642,16 @@ export async function bootEngine({ bus } = {}) {
     if(club.name===userClub){
       if(savedNewGame?.stadiumName)club.stadiumName=String(savedNewGame.stadiumName).trim();
       ensureBudget(club,club.division||userDivision);
-      ensureStadium(club,club.division||userDivision);
+      if(savedNewGame){
+        ensureStadium(club,club.division||userDivision,{newGame:true});
+      }else{
+        ensureStadium(club,club.division||userDivision);
+      }
     }
     club.medicalInvestment=club.medicalInvestment??0;
     club.preventionProgram=club.preventionProgram??0;
-    // Usuário começa em gramado médio (nível 2); estrutura 1 libera até esse teto.
-    if(club.name===userClub){
-      club.pitchCondition=club.pitchCondition||'average';
-      club.pitchLevel=Number.isFinite(Number(club.pitchLevel))?club.pitchLevel:2;
-      club.stadiumStructure=Number.isFinite(Number(club.stadiumStructure))?club.stadiumStructure:1;
-    }else{
+    // Setores v2: ensureStadium() no bloco do usuário define estrutura/gramado/setores.
+    if(club.name!==userClub){
       club.pitchCondition=club.pitchCondition||'good';
       club.pitchLevel=Number.isFinite(Number(club.pitchLevel))?club.pitchLevel:3;
       club.stadiumStructure=Number.isFinite(Number(club.stadiumStructure))?club.stadiumStructure:2;
@@ -842,6 +854,7 @@ export async function bootEngine({ bus } = {}) {
       titlePoints:manager?.titlePoints||0,
     });
     creditSponsorInstallment(clubs[userClub],{round,installments});
+    creditNamingInstallment(clubs[userClub],{round,division:userDivision,season:careerSeason});
     // TV: parcela no mando de campo (creditHomeTv / creditLeagueHomeTvForGames).
     // Serviço do empréstimo bancário (juros + amortização mínima) na rodada nacional.
     serviceBankLoan(clubs[userClub],{division:userDivision,round,season:careerSeason});
@@ -1026,12 +1039,20 @@ export async function bootEngine({ bus } = {}) {
     const savedStadium=savedSeason?.userStadium;
     if(savedStadium&&typeof savedStadium==='object'){
       if(Number.isFinite(Number(savedStadium.capacity)))clubs[userClub].stadiumCapacity=Number(savedStadium.capacity);
+      if(savedStadium.sectors&&typeof savedStadium.sectors==='object'){
+        clubs[userClub].stadiumSectors={...savedStadium.sectors};
+      }
+      if(Number.isFinite(Number(savedStadium.investments)))clubs[userClub].stadiumInvestments=Number(savedStadium.investments);
+      if(Number.isFinite(Number(savedStadium.sectorModel)))clubs[userClub].stadiumSectorModel=Number(savedStadium.sectorModel);
       if(Number.isFinite(Number(savedStadium.capacityLevel)))clubs[userClub].stadiumCapacityLevel=Number(savedStadium.capacityLevel);
       if(savedStadium.name)clubs[userClub].stadiumName=savedStadium.name;
       if(savedStadium.ticketPrices)clubs[userClub].ticketPrices={...savedStadium.ticketPrices};
       if(Number.isFinite(Number(savedStadium.structure)))clubs[userClub].stadiumStructure=Number(savedStadium.structure);
       if(Number.isFinite(Number(savedStadium.pitchLevel)))clubs[userClub].pitchLevel=Number(savedStadium.pitchLevel);
       if(savedStadium.pitchCondition)clubs[userClub].pitchCondition=savedStadium.pitchCondition;
+      if(savedStadium.namingRights&&typeof savedStadium.namingRights==='object'){
+        clubs[userClub].namingRights={...savedStadium.namingRights};
+      }
     }else if(savedNewGame?.stadiumName){
       clubs[userClub].stadiumName=String(savedNewGame.stadiumName).trim();
     }
@@ -2462,8 +2483,17 @@ export async function bootEngine({ bus } = {}) {
     getPitchLevel,
     maxPitchForStructure,
     pitchTierLabel,
-    purchaseStadiumNameRights,
-    nameRightsCost,
+    structureLevelLabel,
+    computeSectorBreakdown,
+    canOfferStadiumNaming,
+    getStadiumInvestments,
+    generateNamingOffers,
+    assignNamingContract,
+    estimateNamingRound,
+    getNamingRights,
+    namingStatusLabel,
+    SPONSOR_POOL,
+    sponsorLogoSlug,
     TICKET_PRICE_RANGE,
     getUserClub:()=>userClub,
     getClubs:()=>clubs,
@@ -5211,11 +5241,14 @@ export async function bootEngine({ bus } = {}) {
     const userStadium={
       name:userClubState.stadiumName||'Estádio Solar',
       capacity:userClubState.stadiumCapacity,
-      capacityLevel:userClubState.stadiumCapacityLevel??0,
+      sectors:{...(userClubState.stadiumSectors||{})},
+      investments:getStadiumInvestments(userClubState),
+      sectorModel:userClubState.stadiumSectorModel??2,
       structure:userClubState.stadiumStructure??0,
       pitchLevel:userClubState.pitchLevel??0,
       pitchCondition:userClubState.pitchCondition||'average',
       ticketPrices:{national:userClubState.ticketPrices?.national,cups:userClubState.ticketPrices?.cups},
+      namingRights:userClubState.namingRights?{...userClubState.namingRights}:null,
     };
     const userSponsors=!opts.resetUserEconomy&&userClubState.sponsors?{
       season:userClubState.sponsors.season,
