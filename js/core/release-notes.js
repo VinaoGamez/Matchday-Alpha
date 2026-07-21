@@ -5,6 +5,30 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.49',
+    date: '2026-07-21',
+    publishedAt: '2026-07-21T19:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Estádio · visual por divisão',
+        items: [
+          'Ilustração da arena muda conforme a Série (A, B, C ou D) — cada divisão tem escala visual própria.',
+          'O badge mostra o tier e a série do clube (ex.: TIER 4/8 · Série D).',
+        ],
+      },
+      {
+        label: 'Empréstimo bancário',
+        items: [
+          'Financiamento por parcelas: escolha 12x, 24x, 36x ou 48x na contratação — mais parcelas, taxa maior.',
+          'A taxa fica travada no contrato; o Escritório mostra como ela foi calculada (série, saúde do clube, prazo).',
+          'Juros saem do caixa automaticamente; a parcela do principal você paga no Escritório.',
+          'Em atraso, a parcela mostra encargos (juros + multa). Saves antigos migram para 24x.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.48',
     date: '2026-07-21',
     publishedAt: '2026-07-21T17:00:00-03:00',

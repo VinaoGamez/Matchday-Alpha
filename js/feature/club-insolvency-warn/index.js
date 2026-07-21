@@ -13,7 +13,7 @@ const MODAL_HTML = `
         <small>Este aviso não fica na caixa de mensagens</small>
       </header>
       <p class="manager-sack-empty" id="clubInsolvencyWarnDetail">
-        No Escritório, pague o mínimo do empréstimo para estancar os compostos. O adiantamento de TV também está disponível agora — use o botão em Fluxo de caixa (TV / mando) para ganhar folga orçamentária imediata (com deságio; sem parcelas de TV no resto da temporada). Se a crise seguir, o mercado de compras pode ser bloqueado (restrição financeira). Fechar descarta este alerta.
+        No Escritório, pague a parcela do empréstimo para estancar os compostos. O adiantamento de TV também está disponível agora — use o botão em Fluxo de caixa (TV / mando) para ganhar folga orçamentária imediata (com deságio; sem parcelas de TV no resto da temporada). Se a crise seguir, o mercado de compras pode ser bloqueado (restrição financeira). Fechar descarta este alerta.
       </p>
     </section>
     <div class="manager-sack-actions">

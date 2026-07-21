@@ -14,12 +14,14 @@ import {
   takeBankLoan,
   repayBankLoan,
   payBankLoanMinimum,
+  payBankLoanInstallment,
   serviceBankLoan,
   getBankLoan,
   clearBankLoan,
   serializeBankLoan,
   applyBankLoanSnapshot,
   loanDelinquencyRateMult,
+  previewLoanPlan,
 } from '../js/engine/bank-loan.js';
 import { getBalance, ensureBudget } from '../js/engine/economy.js';
 
@@ -185,14 +187,15 @@ check('contratar respeita o crédito calculado', () => {
 check('híbrido: juros auto sem amortizar o principal', () => {
   const club = clubOf({ division: 'B', budget: 3_000_000, finances: 85 });
   const principal = Math.min(1_000_000, resolveBankCredit(club, { division: 'B' }).available);
-  assert(takeBankLoan(club, principal, { division: 'B', round: 1 }).ok, 'take');
+  assert(takeBankLoan(club, principal, { division: 'B', round: 1, term: 24 }).ok, 'take');
   const cashBefore = getBalance(club);
   const result = serviceBankLoan(club, { division: 'B', round: 5, season: 2026 });
   assert(result.ok && !result.skipped, 'serviced');
   assert(result.interestPaid > 0, 'juros cobrados');
   assert(result.amortPaid === 0, 'sem amort automática');
   assert(getBankLoan(club).balance === principal, 'principal intacto');
-  assert(getBankLoan(club).minAmortDue === Math.round(principal * BANK_LOAN_MIN_AMORT_RATIO), 'due');
+  const expectedInstallment = Math.round(principal / 24);
+  assert(getBankLoan(club).minAmortDue === expectedInstallment, 'due');
   assert(getBalance(club) === cashBefore - result.interestPaid, 'só juros no caixa');
   assert(serviceBankLoan(club, { division: 'B', round: 5, season: 2026 }).skipped, 'idempotente');
 });
@@ -260,15 +263,38 @@ check('amortização voluntária e quitação', () => {
   clearBankLoan(club);
 });
 
-check('min amort ratio 5.5%', () => {
-  assert(BANK_LOAN_MIN_AMORT_RATIO === 0.055, 'ratio');
+check('parcela fixa por prazo contratado', () => {
   const club = clubOf({ budget: 8_000_000, finances: 90 });
-  const fee = Math.min(1_000_000, resolveBankCredit(club, { division: 'C' }).available);
-  takeBankLoan(club, fee, { division: 'C' });
+  const fee = Math.min(1_200_000, resolveBankCredit(club, { division: 'C' }).available);
+  takeBankLoan(club, fee, { division: 'C', term: 24 });
+  const installment = Math.round(fee / 24);
   assert(
-    bankLoanStatus(club, { division: 'C' }).minAmort === Math.round(fee * 0.055),
-    'minAmort',
+    bankLoanStatus(club, { division: 'C' }).installmentPrincipal === installment,
+    'installmentPrincipal',
   );
+  assert(bankLoanStatus(club, { division: 'C' }).minAmort === installment, 'minAmort');
+});
+
+check('prazo maior encarece taxa e juros totais', () => {
+  const baseRate = 0.017;
+  const shortPlan = previewLoanPlan(1_000_000, baseRate, 12);
+  const longPlan = previewLoanPlan(1_000_000, baseRate, 48);
+  assert(shortPlan.rate < longPlan.rate, 'taxa menor no prazo curto');
+  assert(shortPlan.totalInterest < longPlan.totalInterest, 'juros totais menores no prazo curto');
+  assert(shortPlan.installmentPrincipal > longPlan.installmentPrincipal, 'parcela maior no prazo curto');
+});
+
+check('parcela aumenta com encargos de atraso', () => {
+  const club = clubOf({ division: 'A', budget: 20_000_000, finances: 90 });
+  const fee = Math.min(2_000_000, resolveBankCredit(club, { division: 'A' }).available);
+  takeBankLoan(club, fee, { division: 'A', term: 24 });
+  serviceBankLoan(club, { division: 'A', round: 1, season: 2026 });
+  serviceBankLoan(club, { division: 'A', round: 2, season: 2026 });
+  const st = bankLoanStatus(club, { division: 'A' });
+  assert(st.installmentQuote.adjusted, 'ajustada');
+  assert(st.installmentQuote.currentInstallment > st.installmentQuote.baseInstallment, 'maior');
+  assert(st.rateBreakdown?.locked === true, 'taxa travada');
+  assert(st.installmentsTotal === 24, '24x');
 });
 
 check('juros sem caixa positivo aprofunda saldo negativo', () => {

@@ -1,5 +1,12 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { sponsorExternalUrl, sponsorLogoSlug } from '../../engine/economy.js';
+import {
+  BANK_LOAN_TERM_OPTIONS,
+  DEFAULT_BANK_LOAN_TERM,
+  previewLoanPlan,
+  buildLoanRateBreakdown,
+  loanTermRateMultiplier,
+} from '../../engine/bank-loan.js';
 import { seasonGoalLiveProgress } from '../../engine/season-goals.js';
 import { seasonGoalGauge } from '../season-summary/goal-gauge.js';
 import { mountStadiumVisual } from './stadium-visual.js';
@@ -427,17 +434,39 @@ export function createEconomyFeature(deps) {
 
   const bankLoanRejectCopy = reason =>
     ({
-      loan_active: 'Já existe um empréstimo ativo. Amortize o saldo antes de pedir outro.',
+      loan_active: 'Já existe um empréstimo ativo. Quite ou amortize o saldo antes de pedir outro.',
       over_limit: 'Valor acima do crédito que o banco libera hoje para o seu clube.',
       credit_denied:
         'Banco recusou crédito. Melhore receitas, controle a folha e recupere a saúde financeira para voltar a negociar.',
       invalid_amount: 'Informe um valor válido.',
-      insufficient_funds: 'Caixa insuficiente para essa amortização.',
-      no_loan: 'Não há empréstimo ativo para amortizar.',
+      insufficient_funds: 'Caixa insuficiente para essa parcela.',
+      no_loan: 'Não há empréstimo ativo.',
       no_club: 'Clube indisponível.',
     })[reason] || 'Não foi possível concluir a operação bancária.';
 
-  /** Aceita 1800000, 1.800.000, 1,8 mi, R$ 500.000 */
+  /** Máscara R$ X.XXX,XX — armazena centavos em dataset.loanCents */
+  const formatLoanCurrencyInput = cents => {
+    const n = Math.max(0, Math.round(Number(cents) || 0));
+    if (!n) return '';
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n / 100);
+  };
+
+  const applyLoanCurrencyMask = input => {
+    if (!input) return;
+    const digits = String(input.value || '').replace(/\D/g, '');
+    const cents = digits ? parseInt(digits, 10) : 0;
+    input.dataset.loanCents = String(cents);
+    input.value = formatLoanCurrencyInput(cents);
+  };
+
+  const readLoanInputReais = input => {
+    if (!input) return 0;
+    const cents = Math.max(0, parseInt(input.dataset.loanCents || '0', 10) || 0);
+    if (cents > 0) return Math.round(cents / 100);
+    return parseLoanAmount(input.value);
+  };
+
+  /** Aceita máscara R$, 1800000, 1.800.000, 1,8 mi */
   const parseLoanAmount = raw => {
     let s = String(raw || '')
       .trim()
@@ -483,10 +512,116 @@ export function createEconomyFeature(deps) {
           </div>
           <div class="office-bank-loan-metric" data-meter="rate">
             <div class="office-meter-top"><small>JUROS</small><b>${ratePct}%</b></div>
-            <span class="office-bank-loan-metric-sub">por rodada nacional</span>
+            <span class="office-bank-loan-metric-sub">por rodada · antes do prazo</span>
           </div>
         </div>
       </div>`;
+  };
+
+  const bankLoanBreakdownHtml = (bd, { delinquent = false, effectiveRatePct = null } = {}) => {
+    if (!bd) return '';
+    const coverageLine =
+      bd.coverage != null
+        ? `<div class="office-bank-loan-preview-row"><span>Cobertura receita ÷ folha</span><b>${Math.round(Number(bd.coverage) * 100)}%</b></div>`
+        : '';
+    const tierLine = bd.tierLabel
+      ? `<div class="office-bank-loan-preview-row"><span>Perfil no banco</span><b>${bd.tierLabel}</b></div>`
+      : '';
+    const delinquentLine =
+      delinquent && effectiveRatePct != null && effectiveRatePct !== bd.contractRatePct
+        ? `<div class="office-bank-loan-preview-row office-bank-loan-preview-row--warn"><span>Taxa por atraso (esta rodada)</span><b class="spend">${effectiveRatePct}%</b></div>`
+        : '';
+    const lockedNote = bd.locked
+      ? '<span class="office-bank-loan-breakdown-note">Valores congelados na assinatura do contrato.</span>'
+      : '';
+    return `
+      <div class="office-bank-loan-breakdown">
+        <small>COMO A TAXA FOI CALCULADA</small>
+        ${lockedNote}
+        <div class="office-bank-loan-preview-row"><span>Taxa base · Série ${bd.division}</span><b>${bd.baseRatePct}%</b></div>
+        <div class="office-bank-loan-preview-row"><span>Análise do clube</span><b>×${Number(bd.profileMult).toFixed(2)} → ${bd.profileRatePct}%</b></div>
+        ${coverageLine}
+        ${tierLine}
+        <div class="office-bank-loan-preview-row"><span>Financiamento ${bd.term}x</span><b>×${Number(bd.termMult).toFixed(2)}</b></div>
+        <div class="office-bank-loan-preview-row office-bank-loan-preview-row--total"><span>Taxa contratada</span><b>${bd.contractRatePct}% / rodada</b></div>
+        ${delinquentLine}
+      </div>`;
+  };
+
+  const bankLoanParcelDetailHtml = (quote, status) => {
+    if (!quote?.adjusted) {
+      return `<span>Parcela fixa do contrato · juros automáticos ${formatBudget(status.interestDue)} · ${status.installmentLabel || '—'}</span>`;
+    }
+    const stacked =
+      quote.stackedParcels > 1
+        ? `<div class="office-bank-loan-preview-row office-bank-loan-preview-row--warn"><span>Parcelas acumuladas</span><b>${quote.stackedParcels}x</b></div>`
+        : '';
+    return `
+      <div class="office-bank-loan-parcel-detail">
+        <div class="office-bank-loan-preview-row"><span>Parcela do contrato</span><b>${formatBudget(quote.baseInstallment)}</b></div>
+        <div class="office-bank-loan-preview-row"><span>Principal em aberto</span><b>${formatBudget(quote.principalDue)}</b></div>
+        <div class="office-bank-loan-preview-row"><span>Juros sobre a parcela</span><b class="spend">${formatBudget(quote.interestOnParcel)}</b></div>
+        <div class="office-bank-loan-preview-row"><span>Multa por atraso</span><b class="spend">${formatBudget(quote.penaltyDue)}</b></div>
+        ${stacked}
+        <div class="office-bank-loan-preview-row office-bank-loan-preview-row--total"><span>Valor atual da parcela</span><b>${formatBudget(quote.currentInstallment)}</b></div>
+        <span class="office-bank-loan-parcel-note">Botão PAGAR PARCELA cobra ${formatBudget(quote.payAmount)} (principal + multa). Juros automáticos: ${formatBudget(status.interestDue)}.</span>
+      </div>`;
+  };
+
+  const bankLoanBorrowPreviewHtml = (status, amount, term) => {
+    const fee = Math.max(0, Math.round(Number(amount) || 0));
+    const t = BANK_LOAN_TERM_OPTIONS.includes(Number(term)) ? Number(term) : DEFAULT_BANK_LOAN_TERM;
+    const termMult = loanTermRateMultiplier(t);
+    const offerRate = status.offerRate ?? status.rate ?? 0;
+    const contractRate = Math.round(offerRate * termMult * 10000) / 10000;
+    const breakdown = buildLoanRateBreakdown(
+      {
+        division: status.division,
+        baseRate: status.seriesBaseRate ?? offerRate,
+        rate: offerRate,
+        finances: status.finances,
+        coverage: status.coverage,
+        tier: status.tier,
+        tierLabel: status.tierLabel,
+      },
+      t,
+      contractRate,
+    );
+    if (!(fee >= 50_000)) {
+      return `${bankLoanBreakdownHtml(breakdown)}<p class="office-bank-loan-hint">Digite o valor e escolha quantas parcelas — a simulação atualiza abaixo.</p>`;
+    }
+    const plan = previewLoanPlan(Math.min(fee, status.available || fee), contractRate, t);
+    return `
+      ${bankLoanBreakdownHtml(breakdown)}
+      <div class="office-bank-loan-preview" aria-live="polite">
+        <small>SIMULAÇÃO · ${t}x PARCELAS</small>
+        <div class="office-bank-loan-preview-row">
+          <span>Parcela do principal</span><b>${formatBudget(plan.installmentPrincipal)}</b>
+        </div>
+        <div class="office-bank-loan-preview-row">
+          <span>Juros da 1ª rodada (automático)</span><b>${formatBudget(plan.firstInterest)}</b>
+        </div>
+        <div class="office-bank-loan-preview-row">
+          <span>Custo estimado / rodada</span><b>${formatBudget(plan.roundCostEstimate)}</b>
+        </div>
+        <div class="office-bank-loan-preview-row office-bank-loan-preview-row--total">
+          <span>Juros totais do financiamento</span><b>${formatBudget(plan.totalInterest)}</b>
+        </div>
+        <p class="office-bank-loan-hint">A cada rodada nacional: juros saem do caixa sozinhos; a parcela do principal você paga aqui no Escritório.</p>
+      </div>`;
+  };
+
+  const refreshBankLoanBorrowPreview = () => {
+    const club = userClubState();
+    if (!club) return;
+    const division = getUserDivision?.() || club.division || 'A';
+    const status = bankLoanStatus(club, { division });
+    const preview = document.querySelector('#officeBankLoanPreview');
+    if (!preview || status.active) return;
+    const amount = readLoanInputReais($('#officeBankLoanAmount'));
+    const termBtn = document.querySelector('[data-bank-term].is-active');
+    const term = Number(termBtn?.dataset.bankTerm) || DEFAULT_BANK_LOAN_TERM;
+    preview.innerHTML = bankLoanBorrowPreviewHtml(status, amount, term);
   };
 
   const renderBankLoan = () => {
@@ -504,9 +639,9 @@ export function createEconomyFeature(deps) {
     if (meta) {
       meta.textContent = status.active
         ? status.delinquent
-          ? `Série ${division} · ATRASO ${status.delinquencyStreak}r · taxa efetiva ${ratePct}% / rodada`
-          : `Série ${division} · juros ${ratePct}% / rodada (auto) · mínimo 5,5% no Escritório`
-        : `Um contrato por vez · juros automáticos · amortização no Escritório`;
+          ? `Contrato ${status.installmentLabel || '—'} · atraso ${status.delinquencyStreak} rodada(s) · taxa ${status.contractRatePct ?? ratePct}%`
+          : `Contrato ${status.installmentLabel || '—'} · taxa ${status.contractRatePct ?? ratePct}% (travada)`
+        : `Simule valor e parcelas · taxa depende da saúde financeira do clube`;
     }
 
     if (!status.active) {
@@ -516,11 +651,15 @@ export function createEconomyFeature(deps) {
           ${metrics}
           <p class="office-bank-loan-warn">${
             status.shortfall
-              ? 'Há atraso de folha ou de serviço do empréstimo — normalize os pagamentos antes de pedir crédito de novo.'
+              ? 'Há atraso de folha ou de parcela do empréstimo — normalize os pagamentos antes de pedir crédito de novo.'
               : `Crédito indisponível agora (saúde ${status.finances}%). Melhore o caixa e a cobertura da folha.`
           }</p>`;
         return;
       }
+      const termButtons = BANK_LOAN_TERM_OPTIONS.map(
+        t =>
+          `<button type="button" class="office-bank-loan-term${t === DEFAULT_BANK_LOAN_TERM ? ' is-active' : ''}" data-bank-term="${t}" aria-pressed="${t === DEFAULT_BANK_LOAN_TERM}">${t}x</button>`,
+      ).join('');
       body.innerHTML = `
         ${metrics}
         <form class="office-bank-loan-form" id="officeBankLoanForm" autocomplete="off">
@@ -530,68 +669,70 @@ export function createEconomyFeature(deps) {
               id="officeBankLoanAmount"
               class="office-bank-loan-input"
               type="text"
-              inputmode="decimal"
-              placeholder="Ex.: 1.800.000 ou 1,8 mi"
-              maxlength="18"
+              inputmode="numeric"
+              placeholder="R$ 0,00"
+              maxlength="22"
               aria-label="Valor do empréstimo"
+              autocomplete="off"
             />
             <button type="submit" class="office-bank-loan-submit" data-bank-borrow-submit title="Contratar empréstimo">OK</button>
           </div>
-          <p class="office-bank-loan-hint">Máximo ${formatBudget(status.available)} · mínimo útil R$ 50 mil · amortização não é automática</p>
+          <div class="office-bank-loan-term-row" role="group" aria-label="Quantidade de parcelas">
+            <span class="office-bank-loan-form-label">QUANTIDADE DE PARCELAS</span>
+            <p class="office-bank-loan-term-hint">Mais parcelas = taxa maior · menos parcelas = taxa menor</p>
+            <div class="office-bank-loan-term-buttons">${termButtons}</div>
+          </div>
+          <div id="officeBankLoanPreview">${bankLoanBorrowPreviewHtml(status, 0, DEFAULT_BANK_LOAN_TERM)}</div>
+          <p class="office-bank-loan-hint">Crédito disponível até ${formatBudget(status.available)} · mínimo R$ 50 mil</p>
         </form>`;
       return;
     }
 
     const cash = getBalance?.(club) ?? 0;
-    const minPay = Math.max(
-      0,
-      (Number(status.minAmortDue) || 0) + (Number(status.penaltyDue) || 0),
+    const quote = status.installmentQuote || {};
+    const parcelPay = quote.payAmount > 0 ? quote.payAmount : quote.baseInstallment || 0;
+    const parcelDisplay = quote.adjusted ? quote.currentInstallment : quote.baseInstallment || parcelPay;
+    const extraPay = Math.min(
+      status.balance + (Number(status.penaltyDue) || 0),
+      (quote.baseInstallment || parcelPay) * 2 + (Number(status.penaltyDue) || 0),
     );
     const repayAll = status.balance + (Number(status.penaltyDue) || 0);
-    const repayHalf = Math.max(1, Math.round(status.balance / 2));
-    const canMin = minPay > 0 ? cash >= minPay : cash >= (Number(status.minAmort) || 0);
-    const canHalf = cash >= repayHalf;
+    const canParcel = cash >= parcelPay;
+    const canExtra = cash >= extraPay && extraPay > parcelPay;
     const canAll = cash >= repayAll;
+    const parcelDetail = bankLoanParcelDetailHtml(quote, status);
     const warnHtml = status.delinquent
-      ? `<p class="office-bank-loan-warn">Mínimo em atraso (${status.delinquencyStreak} rodada${
-          status.delinquencyStreak === 1 ? '' : 's'
-        }). Juros compostos (taxa reaplicada) + multa. Cobrança no caixa em ${
-          status.roundsToForce > 0 ? `${status.roundsToForce} rodada(s)` : 'curso'
-        }.</p>`
-      : minPay > 0
-        ? `<p class="office-bank-loan-hint-inline">Pague o mínimo no Escritório antes da próxima rodada nacional — atraso gera juros compostos.</p>`
+      ? `<p class="office-bank-loan-warn"><strong>Parcela em atraso.</strong> ${status.delinquencyStreak} rodada(s) sem pagamento — encargos aplicados. Regularize antes da próxima rodada nacional.</p>`
+      : status.minAmortDue > 0
+        ? `<p class="office-bank-loan-hint-inline">Parcela aberta nesta rodada — pague no Escritório antes da próxima rodada nacional.</p>`
         : '';
     body.innerHTML = `
+      ${bankLoanBreakdownHtml(status.rateBreakdown, {
+        delinquent: status.delinquent,
+        effectiveRatePct: status.effectiveRatePct,
+      })}
       <div class="office-bank-loan-stats">
-        <div><small>SALDO DEVEDOR</small><b class="spend">${formatBudget(status.balance)}</b></div>
-        <div><small>MÍNIMO DEVIDO</small><b class="spend">${formatBudget(
-          minPay > 0 ? minPay : status.minAmort,
-        )}</b>
-          <span>${
-            status.penaltyDue > 0
-              ? `Amort ${formatBudget(status.minAmortDue)} + multa ${formatBudget(status.penaltyDue)}`
-              : `5,5% do principal · juros auto ${formatBudget(status.interestDue)}`
-          }</span>
+        <div><small>SALDO DEVEDOR</small><b class="spend">${formatBudget(status.balance)}</b>
+          <span>De ${formatBudget(status.principal)} original · faltam ${status.installmentsRemaining || 0} parcela(s)</span>
         </div>
-        <div><small>TAXA EFETIVA</small><b class="spend">${ratePct}%</b>
-          <span>${
-            status.delinquent
-              ? `Base ${status.baseRatePct}% · atraso ×${(status.rate / Math.max(status.baseRate || status.rate, 0.0001)).toFixed(2)}`
-              : 'Juros simples no caixa / rodada'
-          }</span>
+        <div class="office-bank-loan-stat-parcel"><small>PARCELA ${status.installmentLabel || ''}</small><b class="spend">${formatBudget(parcelDisplay)}</b>
+          ${parcelDetail}
+        </div>
+        <div><small>ESTA RODADA</small><b>${formatBudget(status.interestDue + parcelPay)}</b>
+          <span>Juros automáticos ${formatBudget(status.interestDue)} + pagar no Escritório ${formatBudget(parcelPay)}</span>
         </div>
       </div>
       ${warnHtml}
       <div class="office-bank-loan-actions">
-        <button type="button" data-bank-pay-min ${canMin ? '' : 'disabled'} title="${
-          canMin ? 'Pagar mínimo / obrigação vencida' : 'Saldo insuficiente'
-        }">PAGAR MÍNIMO ${formatBudget(minPay > 0 ? minPay : status.minAmort)}</button>
-        <button type="button" data-bank-repay="${repayHalf}" ${canHalf ? '' : 'disabled'} title="${
-          canHalf ? 'Amortizar metade do saldo' : 'Saldo insuficiente'
-        }">AMORTIZAR ${formatBudget(repayHalf)}</button>
-        <button type="button" data-bank-repay="${repayAll}" ${canAll ? '' : 'disabled'} title="${
-          canAll ? 'Quitar o empréstimo' : 'Saldo insuficiente'
-        }">QUITAR ${formatBudget(repayAll)}</button>
+        <button type="button" class="office-bank-loan-btn office-bank-loan-btn--primary" data-bank-pay-installment ${canParcel ? '' : 'disabled'} title="${
+          canParcel ? 'Quita principal em aberto + multa' : 'Saldo insuficiente'
+        }"><span>PAGAR PARCELA</span><strong>${formatBudget(parcelPay)}</strong></button>
+        <button type="button" class="office-bank-loan-btn office-bank-loan-btn--secondary" data-bank-repay-extra="${extraPay}" ${canExtra ? '' : 'disabled'} title="${
+          canExtra ? 'Antecipa 2 parcelas do principal' : 'Saldo insuficiente'
+        }"><span>AMORTIZAR +1 PARCELA</span><strong>${formatBudget(extraPay)}</strong></button>
+        <button type="button" class="office-bank-loan-btn office-bank-loan-btn--quit" data-bank-repay="${repayAll}" ${canAll ? '' : 'disabled'} title="${
+          canAll ? 'Encerra o contrato' : 'Saldo insuficiente'
+        }"><span>QUITAR DÍVIDA</span><strong>${formatBudget(repayAll)}</strong></button>
       </div>`;
   };
 
@@ -1059,12 +1200,12 @@ export function createEconomyFeature(deps) {
     const bankDue = loanStatus?.active ? Number(loanStatus.roundDue) || 0 : 0;
     const bankNote = loanStatus?.active
       ? loanStatus.delinquent
-        ? `ATRASO ${loanStatus.delinquencyStreak}r · juros ${formatBudget(loanStatus.interestDue)} + devido ${formatBudget(
+        ? `ATRASO ${loanStatus.delinquencyStreak}r · juros ${formatBudget(loanStatus.interestDue)} + parcela ${formatBudget(
             (loanStatus.minAmortDue || 0) + (loanStatus.penaltyDue || 0),
           )}`
-        : `Juros auto ${formatBudget(loanStatus.interestDue)} · mínimo Escritório ${formatBudget(
-            loanStatus.minAmortDue || loanStatus.minAmort,
-          )}`
+        : `Juros automáticos ${formatBudget(loanStatus.interestDue)} · parcela no Escritório ${formatBudget(
+            loanStatus.minAmortDue || loanStatus.installmentPrincipal || loanStatus.minAmort,
+          )}${loanStatus.installmentLabel ? ` · ${loanStatus.installmentLabel}` : ''}`
       : 'Sem contrato ativo';
     const balance = getBalance?.(club) ?? (Number(club?.budget) || 0);
     const netTone = statement.net > 0 ? 'credit' : statement.net < 0 ? 'spend' : '';
@@ -1198,13 +1339,14 @@ export function createEconomyFeature(deps) {
     onBudgetChanged?.();
   };
 
-  const submitBankLoanBorrow = amount => {
+  const submitBankLoanBorrow = (amount, term = DEFAULT_BANK_LOAN_TERM) => {
     const club = userClubState();
     if (!club || !takeBankLoan) return;
     const result = takeBankLoan(club, amount, {
       division: getUserDivision?.() || club.division || 'A',
       season: getCareerSeason?.() ?? null,
       round: getCurrentRound?.() ?? null,
+      term,
     });
     if (!result.ok) {
       pushMessage?.({
@@ -1224,11 +1366,12 @@ export function createEconomyFeature(deps) {
       }
       return;
     }
+    const plan = result.plan;
     pushMessage?.({
       category: 'club',
       type: 'budget',
       title: 'Empréstimo contratado',
-      body: `${formatBudget(result.amount)} creditados · juros ${(result.rate * 1000) / 10}% / rodada (auto). Amortização mínima no Escritório — atraso capitaliza. Orçamento: ${formatBudget(result.clubBalance)}.`,
+      body: `${formatBudget(result.amount)} em ${result.term}x · ${formatBudget(result.installmentPrincipal)}/parcela · taxa ${(result.rate * 1000) / 10}% (contrato) · juros totais est. ${formatBudget(plan?.totalInterest || 0)}. Orçamento: ${formatBudget(result.clubBalance)}.`,
       round: getCurrentRound?.() ?? 1,
       meta: { competition: 'Finanças' },
     });
@@ -1245,7 +1388,25 @@ export function createEconomyFeature(deps) {
         if (!form) return;
         event.preventDefault();
         const input = form.querySelector('#officeBankLoanAmount');
-        submitBankLoanBorrow(parseLoanAmount(input?.value));
+        const termBtn = form.querySelector('[data-bank-term].is-active');
+        const term = Number(termBtn?.dataset.bankTerm) || DEFAULT_BANK_LOAN_TERM;
+        submitBankLoanBorrow(readLoanInputReais(input), term);
+      });
+      loanBody.addEventListener('input', event => {
+        if (event.target.matches('#officeBankLoanAmount')) {
+          applyLoanCurrencyMask(event.target);
+          refreshBankLoanBorrowPreview();
+        }
+      });
+      loanBody.addEventListener('click', event => {
+        const termBtn = event.target.closest('[data-bank-term]');
+        if (!termBtn) return;
+        event.preventDefault();
+        loanBody.querySelectorAll('[data-bank-term]').forEach(btn => {
+          btn.classList.toggle('is-active', btn === termBtn);
+          btn.setAttribute('aria-pressed', btn === termBtn ? 'true' : 'false');
+        });
+        refreshBankLoanBorrowPreview();
       });
     }
 
@@ -1256,8 +1417,8 @@ export function createEconomyFeature(deps) {
     });
 
     onClick('#officeBankLoanBody', event => {
-      const minBtn = event.target.closest('[data-bank-pay-min]');
-      if (minBtn && !minBtn.disabled) {
+      const parcelBtn = event.target.closest('[data-bank-pay-installment]');
+      if (parcelBtn && !parcelBtn.disabled) {
         const club = userClubState();
         if (!club || !payBankLoanMinimum) return;
         const result = payBankLoanMinimum(club, {
@@ -1267,7 +1428,7 @@ export function createEconomyFeature(deps) {
           pushMessage?.({
             category: 'club',
             type: 'budget',
-            title: 'Pagamento mínimo',
+            title: 'Pagamento de parcela',
             body: bankLoanRejectCopy(result.reason),
             round: getCurrentRound?.() ?? 1,
             meta: { competition: 'Finanças' },
@@ -1279,10 +1440,46 @@ export function createEconomyFeature(deps) {
         pushMessage?.({
           category: 'club',
           type: 'budget',
-          title: result.cleared ? 'Empréstimo quitado' : 'Mínimo pago',
+          title: result.cleared ? 'Empréstimo quitado' : 'Parcela paga',
           body: result.cleared
             ? `Pago ${formatBudget(result.paid)}. Dívida encerrada. Orçamento: ${formatBudget(result.clubBalance)}.`
             : `Pago ${formatBudget(result.paid)}. Saldo: ${formatBudget(result.remaining)}. Orçamento: ${formatBudget(result.clubBalance)}.`,
+          round: getCurrentRound?.() ?? 1,
+          meta: { competition: 'Finanças' },
+        });
+        renderOffice();
+        onBudgetChanged?.();
+        return;
+      }
+
+      const extraBtn = event.target.closest('[data-bank-repay-extra]');
+      if (extraBtn && !extraBtn.disabled) {
+        const club = userClubState();
+        if (!club || !repayBankLoan) return;
+        const amount = Number(extraBtn.dataset.bankRepayExtra);
+        const result = repayBankLoan(club, amount, {
+          division: getUserDivision?.() || club.division || 'A',
+        });
+        if (!result.ok) {
+          pushMessage?.({
+            category: 'club',
+            type: 'budget',
+            title: 'Amortização extra',
+            body: bankLoanRejectCopy(result.reason),
+            round: getCurrentRound?.() ?? 1,
+            meta: { competition: 'Finanças' },
+          });
+          renderOffice();
+          onBudgetChanged?.();
+          return;
+        }
+        pushMessage?.({
+          category: 'club',
+          type: 'budget',
+          title: result.cleared ? 'Empréstimo quitado' : 'Parcelas extras pagas',
+          body: result.cleared
+            ? `Pago ${formatBudget(result.paid)}. Dívida encerrada. Orçamento: ${formatBudget(result.clubBalance)}.`
+            : `Pago ${formatBudget(result.paid)}. Saldo devedor: ${formatBudget(result.remaining)}. Orçamento: ${formatBudget(result.clubBalance)}.`,
           round: getCurrentRound?.() ?? 1,
           meta: { competition: 'Finanças' },
         });

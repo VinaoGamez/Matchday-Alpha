@@ -1,11 +1,12 @@
 /**
  * Empréstimo bancário do clube (não confundir com empréstimo de jogador).
  *
- * Híbrido (A+1):
- * - Juros automáticos na rodada nacional (simples sobre o saldo, debitados do caixa).
- * - Amortização mínima vira obrigação no Escritório (minAmortDue).
+ * Financiamento por parcelas (rodadas nacionais):
+ * - Na contratação: escolhe prazo (12–48 rodadas) — prazo maior = taxa maior.
+ * - Juros automáticos na rodada (simples sobre saldo/principal, debitados do caixa).
+ * - Parcela fixa de principal vira obrigação no Escritório (minAmortDue).
  * - Atraso: capitaliza juros + multa no saldo (compostos) e encarece a taxa;
- *   atraso: capitaliza + cobra no caixa; forçada desde a 1ª rodada vencida (v5).
+ *   cobrança forçada no caixa desde a 1ª rodada vencida (v5).
  */
 
 import {
@@ -26,8 +27,60 @@ export const BANK_LOAN_RATE_BY_DIVISION = {
   D: 0.019,
 };
 
-/** Amortização mínima por rodada = % do principal original. */
+/** Prazos disponíveis (rodadas nacionais). Menos parcelas = taxa menor. */
+export const BANK_LOAN_TERM_OPTIONS = [12, 24, 36, 48];
+export const DEFAULT_BANK_LOAN_TERM = 24;
+
+/** Legado / cobrança forçada — ~1/18 do principal. */
 export const BANK_LOAN_MIN_AMORT_RATIO = 0.055;
+
+/** Multiplicador da taxa contratual conforme prazo (financiamento real). */
+export function loanTermRateMultiplier(term = DEFAULT_BANK_LOAN_TERM) {
+  const t = Math.max(12, Math.min(48, Math.round(Number(term) || DEFAULT_BANK_LOAN_TERM)));
+  if (t <= 12) return 0.82;
+  if (t <= 24) return 1;
+  if (t <= 36) return 1.16;
+  return 1.32;
+}
+
+export function normalizeLoanTerm(term) {
+  const t = Math.round(Number(term) || DEFAULT_BANK_LOAN_TERM);
+  return BANK_LOAN_TERM_OPTIONS.includes(t) ? t : DEFAULT_BANK_LOAN_TERM;
+}
+
+export function computeInstallmentPrincipal(principal, installmentsTotal) {
+  const n = Math.max(1, Math.round(Number(installmentsTotal) || DEFAULT_BANK_LOAN_TERM));
+  return Math.max(1, Math.round(clampAmount(principal) / n));
+}
+
+/** Simula custo total do financiamento (juros + parcelas fixas de principal). */
+export function previewLoanPlan(principal, baseRate, term = DEFAULT_BANK_LOAN_TERM) {
+  const amount = clampAmount(principal);
+  const t = normalizeLoanTerm(term);
+  const rateMult = loanTermRateMultiplier(t);
+  const rate = Math.round(Number(baseRate || 0) * rateMult * 10000) / 10000;
+  const installmentPrincipal = computeInstallmentPrincipal(amount, t);
+  let balance = amount;
+  let totalInterest = 0;
+  for (let i = 0; i < t && balance > 0; i += 1) {
+    const interest = Math.max(1, Math.round(balance * rate));
+    totalInterest += interest;
+    balance = Math.max(0, balance - Math.min(installmentPrincipal, balance));
+  }
+  const firstInterest = amount > 0 ? Math.max(1, Math.round(amount * rate)) : 0;
+  return {
+    term: t,
+    principal: amount,
+    rate,
+    ratePct: Math.round(rate * 1000) / 10,
+    rateMult,
+    installmentPrincipal,
+    totalInterest,
+    totalCost: amount + totalInterest,
+    roundCostEstimate: installmentPrincipal + firstInterest,
+    firstInterest,
+  };
+}
 
 /** Multa sobre o mínimo em atraso (capitaliza na dívida). */
 export const BANK_LOAN_LATE_FEE_RATIO = 0.28;
@@ -291,7 +344,7 @@ export function resolveOverdraftRate(club, { division = 'C', streak = null } = {
 
 function readLoanFields(loan) {
   if (!loan) return null;
-  return {
+  const fields = {
     principal: clampAmount(loan.principal),
     balance: clampAmount(loan.balance),
     rate: Number(loan.rate) || 0,
@@ -306,12 +359,41 @@ function readLoanFields(loan) {
     delinquencyStreak: Math.max(0, Math.round(Number(loan.delinquencyStreak) || 0)),
     penaltyDue: clampAmount(loan.penaltyDue),
     rehabRoundsRemaining: Math.max(0, Math.round(Number(loan.rehabRoundsRemaining) || 0)),
+    installmentsTotal: normalizeLoanTerm(loan.installmentsTotal),
+    installmentsPaid: Math.max(0, Math.round(Number(loan.installmentsPaid) || 0)),
+    installmentPrincipal: clampAmount(loan.installmentPrincipal),
   };
+  ensureLoanInstallmentFields(fields);
+  return fields;
+}
+
+function ensureLoanInstallmentFields(loan) {
+  if (!loan) return;
+  if (!(loan.installmentsTotal > 0)) loan.installmentsTotal = DEFAULT_BANK_LOAN_TERM;
+  if (!(loan.installmentPrincipal > 0)) {
+    loan.installmentPrincipal = computeInstallmentPrincipal(loan.principal, loan.installmentsTotal);
+  }
+  if (!Number.isFinite(Number(loan.installmentsPaid))) {
+    const principal = clampAmount(loan.principal);
+    const balance = clampAmount(loan.balance);
+    const paidPrincipal = Math.max(0, principal - balance);
+    loan.installmentsPaid = Math.min(
+      loan.installmentsTotal,
+      Math.floor(paidPrincipal / Math.max(1, loan.installmentPrincipal)),
+    );
+  }
+}
+
+function installmentsRemainingForLoan(loan) {
+  if (!loan) return 0;
+  ensureLoanInstallmentFields(loan);
+  return Math.max(0, loan.installmentsTotal - (loan.installmentsPaid || 0));
 }
 
 export function getBankLoan(club) {
   const loan = club?.bankLoan;
   if (!loan || !(Number(loan.balance) > 0)) return null;
+  ensureLoanInstallmentFields(loan);
   return readLoanFields(loan);
 }
 
@@ -352,7 +434,13 @@ export function applyBankLoanSnapshot(club, snapshot) {
     delinquencyStreak: Math.max(0, Math.round(Number(snapshot.delinquencyStreak) || 0)),
     penaltyDue: clampAmount(snapshot.penaltyDue),
     rehabRoundsRemaining: Math.max(0, Math.round(Number(snapshot.rehabRoundsRemaining) || 0)),
+    installmentsTotal: normalizeLoanTerm(snapshot.installmentsTotal),
+    installmentsPaid: Math.max(0, Math.round(Number(snapshot.installmentsPaid) || 0)),
+    installmentPrincipal: clampAmount(snapshot.installmentPrincipal),
+    rateBreakdown: snapshot.rateBreakdown || null,
   };
+  ensureLoanInstallmentFields(club.bankLoan);
+  ensureLoanRateBreakdown(club.bankLoan);
   return club.bankLoan;
 }
 
@@ -363,11 +451,14 @@ function loanServiceKey(season, round) {
   return seasonKey != null ? `${seasonKey}:${roundKey}` : String(roundKey);
 }
 
-function computeMinAmort(principal, balance) {
+function computeMinAmort(principal, balance, loan = null) {
+  if (loan) {
+    ensureLoanInstallmentFields(loan);
+    const remaining = installmentsRemainingForLoan(loan);
+    if (remaining <= 0) return clampAmount(balance);
+    return Math.min(clampAmount(balance), Math.max(1, clampAmount(loan.installmentPrincipal)));
+  }
   if (!(balance > 0)) return 0;
-  // Mínimo do Escritório = % do principal contratado (parcela pagável em dia).
-  // A dívida inchada pelos compostos NÃO infla essa parcela — senão “voltar ao azul e pagar
-  // em dia” continua inviável. A pressão no atraso vem da forçada (swollenBleed) + compostos.
   return Math.min(
     clampAmount(balance),
     Math.max(1, Math.round(clampAmount(principal) * BANK_LOAN_MIN_AMORT_RATIO)),
@@ -402,7 +493,7 @@ function regularizeLoanPrincipal(loan) {
 
 function minAmortForLoan(loan) {
   if (!loan) return 0;
-  let minAmort = computeMinAmort(loan.principal, loan.balance);
+  let minAmort = computeMinAmort(loan.principal, loan.balance, loan);
   const rehab = Math.max(0, Math.round(Number(loan.rehabRoundsRemaining) || 0));
   if (rehab > 0 && (loan.delinquencyStreak || 0) <= 0) {
     if (!(LOAN_REHAB_MIN_FACTOR > 0)) return 0;
@@ -411,9 +502,107 @@ function minAmortForLoan(loan) {
   return minAmort;
 }
 
+function ensureLoanRateBreakdown(loan) {
+  if (!loan) return null;
+  if (loan.rateBreakdown && typeof loan.rateBreakdown === 'object') return loan.rateBreakdown;
+  const div = loan.division || 'C';
+  const seriesBase = bankLoanRate(div);
+  const contractRate = Number(loan.rate) || seriesBase;
+  const term = normalizeLoanTerm(loan.installmentsTotal);
+  const termMult = loanTermRateMultiplier(term);
+  const profileRate = termMult > 0 ? contractRate / termMult : contractRate;
+  const profileMult = seriesBase > 0 ? profileRate / seriesBase : 1;
+  loan.rateBreakdown = {
+    division: div,
+    baseRatePct: Math.round(seriesBase * 1000) / 10,
+    profileRatePct: Math.round(profileRate * 1000) / 10,
+    profileMult: Math.round(profileMult * 1000) / 1000,
+    termMult,
+    term,
+    contractRatePct: Math.round(contractRate * 1000) / 10,
+    finances: loan.financesAtOpen ?? null,
+    coverage: null,
+    tier: null,
+    tierLabel: null,
+    locked: true,
+  };
+  return loan.rateBreakdown;
+}
+
+/** Breakdown da taxa na contratação (série × perfil × prazo). */
+export function buildLoanRateBreakdown(creditLine, term, finalRate) {
+  const t = normalizeLoanTerm(term);
+  const termMult = loanTermRateMultiplier(t);
+  const baseRate = creditLine.baseRate ?? bankLoanRate(creditLine.division);
+  const profileRate = creditLine.rate;
+  const profileMult = baseRate > 0 ? profileRate / baseRate : 1;
+  return {
+    division: creditLine.division,
+    baseRatePct: Math.round(baseRate * 1000) / 10,
+    profileRatePct: Math.round(profileRate * 1000) / 10,
+    profileMult: Math.round(profileMult * 1000) / 1000,
+    termMult,
+    term: t,
+    contractRatePct: Math.round(finalRate * 1000) / 10,
+    finances: creditLine.finances,
+    coverage: creditLine.coverage,
+    tier: creditLine.tier,
+    tierLabel: creditLine.tierLabel,
+    locked: true,
+  };
+}
+
+/**
+ * Parcela contratada vs parcela atual (com encargos de atraso).
+ * Pagamento no Escritório = principalDue + penalty (juros auto já saem do caixa).
+ */
+export function computeInstallmentQuote(loan, { activeRate = 0, delinquencyStreak = 0 } = {}) {
+  if (!loan) {
+    return {
+      baseInstallment: 0,
+      currentInstallment: 0,
+      principalDue: 0,
+      interestOnParcel: 0,
+      penaltyDue: 0,
+      payAmount: 0,
+      stackedParcels: 0,
+      adjusted: false,
+    };
+  }
+  ensureLoanInstallmentFields(loan);
+  const base = clampAmount(loan.installmentPrincipal);
+  const minDue = clampAmount(loan.minAmortDue);
+  const penalty = clampAmount(loan.penaltyDue);
+  const principalDue = minDue > 0 ? minDue : base;
+  const stackedParcels =
+    base > 0 && minDue > 0 ? Math.max(1, Math.round(minDue / base)) : minDue > 0 ? 1 : 0;
+  const delinquent = delinquencyStreak > 0 || minDue > 0 || penalty > 0;
+  const rate = Number(activeRate) || Number(loan.rate) || 0;
+  const interestOnParcel =
+    delinquent && principalDue > 0 ? Math.max(1, Math.round(principalDue * rate)) : 0;
+  const currentInstallment = delinquent
+    ? principalDue + penalty + interestOnParcel
+    : base;
+  const payAmount = principalDue + penalty;
+  return {
+    baseInstallment: base,
+    currentInstallment,
+    principalDue,
+    interestOnParcel,
+    penaltyDue: penalty,
+    payAmount,
+    stackedParcels,
+    adjusted: delinquent,
+  };
+}
+
 function effectiveLoanRate(baseRate, delinquencyStreak) {
   const mult = loanDelinquencyRateMult(delinquencyStreak);
   return Math.round(baseRate * mult * 10000) / 10000;
+}
+
+function contractLoanRate(loan) {
+  return Number(loan?.rate) || 0;
 }
 
 /**
@@ -421,12 +610,17 @@ function effectiveLoanRate(baseRate, delinquencyStreak) {
  */
 export function bankLoanStatus(club, { division = 'C' } = {}) {
   const creditLine = resolveBankCredit(club, { division });
+  const loanRaw = club?.bankLoan;
+  if (loanRaw && Number(loanRaw.balance) > 0) {
+    ensureLoanInstallmentFields(loanRaw);
+    ensureLoanRateBreakdown(loanRaw);
+  }
   const loan = getBankLoan(club);
   const balance = loan?.balance || 0;
   const principal = loan?.principal || 0;
-  const baseRate = loan ? loan.rate || creditLine.rate : creditLine.rate;
+  const contractRate = loan ? contractLoanRate(loanRaw || loan) : creditLine.rate;
   const delinquencyStreak = loan?.delinquencyStreak || 0;
-  const activeRate = loan ? effectiveLoanRate(baseRate, delinquencyStreak) : creditLine.rate;
+  const activeRate = loan ? effectiveLoanRate(contractRate, delinquencyStreak) : creditLine.rate;
   const interestBase =
     loan == null
       ? 0
@@ -442,6 +636,19 @@ export function bankLoanStatus(club, { division = 'C' } = {}) {
     minAmortDue > 0 ? Math.max(1, Math.round(minAmortDue * BANK_LOAN_LATE_FEE_RATIO)) : 0;
   const obligation = minAmortDue + penaltyDue;
   const roundDue = interestDue + Math.max(minAmort, minAmortDue) + penaltyDue;
+  const installmentsTotal = loan?.installmentsTotal || 0;
+  const installmentsPaid = loan?.installmentsPaid || 0;
+  const installmentsRemaining = loan ? installmentsRemainingForLoan(loan) : 0;
+  const installmentPrincipal = loan?.installmentPrincipal || 0;
+  const installmentQuote = loan
+    ? computeInstallmentQuote(loanRaw || loan, { activeRate, delinquencyStreak })
+    : null;
+  const rateBreakdown = loan
+    ? ensureLoanRateBreakdown(loanRaw || club?.bankLoan)
+    : buildLoanRateBreakdown(creditLine, DEFAULT_BANK_LOAN_TERM, creditLine.rate);
+  const planPreview = loan
+    ? previewLoanPlan(principal, contractRate, installmentsTotal)
+    : null;
   return {
     active: !!loan,
     division: creditLine.division,
@@ -457,10 +664,14 @@ export function bankLoanStatus(club, { division = 'C' } = {}) {
     eligible: creditLine.eligible,
     rate: activeRate,
     ratePct: Math.round(activeRate * 1000) / 10,
-    baseRate,
-    baseRatePct: Math.round(baseRate * 1000) / 10,
+    contractRate,
+    contractRatePct: Math.round(contractRate * 1000) / 10,
+    baseRate: contractRate,
+    baseRatePct: Math.round(contractRate * 1000) / 10,
+    effectiveRatePct: Math.round(activeRate * 1000) / 10,
     offerRate: creditLine.rate,
     offerRatePct: creditLine.ratePct,
+    seriesBaseRate: creditLine.baseRate,
     principal,
     balance,
     interestDue,
@@ -477,6 +688,18 @@ export function bankLoanStatus(club, { division = 'C' } = {}) {
         ? BANK_LOAN_FORCE_COLLECT_STREAK - delinquencyStreak
         : 0,
     roundDue,
+    installmentsTotal,
+    installmentsPaid,
+    installmentsRemaining,
+    installmentPrincipal,
+    installmentLabel:
+      loan && installmentsTotal > 0
+        ? `${Math.min(installmentsPaid + 1, installmentsTotal)}/${installmentsTotal}x`
+        : null,
+    installmentQuote,
+    rateBreakdown,
+    totalInterestEstimate: planPreview?.totalInterest || 0,
+    totalCostEstimate: planPreview?.totalCost || 0,
     availableToBorrow: loan ? 0 : creditLine.available,
     offers: loan ? [] : creditLine.offers,
   };
@@ -485,7 +708,7 @@ export function bankLoanStatus(club, { division = 'C' } = {}) {
 export function takeBankLoan(
   club,
   amount,
-  { division = 'C', season = null, round = null } = {},
+  { division = 'C', season = null, round = null, term = DEFAULT_BANK_LOAN_TERM } = {},
 ) {
   if (!club) return { ok: false, reason: 'no_club' };
   ensureBudget(club, division);
@@ -509,7 +732,12 @@ export function takeBankLoan(
       fee,
     };
   }
-  const rate = creditLine.rate;
+  const installmentsTotal = normalizeLoanTerm(term);
+  const rateMult = loanTermRateMultiplier(installmentsTotal);
+  const rate = Math.round(creditLine.rate * rateMult * 10000) / 10000;
+  const rateBreakdown = buildLoanRateBreakdown(creditLine, installmentsTotal, rate);
+  const installmentPrincipal = computeInstallmentPrincipal(fee, installmentsTotal);
+  const plan = previewLoanPlan(fee, rate, installmentsTotal);
   const credited = credit(club, fee, {
     reason: 'bank_loan',
     label: 'Empréstimo bancário',
@@ -539,6 +767,10 @@ export function takeBankLoan(
     delinquencyStreak: 0,
     penaltyDue: 0,
     rehabRoundsRemaining: 0,
+    installmentsTotal,
+    installmentsPaid: 0,
+    installmentPrincipal,
+    rateBreakdown,
   };
   club.loanServiceShortfall = false;
   return {
@@ -546,6 +778,9 @@ export function takeBankLoan(
     amount: fee,
     rate,
     balance: fee,
+    term: installmentsTotal,
+    installmentPrincipal,
+    plan,
     clubBalance: getBalance(club),
     status: bankLoanStatus(club, { division: creditLine.division }),
   };
@@ -585,6 +820,17 @@ function applyRepaymentToLoan(club, pay) {
     loan.balance = Math.max(0, clampAmount(loan.balance) - slice);
     towardPrincipal += slice;
     remaining -= slice;
+  }
+
+  if (towardPrincipal > 0 && loan.installmentPrincipal > 0) {
+    ensureLoanInstallmentFields(loan);
+    const paidInstallments = Math.floor(towardPrincipal / loan.installmentPrincipal);
+    if (paidInstallments > 0) {
+      loan.installmentsPaid = Math.min(
+        loan.installmentsTotal,
+        (loan.installmentsPaid || 0) + paidInstallments,
+      );
+    }
   }
 
   if (clampAmount(loan.minAmortDue) <= 0 && clampAmount(loan.penaltyDue) <= 0) {
@@ -631,19 +877,21 @@ export function repayBankLoan(club, amount, { division = 'C' } = {}) {
   };
 }
 
-/** Paga só a obrigação vencida (mínimo + multa). */
-export function payBankLoanMinimum(club, { division = 'C' } = {}) {
+/** Paga a parcela vencida (ou antecipa 1 parcela se em dia). */
+export function payBankLoanInstallment(club, { division = 'C' } = {}) {
   if (!club) return { ok: false, reason: 'no_club' };
   const loan = getBankLoan(club);
   if (!loan) return { ok: false, reason: 'no_loan' };
   const due = clampAmount(loan.minAmortDue) + clampAmount(loan.penaltyDue);
   if (!(due > 0)) {
-    // Sem obrigação vencida: paga o mínimo teórico da rodada (antecipa).
-    const minAmort = minAmortForLoan(loan);
-    return repayBankLoan(club, minAmort, { division });
+    const installment = minAmortForLoan(loan);
+    return repayBankLoan(club, installment, { division });
   }
   return repayBankLoan(club, due, { division });
 }
+
+/** @deprecated alias — use payBankLoanInstallment */
+export const payBankLoanMinimum = payBankLoanInstallment;
 
 /**
  * Serviço da rodada (híbrido):
@@ -695,7 +943,14 @@ export function serviceBankLoan(club, { division = 'C', round = null, season = n
       const dueBase = clampAmount(loan.minAmortDue) + clampAmount(loan.penaltyDue);
       const forceMult = loanForceCollectMult(delinquencyStreak);
       // Sangria escala com a dívida inchada — senão o caixa sobrevive a temporada inteira.
-      const swollenBleed = Math.round(clampAmount(loan.balance) * BANK_LOAN_MIN_AMORT_RATIO * forceMult);
+      const swollenBleed = Math.round(
+        clampAmount(loan.balance) *
+          (Math.max(
+            BANK_LOAN_MIN_AMORT_RATIO,
+            (loan.installmentPrincipal || 0) / Math.max(clampAmount(loan.principal), 1),
+          )) *
+          forceMult,
+      );
       const forcePay = Math.max(1, Math.round(dueBase * forceMult), swollenBleed);
       if (forcePay > 0) {
         const paid = spend(club, forcePay, {

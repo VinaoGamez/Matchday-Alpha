@@ -27,7 +27,7 @@ def compress_one(path: Path) -> tuple[int, int]:
 
 
 def main() -> None:
-    files = sorted(STADIUM_DIR.glob("stadium-tier-*.png"))
+    files = sorted(STADIUM_DIR.glob("stadium-*-tier-*.png"))
     if not files:
         print("Nenhum PNG em assets/stadium/")
         return
