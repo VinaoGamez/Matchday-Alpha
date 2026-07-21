@@ -35,6 +35,131 @@ export const DIVISION_OVR_LIMITS = {
 /** Caps de POT — reexport da fonte em player-development. */
 export const GENERATION_POT_CAPS = POT_CAPS;
 
+/**
+ * Especialista de falta/pênalti (legado: chance por divisão, valor sempre 86–97).
+ * Campanha Longa: valor = OVR + bônus, com teto por série.
+ */
+export const SPECIALIST_CHANCE = {
+  A: { freeKick: 0.024, penalty: 0.03 },
+  B: { freeKick: 0.017, penalty: 0.022 },
+  C: { freeKick: 0.0085, penalty: 0.0115 },
+  D: { freeKick: 0.003, penalty: 0.005 },
+};
+
+/** Bônus sobre OVR e teto absoluto — D ~28–34 tipicamente, não 96. */
+export const SPECIALIST_ROLL = {
+  A: { bonus: [16, 24], cap: 90 },
+  B: { bonus: [14, 20], cap: 78 },
+  C: { bonus: [12, 18], cap: 58 },
+  D: { bonus: [10, 16], cap: 36 },
+};
+
+const SET_PIECE_ROLES = ['MC', 'MEI', 'PE', 'PD', 'ATA'];
+
+export function rollSpecialistAttr(overall, division = 'A', random = Math.random) {
+  const ovr = Math.round(Number(overall) || 50);
+  const roll = SPECIALIST_ROLL[division] || SPECIALIST_ROLL.D;
+  const [bLo, bHi] = roll.bonus;
+  const raw = ovr + int(random, bLo, bHi);
+  return clamp(raw, ovr + 8, roll.cap);
+}
+
+export function applySetPieceSpecialists(player, division = 'A', random = Math.random) {
+  if (!player || !SET_PIECE_ROLES.includes(player.pos)) return player;
+  const chance = SPECIALIST_CHANCE[division] || SPECIALIST_CHANCE.D;
+  let freeKickSpec = false;
+  let penaltySpec = false;
+  if (random() < chance.freeKick) {
+    player.freeKick = Math.max(Number(player.freeKick) || 0, rollSpecialistAttr(player.overall, division, random));
+    freeKickSpec = true;
+  }
+  if (random() < chance.penalty) {
+    player.penaltyTaking = Math.max(
+      Number(player.penaltyTaking) || 0,
+      rollSpecialistAttr(player.overall, division, random),
+    );
+    penaltySpec = true;
+  }
+  if (freeKickSpec && penaltySpec) player.setPieceSpecialist = 'both';
+  else if (freeKickSpec) player.setPieceSpecialist = 'freeKick';
+  else if (penaltySpec) player.setPieceSpecialist = 'penalty';
+  return player;
+}
+
+/** Especialista de bola parada (flag na geração). */
+export function isSetPieceSpecialist(player) {
+  const flag = player?.setPieceSpecialist;
+  return flag === 'freeKick' || flag === 'penalty' || flag === 'both' || flag === true;
+}
+
+export function isFreeKickSpecialist(player) {
+  const flag = player?.setPieceSpecialist;
+  return flag === 'freeKick' || flag === 'both' || flag === true || Number(player?.freeKick) > 85;
+}
+
+export function isPenaltySpecialist(player) {
+  const flag = player?.setPieceSpecialist;
+  return flag === 'penalty' || flag === 'both' || flag === true || Number(player?.penaltyTaking) > 85;
+}
+
+export function setPieceSpecialistTitle(player) {
+  const flag = player?.setPieceSpecialist;
+  if (flag === 'both') return 'Especialista em faltas e pênaltis';
+  if (flag === 'penalty') return 'Especialista em pênaltis';
+  if (flag === 'freeKick' || flag === true) return 'Especialista em faltas';
+  return 'Especialista em bola parada';
+}
+
+/**
+ * Corrige saves antigos (FALTA/PÊNALTI 86–97) para o teto Campanha Longa por série.
+ * Determinístico — não re-rola a cada boot.
+ * @returns {boolean} true se alterou o jogador
+ */
+export function sanitizeSetPieceForDivision(player, division = 'D') {
+  if (!player || typeof player !== 'object') return false;
+  const div = SPECIALIST_ROLL[division] ? division : 'D';
+  const { bonus, cap } = SPECIALIST_ROLL[div];
+  const [bLo, bHi] = bonus;
+  const ovr = Math.round(Number(player.overall) || 50);
+  const flag = player.setPieceSpecialist;
+  const fkWas =
+    flag === 'freeKick' || flag === 'both' || flag === true || Number(player.freeKick) >= 80;
+  const penWas =
+    flag === 'penalty' || flag === 'both' || flag === true || Number(player.penaltyTaking) >= 80;
+
+  const remap = (raw, wasSpec) => {
+    const v = Math.round(Number(raw) || 0);
+    if (v <= cap) return v;
+    if (wasSpec || v >= 80) {
+      const t = v >= 86 ? clamp((v - 86) / 11, 0, 1) : 0.55;
+      return clamp(Math.round(ovr + bLo + t * (bHi - bLo)), ovr + 8, cap);
+    }
+    return Math.min(v, Math.min(cap, Math.max(5, ovr + 5)));
+  };
+
+  const nextFk = remap(player.freeKick, fkWas);
+  const nextPen = remap(player.penaltyTaking, penWas);
+  let nextFlag = flag;
+  if (fkWas && penWas) nextFlag = 'both';
+  else if (fkWas) nextFlag = 'freeKick';
+  else if (penWas) nextFlag = 'penalty';
+
+  let changed = false;
+  if (nextFk !== Math.round(Number(player.freeKick) || 0)) {
+    player.freeKick = nextFk;
+    changed = true;
+  }
+  if (nextPen !== Math.round(Number(player.penaltyTaking) || 0)) {
+    player.penaltyTaking = nextPen;
+    changed = true;
+  }
+  if (nextFlag && nextFlag !== flag) {
+    player.setPieceSpecialist = nextFlag;
+    changed = true;
+  }
+  return changed;
+}
+
 export const PEAK_PLATEAU = {
   PE: { peakStart: 26, plateau: [4, 8] },
   PD: { peakStart: 26, plateau: [4, 8] },
@@ -262,7 +387,12 @@ export function generatePlayer({
   const attacking = ['PE', 'PD', 'ATA', 'MEI', 'MC'].includes(role);
   const defensive = ['ZAG', 'LAT', 'VOL'].includes(role);
   const keeper = role === 'GOL';
-  const value = (base, spread = 8) => clamp(int(random, base - spread, base + spread), 1, 99);
+  // Piso proporcional ao OVR — em Série D evita chuva de "1" nos secundários.
+  const attrFloor = Math.max(5, Math.round(overallBase * 0.55));
+  const lineFloor = Math.max(5, Math.round(overallBase * 0.4));
+  /** delta relativo ao overallBase; gap fraco máx. ~8 (antes −15…−45 → clamp 1). */
+  const value = (delta, spread = 5, floor = attrFloor) =>
+    clamp(int(random, overallBase + delta - spread, overallBase + delta + spread), floor, 99);
 
   const first = firstNames[(index + int(random, 0, firstNames.length - 1)) % firstNames.length];
   const last = lastNames[(index * 3 + int(random, 0, lastNames.length - 1)) % lastNames.length];
@@ -275,44 +405,46 @@ export function generatePlayer({
   if (keeper) {
     attributes = {
       overallBase,
-      reflexes: value(overallBase + 8, 5),
-      positioning: value(overallBase + 6, 5),
-      penaltySaving: value(overallBase + 4, 5),
-      passing: value(overallBase - 14, 6),
-      speed: value(overallBase - 16, 6),
-      playmaking: value(overallBase - 22, 5),
-      dribble: value(overallBase - 40, 4),
-      marking: value(overallBase - 42, 4),
-      tackling: value(overallBase - 42, 4),
-      finishing: value(overallBase - 45, 3),
-      heading: value(overallBase - 30, 5),
+      reflexes: value(7, 4),
+      positioning: value(5, 4),
+      penaltySaving: value(3, 4),
+      passing: value(-5, 4),
+      speed: value(-6, 4),
+      playmaking: value(-7, 4),
+      // Linha fraca, mas legível (não 1).
+      dribble: value(-10, 3, lineFloor),
+      marking: value(-10, 3, lineFloor),
+      tackling: value(-10, 3, lineFloor),
+      finishing: value(-11, 3, lineFloor),
+      heading: value(-8, 3, lineFloor),
     };
-    // Garante TOP3: ≥2 attrs de meta; ≤1 secundário.
     const metaKeys = ['reflexes', 'positioning', 'penaltySaving'];
     const secondaryKeys = ['passing', 'speed', 'playmaking'];
     metaKeys.forEach(key => {
       attributes[key] = Math.max(attributes[key], overallBase + 2);
     });
+    // Secundários abaixo da meta, mas acima do piso natural.
+    const metaMin = Math.min(...metaKeys.map(k => attributes[k]));
     secondaryKeys.forEach(key => {
-      attributes[key] = Math.min(attributes[key], Math.min(...metaKeys.map(k => attributes[k])) - 1);
+      attributes[key] = clamp(Math.min(attributes[key], metaMin - 2), attrFloor, metaMin - 1);
     });
     const signature = metaKeys[int(random, 0, metaKeys.length - 1)];
-    attributes[signature] = clamp(attributes[signature] + int(random, 4, 9), 1, 99);
+    attributes[signature] = clamp(attributes[signature] + int(random, 3, 6), attrFloor, 99);
   } else {
     attributes = {
       overallBase,
-      dribble: value(attacking ? overallBase + 3 : overallBase - 15),
-      speed: value(['LAT', 'PE', 'PD', 'ATA'].includes(role) ? overallBase + 7 : overallBase - 2),
-      marking: value(defensive ? overallBase + 5 : overallBase - 18),
-      tackling: value(defensive ? overallBase + 5 : overallBase - 19),
-      finishing: value(attacking ? overallBase + 5 : overallBase - 21),
-      passing: value(['MC', 'MEI', 'VOL', 'LAT'].includes(role) ? overallBase + 3 : overallBase - 8),
-      heading: value(['ZAG', 'ATA', 'VOL'].includes(role) ? overallBase + 3 : overallBase - 9),
+      dribble: value(attacking ? 3 : -6),
+      speed: value(['LAT', 'PE', 'PD', 'ATA'].includes(role) ? 6 : -3),
+      marking: value(defensive ? 5 : -7),
+      tackling: value(defensive ? 5 : -7),
+      finishing: value(attacking ? 5 : -8),
+      passing: value(['MC', 'MEI', 'VOL', 'LAT'].includes(role) ? 3 : -4),
+      heading: value(['ZAG', 'ATA', 'VOL'].includes(role) ? 3 : -5),
       positioning: 0,
       penaltySaving: 0,
       reflexes: 0,
       playmaking: value(
-        ['MC', 'MEI'].includes(role) ? overallBase + 2 : role === 'VOL' ? overallBase - 4 : overallBase - 10,
+        ['MC', 'MEI'].includes(role) ? 2 : role === 'VOL' ? -3 : -5,
       ),
     };
     const signatureOptions = {
@@ -326,7 +458,7 @@ export function generatePlayer({
       ATA: ['finishing', 'heading', 'speed'],
     }[role];
     const signature = signatureOptions[int(random, 0, signatureOptions.length - 1)];
-    attributes[signature] = clamp(attributes[signature] + int(random, 4, 9), 1, 99);
+    attributes[signature] = clamp(attributes[signature] + int(random, 3, 6), attrFloor, 99);
   }
 
   let overall = clamp(generatedOverall(role, attributes), limits[0], limits[1]);
@@ -391,7 +523,7 @@ export function generatePlayer({
         role === 'ZAG' ? 40 : 100,
       );
 
-  return {
+  const player = {
     name: `${first} ${last}${secondLast}`,
     pos: role,
     age,
@@ -422,11 +554,11 @@ export function generatePlayer({
     reflexes: attributes.reflexes,
     freeKick: Math.min(
       85,
-      value(['MC', 'MEI', 'PE', 'PD'].includes(role) ? overall - 24 : overall - 38, 10),
+      value(['MC', 'MEI', 'PE', 'PD'].includes(role) ? -6 : -10, 5),
     ),
     penaltyTaking: Math.min(
       85,
-      value(['MC', 'MEI', 'PE', 'PD', 'ATA'].includes(role) ? overall - 7 : overall - 25, 10),
+      value(['MC', 'MEI', 'PE', 'PD', 'ATA'].includes(role) ? -3 : -8, 5),
     ),
     playmaking,
     fatigue: 100,
@@ -434,6 +566,7 @@ export function generatePlayer({
     peakStart: peak.peakStart,
     plateauYears,
   };
+  return applySetPieceSpecialists(player, division, random);
 }
 
 /** Marca 11 slots aleatórios do plantel como titulares (+1 vs −3). */

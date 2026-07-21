@@ -19,6 +19,8 @@
 | [06-INTERFACE.md](./06-INTERFACE.md) | Views, modais, navegação |
 | [07-HOSPEDAGEM.md](./07-HOSPEDAGEM.md) | Servidor local, túnel externo, compartilhamento |
 | [08-JOGADAS-E-RITMO.md](./08-JOGADAS-E-RITMO.md) | Jogadas ao vivo/simulação, ritmo do relógio e bases numéricas |
+| [09-RISCO-QUEBRA-FINANCEIRA.md](./09-RISCO-QUEBRA-FINANCEIRA.md) | Empréstimo, shortfall, saúde financeira e risco de demissão (sem falência formal) |
+| [10-ECOSSISTEMA-ECONOMICO.md](./10-ECOSSISTEMA-ECONOMICO.md) | Visão do ecossistema: arrecadação, folha, crédito, mercado e feedbacks |
 | [PLANO-MODULARIZACAO.md](./PLANO-MODULARIZACAO.md) | Migração modular Alpha 02 |
 
 ---

@@ -4,10 +4,29 @@
 
 import { resolvePlayerId } from './player-identity.js';
 import { ensureMarketFields, estimatePlayerValue, refreshMarketFields } from './player-value.js';
+import {
+  evaluateRosterPayroll,
+  resolvePlayerRoundWage,
+  ROSTER_HARD_MAX,
+} from './economy.js';
+import { evaluateLoanFit, loanAcceptChance } from './loan-fit.js';
+import {
+  evaluateSellerDivisionFit,
+  evaluateBuyerOfferDivisionFit,
+  sellerAcceptRatioDeltaForDivision,
+} from './transfer-division-fit.js';
+import { evaluateCounterOffer } from './transfer-counter-offer.js';
+import {
+  attachLoanBuyOption,
+  clearLoanBuyOption,
+  canExerciseLoanBuyOption,
+  applyLoanBuyExercise,
+} from './loan-buy-option.js';
 
 export const TRANSFER_LIMITS = {
   minRoster: 18,
-  maxRoster: 28,
+  /** Antifail — o gate real é folha vs receita (`evaluateRosterPayroll`). */
+  maxRoster: ROSTER_HARD_MAX,
   acceptRatio: 0.85,
   /** Empréstimos ativos (entrada ou saída) por clube. */
   maxLoans: 3,
@@ -209,6 +228,7 @@ const clearLoanState = player => {
   player.onLoan = false;
   player.loanFrom = null;
   clearLoanOffer(player);
+  clearLoanBuyOption(player);
 };
 
 const findPlayerInWorld = (clubs, playerId) => {
@@ -290,6 +310,45 @@ export function createTransfersEngine(deps) {
     if (today <= until) return true;
     rejectCooldownUntil.delete(playerId);
     return false;
+  };
+
+  const payrollExpand = (club, player) =>
+    evaluateRosterPayroll(club, {
+      division: club?.division || 'A',
+      extraWage: resolvePlayerRoundWage(player, club?.division || 'A'),
+      rosterDelta: 1,
+    });
+  const payrollShrink = (club, player) =>
+    evaluateRosterPayroll(club, {
+      division: club?.division || 'A',
+      removeWage: resolvePlayerRoundWage(player, club?.division || 'A'),
+      rosterDelta: -1,
+    });
+  const clubCanHostPlayer = (club, player) =>
+    !!club && Array.isArray(club.roster) && payrollExpand(club, player).ok;
+
+  /** Taxa fixa da opção de compra — anexada no ato do empréstimo. */
+  const stampLoanBuyOption = (moved, ownerClub, playerId) => {
+    if (!moved) return null;
+    const division = ownerClub?.division || 'C';
+    const value =
+      Number(moved.marketValue) || estimatePlayerValue(moved, division);
+    return attachLoanBuyOption(moved, {
+      marketValue: value,
+      division,
+      season: getCareerSeason(),
+      random: () => unitRoll(`loan-buy-fee:${playerId}:${getCareerSeason()}`),
+    });
+  };
+
+  /** Saves antigos: empréstimo sem opção → anexa na leitura. */
+  const ensureLoanBuyOption = (player, ownerDivision = 'C') => {
+    if (!player?.onLoan) return null;
+    if (player.loanBuyOption && Number(player.loanBuyOption.fee) > 0) {
+      return player.loanBuyOption;
+    }
+    const id = resolvePlayerId(player);
+    return stampLoanBuyOption(player, { division: ownerDivision }, id || player.name);
   };
 
   const careerDayKey = date => {
@@ -490,6 +549,36 @@ export function createTransfersEngine(deps) {
     };
   };
 
+  /**
+   * Carimbo da janela atual (`temporada:first|second`).
+   * Fora da janela → null (assertMarket já bloqueia negócios).
+   */
+  const currentMoveStamp = () => {
+    const phase = getTransferWindowPhase(careerDate());
+    if (!phase?.active || !phase.windowKey) return null;
+    return `${getCareerSeason()}:${phase.windowKey}`;
+  };
+
+  /** Já se movimentou (compra/venda/empréstimo) nesta janela? */
+  const playerMovedThisWindow = player => {
+    const stamp = currentMoveStamp();
+    if (!stamp || !player) return false;
+    return player.transferWindowLock === stamp;
+  };
+
+  const assertPlayerCanMove = player => {
+    if (playerMovedThisWindow(player)) {
+      return { ok: false, reason: 'already_moved' };
+    }
+    return { ok: true };
+  };
+
+  /** Marca envolvimento na janela atual (compra, venda ou início de empréstimo). */
+  const markPlayerMoved = player => {
+    const stamp = currentMoveStamp();
+    if (stamp && player) player.transferWindowLock = stamp;
+  };
+
   /** Jogadores no elenco que estão emprestados (entrada). */
   const countIncomingLoans = club => {
     if (!Array.isArray(club?.roster)) return 0;
@@ -650,6 +739,7 @@ export function createTransfersEngine(deps) {
           season: getCareerSeason(),
         });
         if (player.onLoan) return;
+        if (playerMovedThisWindow(player)) return;
         if (listedOnly && !player.listed) return;
         if (loanOnly && !player.loanListed) return;
         if (pos && player.pos !== pos) return;
@@ -726,11 +816,17 @@ export function createTransfersEngine(deps) {
   const listSellCandidates = () => {
     const { name, club } = userClubState();
     if (!club?.roster) return [];
-    return club.roster.map(player => {
+    const season = getCareerSeason();
+    const slots = loanSlots(name);
+    const rows = club.roster.map(player => {
       ensureMarketFields(player, {
         division: club.division,
-        season: getCareerSeason(),
+        season,
       });
+      if (player.onLoan) {
+        const ownerDiv = getClubs()?.[player.loanFrom]?.division || club.division;
+        ensureLoanBuyOption(player, ownerDiv);
+      }
       return {
         playerId: resolvePlayerId(player),
         player,
@@ -738,11 +834,43 @@ export function createTransfersEngine(deps) {
         listed: !!player.listed,
         loanListed: !!player.loanListed,
         onLoan: !!player.onLoan,
+        loanOut: false,
         loanFrom: player.loanFrom || null,
+        loanTo: null,
+        loanBuyFee: player.loanBuyOption?.fee || null,
         askingPrice: player.askingPrice,
-        outgoingSlots: loanSlots(name),
+        outgoingSlots: slots,
+        windowLocked: playerMovedThisWindow(player),
       };
     });
+    // Cedidos: ainda aparecem na lista do dono, com clube hospedeiro.
+    Object.entries(getClubs() || {}).forEach(([hostName, hostClub]) => {
+      if (hostName === name || !Array.isArray(hostClub?.roster)) return;
+      hostClub.roster.forEach(player => {
+        if (!(player?.onLoan && player.loanFrom === name)) return;
+        ensureMarketFields(player, {
+          division: hostClub.division,
+          season,
+        });
+        ensureLoanBuyOption(player, club.division);
+        rows.push({
+          playerId: resolvePlayerId(player),
+          player,
+          value: Number(player.marketValue) || estimatePlayerValue(player, club.division),
+          listed: false,
+          loanListed: false,
+          onLoan: false,
+          loanOut: true,
+          loanFrom: name,
+          loanTo: hostName,
+          loanBuyFee: player.loanBuyOption?.fee || null,
+          askingPrice: null,
+          outgoingSlots: slots,
+          windowLocked: playerMovedThisWindow(player),
+        });
+      });
+    });
+    return rows;
   };
 
   const setListed = (playerId, listed, askingPrice = null) => {
@@ -751,6 +879,10 @@ export function createTransfersEngine(deps) {
     const player = club.roster.find(item => resolvePlayerId(item) === playerId);
     if (!player) return { ok: false, reason: 'not_found' };
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
+    if (listed) {
+      const moveGate = assertPlayerCanMove(player);
+      if (!moveGate.ok) return moveGate;
+    }
     ensureMarketFields(player, { division: club.division, season: getCareerSeason() });
     player.listed = !!listed;
     if (listed) {
@@ -772,8 +904,12 @@ export function createTransfersEngine(deps) {
     const player = club.roster.find(item => resolvePlayerId(item) === playerId);
     if (!player) return { ok: false, reason: 'not_found' };
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
-    if (loanListed && countOutgoingLoans(name) >= maxLoans) {
-      return { ok: false, reason: 'loan_out_limit', slots: loanSlots(name) };
+    if (loanListed) {
+      const moveGate = assertPlayerCanMove(player);
+      if (!moveGate.ok) return moveGate;
+      if (countOutgoingLoans(name) >= maxLoans) {
+        return { ok: false, reason: 'loan_out_limit', slots: loanSlots(name) };
+      }
     }
     player.loanListed = !!loanListed;
     onAfterTransfer?.({ type: 'loan_list', playerId, loanListed: player.loanListed });
@@ -793,11 +929,46 @@ export function createTransfersEngine(deps) {
       seller?.division || (typeof sellerClub === 'string' ? sellerClub : null) || 'C';
     const season = Number(options.season ?? getCareerSeason()) || 2030;
     const clubName = options.clubName || seller?.name || null;
+    const buyerDivision =
+      options.buyerDivision ||
+      options.buyerClub?.division ||
+      userClubState()?.club?.division ||
+      'C';
 
     const value = Number(player.marketValue) || estimatePlayerValue(player, sellerDivision);
     const ask = player.listed && player.askingPrice > 0 ? Number(player.askingPrice) : value;
     let ratio = Number(acceptRatio) || TRANSFER_LIMITS.acceptRatio;
     const reasons = [];
+
+    const roster = Array.isArray(seller?.roster) ? seller.roster : null;
+    const rosterAvgOvr = roster?.length
+      ? roster.reduce((sum, p) => sum + (Number(p.overall) || 0), 0) / roster.length
+      : null;
+    const divFit = evaluateSellerDivisionFit({
+      player,
+      buyerDivision,
+      sellerDivision,
+      listed: !!player.listed,
+      rosterAvgOvr,
+      sellerPower: Number(seller?.power) || null,
+      unit: options.divisionUnit || null,
+    });
+    if (!divFit.ok) {
+      reasons.push('division_gap');
+      const floorBlocked = Math.round(Math.min(ask, value) * maxAcceptRatio);
+      return {
+        value,
+        ask,
+        floor: floorBlocked,
+        accept: false,
+        ratio: maxAcceptRatio,
+        reasons,
+        playerPull: false,
+        divisionFit: divFit,
+      };
+    }
+    const divDelta = sellerAcceptRatioDeltaForDivision(buyerDivision, sellerDivision);
+    if (divDelta > 0) ratio += divDelta;
 
     const yearsLeft = Math.max(0, (Number(player.contractUntil) || season) - season);
     if (yearsLeft <= 1) {
@@ -808,7 +979,6 @@ export function createTransfersEngine(deps) {
       reasons.push('contract_long');
     }
 
-    const roster = Array.isArray(seller?.roster) ? seller.roster : null;
     if (roster) {
       const posCount = roster.filter(item => item?.pos === player.pos).length;
       if (posCount >= 4) {
@@ -931,15 +1101,20 @@ export function createTransfersEngine(deps) {
     }
     const { name: buyerName, club: buyer } = userClubState();
     if (!buyer) return { ok: false, reason: 'no_club' };
-    if (buyer.roster.length >= maxRoster) return { ok: false, reason: 'roster_full' };
 
     const found = findPlayerInWorld(getClubs(), playerId);
     if (!found || found.clubName === buyerName) return { ok: false, reason: 'not_found' };
     const { club: seller, player, index, clubName: sellerName } = found;
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
+    const moveGate = assertPlayerCanMove(player);
+    if (!moveGate.ok) return moveGate;
     if (seller.roster.length <= minRoster) return { ok: false, reason: 'seller_min_roster' };
 
     ensureMarketFields(player, { division: seller.division, season: getCareerSeason() });
+    const payroll = payrollExpand(buyer, player);
+    if (!payroll.ok) {
+      return { ok: false, reason: payroll.reason || 'payroll_pressure', payroll, fee: null };
+    }
     const value = Number(player.marketValue) || estimatePlayerValue(player, seller.division);
     const fee =
       feeInput != null && Number(feeInput) > 0
@@ -951,21 +1126,70 @@ export function createTransfersEngine(deps) {
     const verdict = evaluateSellerAccept(player, fee, seller, {
       clubName: sellerName,
       season: getCareerSeason(),
+      buyerDivision: buyer.division,
+      buyerClub: buyer,
       buyerManager: typeof deps.getUserManager === 'function' ? deps.getUserManager() : null,
+      // Fase 1 estável por jogador/clube/temporada — na maioria D→A não abre janela.
+      divisionUnit: () =>
+        unitRoll(`sell-div-fit:${playerId}:${buyerName}:${sellerName}:${getCareerSeason()}`),
     });
     if (!verdict.accept) {
+      const hardDiv = (verdict.reasons || []).includes('division_gap');
+      // Sem Fase 1 (division_gap): nem contra-proposta — não há negociação.
+      if (!hardDiv) {
+        const sellerAvg =
+          Array.isArray(seller.roster) && seller.roster.length
+            ? seller.roster.reduce((sum, p) => sum + (Number(p.overall) || 0), 0) /
+              seller.roster.length
+            : null;
+        const counter = evaluateCounterOffer({
+          offerFee: fee,
+          floor: verdict.floor,
+          ask: verdict.ask,
+          value: verdict.value,
+          buyerDivision: buyer.division,
+          sellerDivision: seller.division,
+          player,
+          power: Number(seller.power) || 60,
+          rosterAvgOvr: sellerAvg,
+          random: () => unitRoll(`counter:${playerId}:${fee}:${getCareerSeason()}`),
+        });
+        if (counter.counter) {
+          return {
+            ok: false,
+            reason: 'counter_offer',
+            fee,
+            counterFee: counter.fee,
+            floor: verdict.floor,
+            value: verdict.value,
+            ask: verdict.ask,
+            reasons: verdict.reasons,
+            ratio: verdict.ratio,
+            playerPull: verdict.playerPull,
+            payroll,
+            from: sellerName,
+            playerName: player.name,
+            clubName: sellerName,
+            drop: counter.drop,
+          };
+        }
+      }
       return {
         ok: false,
-        reason: 'rejected',
+        reason: hardDiv ? 'division_gap' : 'rejected',
         fee,
         floor: verdict.floor,
         value: verdict.value,
         reasons: verdict.reasons,
         ratio: verdict.ratio,
         playerPull: verdict.playerPull,
+        payroll,
+        from: sellerName,
+        playerName: player.name,
+        clubName: sellerName,
       };
     }
-    if (!canAfford(buyer, fee)) return { ok: false, reason: 'cannot_afford', fee };
+    if (!canAfford(buyer, fee)) return { ok: false, reason: 'cannot_afford', fee, payroll };
 
     const paid = spend(buyer, fee, {
       reason: 'transfer',
@@ -977,6 +1201,7 @@ export function createTransfersEngine(deps) {
     seller.roster.splice(index, 1);
     const moved = { ...player, listed: false, askingPrice: null };
     clearLoanState(moved);
+    markPlayerMoved(moved);
     refreshMarketFields(moved, { division: buyer.division, season: getCareerSeason() });
     buyer.roster.push(moved);
 
@@ -998,6 +1223,7 @@ export function createTransfersEngine(deps) {
       value: verdict.value,
       reasons: verdict.reasons,
       playerPull: verdict.playerPull,
+      payroll: evaluateRosterPayroll(buyer, { division: buyer.division || 'A' }),
     };
     recordSeasonDeal(result);
     onAfterTransfer?.(result);
@@ -1024,6 +1250,8 @@ export function createTransfersEngine(deps) {
     if (index < 0) return { ok: false, reason: 'not_found' };
     const player = seller.roster[index];
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
+    const moveGate = assertPlayerCanMove(player);
+    if (!moveGate.ok) return moveGate;
     ensureMarketFields(player, { division: seller.division, season: getCareerSeason() });
     const value = Number(player.marketValue) || estimatePlayerValue(player, seller.division);
     const fee =
@@ -1034,9 +1262,22 @@ export function createTransfersEngine(deps) {
           : value;
 
     const clubs = getClubs() || {};
+    const sellerAvg =
+      seller.roster.reduce((sum, p) => sum + (Number(p.overall) || 0), 0) /
+      Math.max(1, seller.roster.length);
     const candidates = Object.entries(clubs)
       .filter(([name, club]) => name !== sellerName && Array.isArray(club?.roster))
-      .filter(([, club]) => club.roster.length < maxRoster)
+      .filter(([, club]) => clubCanHostPlayer(club, player))
+      .filter(([name, club]) =>
+        evaluateSellerDivisionFit({
+          player,
+          buyerDivision: club.division,
+          sellerDivision: seller.division,
+          listed: !!player.listed,
+          rosterAvgOvr: sellerAvg,
+          unit: () => unitRoll(`sell-div:${playerId}:${name}`),
+        }).ok,
+      )
       .map(([name, club]) => {
         const cash = clubCash(club);
         const needPos = club.roster.filter(item => item.pos === player.pos).length < 3;
@@ -1084,6 +1325,7 @@ export function createTransfersEngine(deps) {
     seller.roster.splice(index, 1);
     const moved = { ...player, listed: false, askingPrice: null };
     clearLoanState(moved);
+    markPlayerMoved(moved);
     refreshMarketFields(moved, {
       division: buyerEntry.club.division,
       season: getCareerSeason(),
@@ -1104,6 +1346,7 @@ export function createTransfersEngine(deps) {
       from: sellerName,
       to: buyerEntry.name,
       value,
+      payroll: evaluateRosterPayroll(seller, { division: seller.division || 'A' }),
     };
     recordSeasonDeal(result);
     onAfterTransfer?.(result);
@@ -1112,16 +1355,24 @@ export function createTransfersEngine(deps) {
 
   const pickLoanHost = (ownerName, player) => {
     const clubs = getClubs() || {};
+    const owner = clubs[ownerName];
     return Object.entries(clubs)
       .filter(([name, club]) => name !== ownerName && Array.isArray(club?.roster))
-      .filter(([, club]) => club.roster.length < maxRoster)
+      .filter(([, club]) => clubCanHostPlayer(club, player))
       .filter(([, club]) => countIncomingLoans(club) < maxLoans)
+      .filter(([name, club]) =>
+        evaluateLoanFit(player, owner, club, {
+          unit: () => unitRoll(`loan-host:${resolvePlayerId(player)}:${name}`),
+        }).ok,
+      )
       .map(([name, club]) => {
         const needPos = club.roster.filter(item => item.pos === player.pos).length < 3;
+        const chance = loanAcceptChance(player, owner, club);
         const score =
           (needPos ? 25 : 0) +
-          (club.division === getClubs()?.[ownerName]?.division ? 15 : 0) +
-          (Number(club.power) || 50);
+          (club.division === owner?.division ? 20 : 0) +
+          chance * 40 +
+          (Number(club.power) || 50) * 0.35;
         return { name, club, score };
       })
       .sort((a, b) => b.score - a.score)[0] || null;
@@ -1137,7 +1388,6 @@ export function createTransfersEngine(deps) {
     }
     const { name: borrowerName, club: borrower } = userClubState();
     if (!borrower) return { ok: false, reason: 'no_club' };
-    if (borrower.roster.length >= maxRoster) return { ok: false, reason: 'roster_full' };
     if (countIncomingLoans(borrower) >= maxLoans) {
       return { ok: false, reason: 'loan_in_limit', slots: loanSlots(borrowerName) };
     }
@@ -1146,10 +1396,20 @@ export function createTransfersEngine(deps) {
     if (!found || found.clubName === borrowerName) return { ok: false, reason: 'not_found' };
     const { club: owner, player, index, clubName: ownerName } = found;
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
+    const moveGate = assertPlayerCanMove(player);
+    if (!moveGate.ok) return moveGate;
     if (!player.loanListed) return { ok: false, reason: 'not_loan_listed' };
     if (owner.roster.length <= minRoster) return { ok: false, reason: 'seller_min_roster' };
     if (countOutgoingLoans(ownerName) >= maxLoans) {
       return { ok: false, reason: 'loan_out_limit', slots: loanSlots(ownerName) };
+    }
+    const payroll = payrollExpand(borrower, player);
+    if (!payroll.ok) {
+      return { ok: false, reason: payroll.reason || 'payroll_pressure', payroll };
+    }
+    const fit = evaluateLoanFit(player, owner, borrower);
+    if (!fit.ok) {
+      return { ok: false, reason: fit.reason || 'loan_level', fit };
     }
 
     owner.roster.splice(index, 1);
@@ -1161,7 +1421,9 @@ export function createTransfersEngine(deps) {
       onLoan: true,
       loanFrom: ownerName,
     };
+    markPlayerMoved(moved);
     refreshMarketFields(moved, { division: borrower.division, season: getCareerSeason() });
+    const buyOpt = stampLoanBuyOption(moved, owner, playerId);
     borrower.roster.push(moved);
 
     const result = {
@@ -1171,7 +1433,10 @@ export function createTransfersEngine(deps) {
       from: ownerName,
       to: borrowerName,
       fee: 0,
+      loanBuyFee: buyOpt?.fee || null,
       slots: loanSlots(borrowerName),
+      payroll: evaluateRosterPayroll(borrower, { division: borrower.division || 'A' }),
+      fit,
     };
     onAfterTransfer?.(result);
     return result;
@@ -1196,6 +1461,8 @@ export function createTransfersEngine(deps) {
     if (index < 0) return { ok: false, reason: 'not_found' };
     const player = owner.roster[index];
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
+    const moveGate = assertPlayerCanMove(player);
+    if (!moveGate.ok) return moveGate;
 
     const host = pickLoanHost(ownerName, player);
     if (!host) return { ok: false, reason: 'no_loan_host' };
@@ -1209,10 +1476,12 @@ export function createTransfersEngine(deps) {
       onLoan: true,
       loanFrom: ownerName,
     };
+    markPlayerMoved(moved);
     refreshMarketFields(moved, {
       division: host.club.division,
       season: getCareerSeason(),
     });
+    const buyOpt = stampLoanBuyOption(moved, owner, playerId);
     host.club.roster.push(moved);
 
     const result = {
@@ -1222,7 +1491,9 @@ export function createTransfersEngine(deps) {
       from: ownerName,
       to: host.name,
       fee: 0,
+      loanBuyFee: buyOpt?.fee || null,
       slots: loanSlots(ownerName),
+      payroll: evaluateRosterPayroll(owner, { division: owner.division || 'A' }),
     };
     onAfterTransfer?.(result);
     return result;
@@ -1242,7 +1513,10 @@ export function createTransfersEngine(deps) {
     const ownerName = player.loanFrom;
     const owner = getClubs()?.[ownerName];
     if (!owner || !Array.isArray(owner.roster)) return { ok: false, reason: 'no_club' };
-    if (owner.roster.length >= maxRoster) return { ok: false, reason: 'roster_full' };
+    const hostPayroll = payrollExpand(owner, player);
+    if (!hostPayroll.ok) {
+      return { ok: false, reason: hostPayroll.reason || 'payroll_pressure', payroll: hostPayroll };
+    }
 
     borrower.roster.splice(index, 1);
     const moved = { ...player };
@@ -1259,6 +1533,7 @@ export function createTransfersEngine(deps) {
       from: borrowerName,
       to: ownerName,
       slots: loanSlots(borrowerName),
+      payroll: evaluateRosterPayroll(borrower, { division: borrower.division || 'A' }),
     };
     onAfterTransfer?.(result);
     return result;
@@ -1301,9 +1576,15 @@ export function createTransfersEngine(deps) {
     player,
     fee,
   }) => {
+    const moveGate = assertPlayerCanMove(player);
+    if (!moveGate.ok) return moveGate;
     ensureAiCash(buyer);
     ensureAiCash(seller);
-    if (!canAfford(buyer, fee)) return { ok: false, reason: 'cannot_afford', fee };
+    const payroll = payrollExpand(buyer, player);
+    if (!payroll.ok) {
+      return { ok: false, reason: payroll.reason || 'payroll_pressure', payroll, fee };
+    }
+    if (!canAfford(buyer, fee)) return { ok: false, reason: 'cannot_afford', fee, payroll };
     const paid = spend(buyer, fee, {
       reason: 'transfer',
       label: `Contratação · ${player.name}`,
@@ -1313,6 +1594,7 @@ export function createTransfersEngine(deps) {
     seller.roster.splice(index, 1);
     const moved = { ...player, listed: false, askingPrice: null, loanListed: false };
     clearLoanState(moved);
+    markPlayerMoved(moved);
     refreshMarketFields(moved, { division: buyer.division, season: getCareerSeason() });
     buyer.roster.push(moved);
     credit(seller, fee, {
@@ -1335,10 +1617,19 @@ export function createTransfersEngine(deps) {
   };
 
   const loanBetweenClubs = ({ ownerName, owner, hostName, host, index, player }) => {
+    const moveGate = assertPlayerCanMove(player);
+    if (!moveGate.ok) return moveGate;
     if (owner.roster.length <= minRoster) return { ok: false, reason: 'seller_min_roster' };
-    if (host.roster.length >= maxRoster) return { ok: false, reason: 'roster_full' };
+    const hostPayroll = payrollExpand(host, player);
+    if (!hostPayroll.ok) {
+      return { ok: false, reason: hostPayroll.reason || 'payroll_pressure', payroll: hostPayroll };
+    }
     if (countOutgoingLoans(ownerName) >= maxLoans) return { ok: false, reason: 'loan_out_limit' };
     if (countIncomingLoans(host) >= maxLoans) return { ok: false, reason: 'loan_in_limit' };
+    const fit = evaluateLoanFit(player, owner, host, {
+      unit: () => unitRoll(`loan-btw:${resolvePlayerId(player)}:${hostName}`),
+    });
+    if (!fit.ok) return { ok: false, reason: fit.reason || 'loan_level', fit };
     owner.roster.splice(index, 1);
     const moved = {
       ...player,
@@ -1348,13 +1639,112 @@ export function createTransfersEngine(deps) {
       onLoan: true,
       loanFrom: ownerName,
     };
+    markPlayerMoved(moved);
     refreshMarketFields(moved, { division: host.division, season: getCareerSeason() });
+    const buyOpt = stampLoanBuyOption(moved, owner, resolvePlayerId(player));
     host.roster.push(moved);
     const result = {
       ok: true,
       type: 'ai_loan',
       player: moved,
       fee: 0,
+      loanBuyFee: buyOpt?.fee || null,
+      from: ownerName,
+      to: hostName,
+    };
+    recordSeasonDeal(result);
+    onAfterTransfer?.(result);
+    return result;
+  };
+
+  /**
+   * Hospedeiro (usuário) exerce opção de compra do emprestado.
+   */
+  const exerciseLoanBuyOption = playerId => {
+    const gate = assertMarket();
+    if (!gate.ok) {
+      return { ok: false, reason: gate.reason, nextOpenRound: gate.nextOpenRound };
+    }
+    const { name: hostName, club: host } = userClubState();
+    if (!host) return { ok: false, reason: 'no_club' };
+    const index = host.roster.findIndex(item => resolvePlayerId(item) === playerId);
+    if (index < 0) return { ok: false, reason: 'not_found' };
+    const player = host.roster[index];
+    if (player.onLoan && player.loanFrom) {
+      ensureLoanBuyOption(player, getClubs()?.[player.loanFrom]?.division || 'C');
+    }
+    const check = canExerciseLoanBuyOption({
+      player,
+      hostClubName: hostName,
+      marketOpen: true,
+      canAfford: fee => canAfford(host, fee),
+      hostRosterSize: host.roster.length,
+      rosterHardMax: maxRoster,
+    });
+    if (!check.ok) return { ...check, payroll: evaluateRosterPayroll(host, { division: host.division || 'A' }) };
+
+    const ownerName = player.loanFrom;
+    const owner = getClubs()?.[ownerName];
+    if (!owner) return { ok: false, reason: 'no_club' };
+    const fee = check.fee;
+    ensureAiCash(owner);
+    const paid = spend(host, fee, {
+      reason: 'transfer',
+      label: `Opção de compra · ${player.name}`,
+      meta: { playerId, from: ownerName, to: hostName, fee, loanBuy: true },
+    });
+    if (!paid?.ok) return { ok: false, reason: 'cannot_afford', fee };
+
+    credit(owner, fee, {
+      reason: 'transfer',
+      label: `Opção de compra · ${player.name}`,
+      meta: { playerId, from: ownerName, to: hostName, fee, loanBuy: true },
+    });
+    const applied = applyLoanBuyExercise(player);
+    refreshMarketFields(player, { division: host.division, season: getCareerSeason() });
+    const result = {
+      ok: true,
+      type: 'loan_buy',
+      player,
+      fee: applied.fee,
+      from: ownerName,
+      to: hostName,
+      slots: loanSlots(hostName),
+      payroll: evaluateRosterPayroll(host, { division: host.division || 'A' }),
+    };
+    recordSeasonDeal(result);
+    onAfterTransfer?.(result);
+    return result;
+  };
+
+  /** IA (ou host) exerce opção — usado no tick. */
+  const exerciseLoanBuyAtHost = (hostName, host, player) => {
+    if (!host || !player?.onLoan) return { ok: false, reason: 'not_on_loan' };
+    ensureLoanBuyOption(player, getClubs()?.[player.loanFrom]?.division || 'C');
+    ensureAiCash(host);
+    const check = canExerciseLoanBuyOption({
+      player,
+      hostClubName: hostName,
+      marketOpen: true,
+      canAfford: fee => clubCash(host) >= fee,
+      hostRosterSize: host.roster.length,
+      rosterHardMax: maxRoster,
+    });
+    if (!check.ok) return check;
+    const ownerName = player.loanFrom;
+    const owner = getClubs()?.[ownerName];
+    if (!owner) return { ok: false, reason: 'no_club' };
+    const fee = check.fee;
+    host.budget = clubCash(host) - fee;
+    ensureAiCash(owner);
+    owner.budget = clubCash(owner) + fee;
+    applyLoanBuyExercise(player);
+    refreshMarketFields(player, { division: host.division, season: getCareerSeason() });
+    const result = {
+      ok: true,
+      type: 'loan_buy',
+      player,
+      fee,
       from: ownerName,
       to: hostName,
     };
@@ -1398,6 +1788,7 @@ export function createTransfersEngine(deps) {
     if (index < 0) return { ok: false, reason: 'not_found' };
     const player = user.roster[index];
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
+    if (playerMovedThisWindow(player)) return { ok: false, reason: 'already_moved' };
     if (listPendingOffers().some(item => item.playerId === playerId)) {
       return { ok: false, reason: 'already_offered' };
     }
@@ -1468,6 +1859,8 @@ export function createTransfersEngine(deps) {
     if (index < 0) return { ok: false, reason: 'not_found' };
     const player = user.roster[index];
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
+    const moveGate = assertPlayerCanMove(player);
+    if (!moveGate.ok) return moveGate;
     if (user.roster.length <= minRoster) return { ok: false, reason: 'min_roster' };
 
     if (offer.type === 'loan') {
@@ -1482,6 +1875,7 @@ export function createTransfersEngine(deps) {
       if (!loaned.ok) return loaned;
       offer.status = 'accepted';
       resolveOfferMessage(offer);
+      loaned.payroll = evaluateRosterPayroll(user, { division: user.division || 'A' });
       return { ok: true, offer: { ...offer }, deal: loaned };
     }
 
@@ -1498,6 +1892,7 @@ export function createTransfersEngine(deps) {
     if (!deal.ok) return deal;
     offer.status = 'accepted';
     resolveOfferMessage(offer);
+    deal.payroll = evaluateRosterPayroll(user, { division: user.division || 'A' });
     return { ok: true, offer: { ...offer }, deal };
   };
 
@@ -1544,6 +1939,7 @@ export function createTransfersEngine(deps) {
       if (club.roster.length <= minRoster) return;
       club.roster.forEach((player, index) => {
         if (player.onLoan || !player.listed) return;
+        if (playerMovedThisWindow(player)) return;
         ensureMarketFields(player, { division: club.division, season });
         listedPool.push({ clubName, club, player, index });
       });
@@ -1564,25 +1960,48 @@ export function createTransfersEngine(deps) {
       if (index < 0) continue;
 
       const value = Number(player.marketValue) || estimatePlayerValue(player, seller.division);
-      const verdict = evaluateSellerAccept(player, value, seller, {
-        clubName: sellerName,
-        season,
-        applyManagerPull: false,
-      });
+      const sellerAvg =
+        seller.roster.reduce((sum, p) => sum + (Number(p.overall) || 0), 0) /
+        Math.max(1, seller.roster.length);
       const buyers = aiEntries
-        .filter(([name, club]) => name !== sellerName && club.roster.length < maxRoster)
+        .filter(
+          ([name, club]) =>
+            name !== sellerName &&
+            clubCanHostPlayer(club, player) &&
+            evaluateSellerDivisionFit({
+              player,
+              buyerDivision: club.division,
+              sellerDivision: seller.division,
+              listed: true,
+              rosterAvgOvr: sellerAvg,
+              unit: () => unitRoll(`ai-buy-div:${resolvePlayerId(player)}:${name}:${round}`),
+            }).ok,
+        )
         .map(([name, club]) => {
           const meta = buyerAskCap(name, club, player, value);
-          return { name, club, ...meta };
+          const verdict = evaluateSellerAccept(player, value, seller, {
+            clubName: sellerName,
+            season,
+            buyerDivision: club.division,
+            buyerClub: club,
+            applyManagerPull: false,
+          });
+          return { name, club, ...meta, verdict };
         })
-        .filter(entry => entry.cash >= verdict.floor * 0.5 && entry.askCap >= verdict.floor)
+        .filter(
+          entry =>
+            entry.verdict.accept &&
+            entry.cash >= entry.verdict.floor * 0.5 &&
+            entry.askCap >= entry.verdict.floor,
+        )
         .sort((a, b) => b.score - a.score);
       const buyerEntry = buyers[0];
       if (!buyerEntry) continue;
       const fee = Math.round(
         clamp(
-          verdict.floor + (Math.min(buyerEntry.askCap, value) - verdict.floor) * 0.55,
-          verdict.floor,
+          buyerEntry.verdict.floor +
+            (Math.min(buyerEntry.askCap, value) - buyerEntry.verdict.floor) * 0.55,
+          buyerEntry.verdict.floor,
           buyerEntry.askCap,
         ),
       );
@@ -1608,6 +2027,7 @@ export function createTransfersEngine(deps) {
       if (countOutgoingLoans(clubName) >= maxLoans) return;
       club.roster.forEach((player, index) => {
         if (player.onLoan || !player.loanListed) return;
+        if (playerMovedThisWindow(player)) return;
         loanPool.push({ clubName, club, player, index });
       });
     });
@@ -1628,15 +2048,19 @@ export function createTransfersEngine(deps) {
         .filter(
           ([name, club]) =>
             name !== ownerName &&
-            club.roster.length < maxRoster &&
-            countIncomingLoans(club) < maxLoans,
+            clubCanHostPlayer(club, player) &&
+            countIncomingLoans(club) < maxLoans &&
+            evaluateLoanFit(player, owner, club, {
+              unit: () => unitRoll(`ai-loan-host:${resolvePlayerId(player)}:${name}:${round}`),
+            }).ok,
         )
         .map(([name, club]) => {
           const needPos = club.roster.filter(item => item.pos === player.pos).length < 3;
+          const chance = loanAcceptChance(player, owner, club);
           return {
             name,
             club,
-            score: (needPos ? 30 : 0) + (Number(club.power) || 50),
+            score: (needPos ? 30 : 0) + chance * 45 + (Number(club.power) || 50) * 0.4,
           };
         })
         .sort((a, b) => b.score - a.score);
@@ -1675,7 +2099,7 @@ export function createTransfersEngine(deps) {
         Math.max(1, userClub.roster.length);
       const userDivRank = DIV_RANK[userClub.division] || 2;
       const targets = userClub.roster
-        .filter(player => !player.onLoan)
+        .filter(player => !player.onLoan && !playerMovedThisWindow(player))
         .filter(player => {
           const id = resolvePlayerId(player);
           if (!id) return false;
@@ -1717,18 +2141,28 @@ export function createTransfersEngine(deps) {
             (target.posCount >= 4 && (target.age <= 24 || target.ovr <= rosterOvr)));
 
         const buyers = aiEntries
-          .filter(([, club]) => club.roster.length < maxRoster)
+          .filter(([, club]) => clubCanHostPlayer(club, target.player))
           .map(([name, club]) => {
             const meta = buyerAskCap(name, club, target.player, value);
             const buyerRank = DIV_RANK[club.division] || 2;
             const gap = buyerRank - userDivRank;
-            if (
-              !wantLoan &&
-              gap >= 2 &&
-              !target.player.listed &&
-              target.ovr < rosterOvr + 6
-            ) {
-              return null;
+            if (!wantLoan) {
+              const offerFit = evaluateBuyerOfferDivisionFit({
+                player: target.player,
+                buyerDivision: club.division,
+                sellerDivision: userClub.division,
+                listed: !!target.player.listed,
+                loanListed: !!target.player.loanListed,
+                rosterAvgOvr: rosterOvr,
+                unit: () => unitRoll(`buy-offer-div:${target.id}:${name}:${round}`),
+              });
+              if (!offerFit.ok) return null;
+            }
+            if (wantLoan) {
+              const fit = evaluateLoanFit(target.player, userClub, club, {
+                unit: () => unitRoll(`loan-offer:${target.id}:${name}:${round}`),
+              });
+              if (!fit.ok) return null;
             }
             return { name, club, ...meta, gap };
           })
@@ -1779,7 +2213,7 @@ export function createTransfersEngine(deps) {
     for (const entry of watchPool) {
       if (watches >= 3) break;
       const buyers = aiEntries
-        .filter(([name, club]) => name !== entry.clubName && club.roster.length < maxRoster)
+        .filter(([name, club]) => name !== entry.clubName && clubCanHostPlayer(club, entry.player))
         .sort(
           (a, b) =>
             hashRatio(`${resolvePlayerId(entry.player)}:${a[0]}:${round}:watch`) -
@@ -1798,11 +2232,38 @@ export function createTransfersEngine(deps) {
       watches += 1;
     }
 
+    // Opção de compra: IA hospedeira exerce (mais chance se o dono for o usuário).
+    let loanBuys = 0;
+    const maxLoanBuys = Math.max(1, Math.min(3, Math.round(aiEntries.length / 10)));
+    for (const [hostName, host] of aiEntries) {
+      if (loanBuys >= maxLoanBuys) break;
+      if (!Array.isArray(host.roster)) continue;
+      ensureAiCash(host);
+      for (const player of [...host.roster]) {
+        if (loanBuys >= maxLoanBuys) break;
+        if (!player?.onLoan || !player.loanFrom) continue;
+        ensureLoanBuyOption(player, getClubs()?.[player.loanFrom]?.division || 'C');
+        const fee = Math.round(Number(player.loanBuyOption?.fee) || 0);
+        if (fee <= 0) continue;
+        if (clubCash(host) < fee * 1.15) continue;
+        const fromUser = player.loanFrom === userName;
+        const chance = fromUser ? 0.22 : 0.08;
+        const roll = unitRoll(`loan-buy:${resolvePlayerId(player)}:${hostName}:${round}`);
+        if (roll > chance) continue;
+        const done = exerciseLoanBuyAtHost(hostName, host, player);
+        if (done.ok) {
+          deals.push(done);
+          loanBuys += 1;
+        }
+      }
+    }
+
     const digest =
       deals.length > 0
         ? {
             buyCount: deals.filter(d => d.type === 'ai_buy').length,
             loanCount: deals.filter(d => d.type === 'ai_loan').length,
+            loanBuyCount: deals.filter(d => d.type === 'loan_buy').length,
             total: deals.length,
           }
         : null;
@@ -1835,7 +2296,8 @@ export function createTransfersEngine(deps) {
     pending.forEach(item => {
       const owner = clubs[item.ownerName];
       if (!owner || !Array.isArray(owner.roster)) return;
-      if (owner.roster.length >= maxRoster) return;
+      // Fim de temporada: devolve mesmo sob pressão de folha; só bloqueia antifail.
+      if (owner.roster.length >= ROSTER_HARD_MAX) return;
       const idx = item.club.roster.findIndex(p => resolvePlayerId(p) === resolvePlayerId(item.player));
       if (idx < 0) return;
       const [raw] = item.club.roster.splice(idx, 1);
@@ -1849,6 +2311,30 @@ export function createTransfersEngine(deps) {
     });
     if (returned > 0) onAfterTransfer?.({ type: 'loan_season_return', count: returned });
     return returned;
+  };
+
+  /** Fase 1 pública: há janela de negociação comprador(usuário) ← vendedor? */
+  const getBuyDivisionFit = playerId => {
+    const { name: buyerName, club: buyer } = userClubState();
+    if (!buyer) return { ok: false, reason: 'no_club' };
+    const found = findPlayerInWorld(getClubs(), playerId);
+    if (!found || found.clubName === buyerName) return { ok: false, reason: 'not_found' };
+    const roster = found.club.roster;
+    const rosterAvgOvr = roster?.length
+      ? roster.reduce((sum, p) => sum + (Number(p.overall) || 0), 0) / roster.length
+      : null;
+    return evaluateSellerDivisionFit({
+      player: found.player,
+      buyerDivision: buyer.division,
+      sellerDivision: found.club.division,
+      listed: !!found.player.listed,
+      rosterAvgOvr,
+      sellerPower: Number(found.club.power) || null,
+      unit: () =>
+        unitRoll(
+          `sell-div-fit:${playerId}:${buyerName}:${found.clubName}:${getCareerSeason()}`,
+        ),
+    });
   };
 
   return {
@@ -1884,11 +2370,13 @@ export function createTransfersEngine(deps) {
     loanPlayer,
     loanOutPlayer,
     returnLoanPlayer,
+    exerciseLoanBuyOption,
     returnExpiredLoans,
     countIncomingLoans,
     countOutgoingLoans,
     loanSlots,
     evaluateSellerAccept,
+    getBuyDivisionFit,
     findPlayerInWorld: playerId => findPlayerInWorld(getClubs(), playerId),
     estimatePlayerValue,
     hydratePendingOffers,
@@ -1899,6 +2387,13 @@ export function createTransfersEngine(deps) {
     attachOfferMessageId,
     acceptIncomingOffer,
     rejectIncomingOffer,
+    evaluateUserPayroll: (opts = {}) => {
+      const { club } = userClubState();
+      if (!club) return null;
+      return evaluateRosterPayroll(club, { division: club.division || 'A', ...opts });
+    },
+    resolvePlayerWage: (player, division) =>
+      resolvePlayerRoundWage(player, division || userClubState().club?.division || 'A'),
     expirePendingOffers,
     runAiMarketTick,
     snapshotSeasonDeals,

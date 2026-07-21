@@ -66,17 +66,19 @@ export function driftDelta(value) {
 
 /**
  * Pressão financeira sobre a Diretoria (por rodada).
- * Finanças baixas, cobertura curta ou shortfall de folha corroem o apoio da mesa
- * mesmo com campanha mediana — sem demitir só por dinheiro.
+ * Finanças baixas, cobertura curta, shortfall ou streak de overdraft corroem a mesa.
+ * Streak no vermelho acelera crise institucional (alvo ~5–6 rodadas).
  */
 export function financePressureDelta({
   finances = null,
   runwayRounds = 99,
   shortfall = false,
+  overdraftStreak = 0,
   clamp = (v, min, max) => Math.min(max, Math.max(min, v)),
 } = {}) {
   let delta = 0;
   const fin = Number(finances);
+  const streak = Math.max(0, Math.round(Number(overdraftStreak) || 0));
   if (Number.isFinite(fin) && fin < BOARD_FINANCE_PRESSURE_THRESHOLD) {
     const span = BOARD_FINANCE_PRESSURE_THRESHOLD - STATUS_MIN;
     const depth = span > 0 ? (BOARD_FINANCE_PRESSURE_THRESHOLD - fin) / span : 1;
@@ -86,8 +88,10 @@ export function financePressureDelta({
     delta -= Number(runwayRounds) < 1 ? 0.55 : Number(runwayRounds) < 2 ? 0.4 : 0.25;
   }
   if (shortfall) delta -= 0.45;
+  if (streak > 0) delta -= 0.35 * Math.min(streak, 6);
   if (!(delta < 0)) return 0;
-  return clamp(delta, -1.2, 0);
+  const floor = streak > 0 ? -2.0 : -1.2;
+  return clamp(delta, floor, 0);
 }
 
 /**

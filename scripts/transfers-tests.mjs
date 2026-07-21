@@ -339,6 +339,7 @@ check('loan in/out respects max 3 per club and season return', () => {
   const r1 = engine.loanPlayer(first.playerId);
   assert(r1.ok, r1.reason || 'loan 1');
   assert(r1.player.onLoan && r1.player.loanFrom === 'Rival FC', 'loan flags');
+  assert(r1.loanBuyFee > 0 && r1.player.loanBuyOption?.fee === r1.loanBuyFee, 'loan buy option stamped');
   assert(engine.countIncomingLoans(clubs['Meu Clube']) === 1, 'incoming 1');
   assert(engine.countOutgoingLoans('Rival FC') === 1, 'outgoing 1');
 
@@ -1145,6 +1146,123 @@ check('user offer funnel respects pending cap and miss chance', () => {
   }
   assert(created <= 2, `pending cap caps created=${created}`);
   assert(open.listPendingOffers().length <= 2, `pending=${open.listPendingOffers().length}`);
+});
+
+check('player cannot move twice in the same transfer window', () => {
+  const target = makePlayer({
+    name: 'Uma Janela',
+    playerId: 'once-p1',
+    overall: 72,
+    marketValue: 500_000,
+  });
+  const clubs = {
+    'Meu Clube': {
+      name: 'Meu Clube',
+      division: 'C',
+      budget: 20_000_000,
+      roster: Array.from({ length: 18 }, (_, i) =>
+        makePlayer({ name: `Host ${i}`, playerId: `once-host-${i}` }),
+      ),
+    },
+    'Rival FC': {
+      name: 'Rival FC',
+      division: 'C',
+      budget: 5_000_000,
+      roster: [
+        target,
+        ...Array.from({ length: 18 }, (_, i) =>
+          makePlayer({ name: `Rival ${i}`, playerId: `once-riv-${i}`, overall: 65 }),
+        ),
+      ],
+    },
+    'Outro FC': {
+      name: 'Outro FC',
+      division: 'C',
+      budget: 8_000_000,
+      roster: Array.from({ length: 18 }, (_, i) =>
+        makePlayer({ name: `Outro ${i}`, playerId: `once-out-${i}` }),
+      ),
+    },
+  };
+  const engine = createTransfersEngine({ ...moneyEngineDeps(clubs) });
+  const bought = engine.buyPlayer(target.playerId);
+  assert(bought.ok, bought.reason || 'first buy');
+  const moved = clubs['Meu Clube'].roster.find(p => p.playerId === 'once-p1');
+  assert(moved?.transferWindowLock === '2030:first', `lock=${moved?.transferWindowLock}`);
+
+  const sellAgain = engine.sellPlayer('once-p1');
+  assert(!sellAgain.ok && sellAgain.reason === 'already_moved', sellAgain.reason);
+
+  const listAgain = engine.setListed('once-p1', true, 500_000);
+  assert(!listAgain.ok && listAgain.reason === 'already_moved', listAgain.reason);
+
+  const loanAgain = engine.loanOutPlayer('once-p1');
+  assert(!loanAgain.ok && loanAgain.reason === 'already_moved', loanAgain.reason);
+
+  // Ainda aparece no elenco, mas fora do mercado de compra.
+  assert(
+    !engine.listBuyCandidates().some(row => row.playerId === 'once-p1'),
+    'hidden from buy market',
+  );
+  const sellRow = engine.listSellCandidates().find(row => row.playerId === 'once-p1');
+  assert(sellRow?.windowLocked, 'sell list marks windowLocked');
+});
+
+check('loan buy option: exercise locks fee and clears loan flags', () => {
+  const hostPlayer = makePlayer({
+    name: 'Opção Compra',
+    playerId: 'loan-buy-p1',
+    overall: 70,
+    loanListed: true,
+    marketValue: 100_000,
+  });
+  const clubs = {
+    'Meu Clube': {
+      name: 'Meu Clube',
+      division: 'C',
+      budget: 5_000_000,
+      roster: Array.from({ length: 18 }, (_, i) =>
+        makePlayer({ name: `Host ${i}`, playerId: `loan-buy-host-${i}` }),
+      ),
+    },
+    'Dono FC': {
+      name: 'Dono FC',
+      division: 'C',
+      budget: 100_000,
+      roster: [
+        hostPlayer,
+        ...Array.from({ length: 18 }, (_, i) =>
+          makePlayer({ name: `Dono ${i}`, playerId: `loan-buy-dono-${i}` }),
+        ),
+      ],
+    },
+  };
+  const engine = createTransfersEngine({
+    ...moneyEngineDeps(clubs),
+  });
+  const loaned = engine.loanPlayer(hostPlayer.playerId);
+  assert(loaned.ok, loaned.reason || 'loan');
+  const fee = loaned.loanBuyFee;
+  const base = Number(loaned.player.loanBuyOption?.marketValueAtLoan) || 0;
+  assert(fee > 0 && base > 0, `fee/base ${fee}/${base}`);
+  assert(fee >= base * 0.97 && fee <= base * 1.25, `fee band ${fee} vs base ${base}`);
+  const locked = clubs['Meu Clube'].roster.find(p => p.playerId === 'loan-buy-p1')?.loanBuyOption?.fee;
+  assert(locked === fee, 'fee persists on roster');
+
+  const beforeHost = clubs['Meu Clube'].budget;
+  const beforeOwner = clubs['Dono FC'].budget;
+  const bought = engine.exerciseLoanBuyOption('loan-buy-p1');
+  assert(bought.ok, bought.reason || 'exercise');
+  assert(bought.fee === fee, `paid ${bought.fee}`);
+  assert(bought.type === 'loan_buy', bought.type);
+  const kept = clubs['Meu Clube'].roster.find(p => p.playerId === 'loan-buy-p1');
+  assert(kept && !kept.onLoan && !kept.loanFrom && !kept.loanBuyOption, 'permanent at host');
+  assert(!clubs['Dono FC'].roster.some(p => p.playerId === 'loan-buy-p1'), 'left owner');
+  assert(clubs['Meu Clube'].budget === beforeHost - fee, 'host paid');
+  assert(clubs['Dono FC'].budget === beforeOwner + fee, 'owner credited');
+
+  const again = engine.exerciseLoanBuyOption('loan-buy-p1');
+  assert(!again.ok && again.reason === 'not_on_loan', again.reason);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

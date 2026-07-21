@@ -1,5 +1,75 @@
-/** Notas exibidas no alerta de atualização para testers. */
+/**
+ * Notas exibidas no alerta de atualização para testers.
+ * Estilo: linguagem simples, só o que o jogador precisa saber.
+ * Evitar detalhes técnicos, números de calibração e jargão de motor.
+ */
 export const RELEASE_NOTES = [
+  {
+    version: 'Alpha V.1.33',
+    date: '2026-07-20',
+    publishedAt: '2026-07-21T00:45:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Empréstimo e falência',
+        items: [
+          'Sistema de empréstimos adicionado — agora você pode pedir empréstimos.',
+          'Sistema de falência adicionado — existe chance de colapso financeiro e de você ser demitido por isso.',
+        ],
+      },
+      {
+        label: 'Adiantamento de TV',
+        items: [
+          'Sistema de adiantamento de cota de TV adicionado — agora, para ganhar respiro orçamentário, você pode pedir adiantamento da cota de TV.',
+        ],
+      },
+    ],
+  },
+  {
+    version: 'Alpha V.1.32',
+    date: '2026-07-20',
+    publishedAt: '2026-07-21T00:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Adiantamento de TV',
+        items: [
+          'Sistema de adiantamento de cota de TV adicionado.',
+        ],
+      },
+    ],
+  },
+  {
+    version: 'Alpha V.1.31',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T23:25:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Empréstimo e falência',
+        items: [
+          'Sistema de empréstimos adicionado — agora você pode pedir empréstimos.',
+          'Sistema de falência adicionado — existe chance de colapso financeiro e de você ser demitido por isso.',
+        ],
+      },
+    ],
+  },
+  {
+    version: 'Alpha V.1.26',
+    date: '2026-07-20',
+    publishedAt: '2026-07-20T20:50:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Economia',
+        items: [
+          'Cheque especial dinâmico: taxa sobe com saúde, rombo e rodadas seguidas no vermelho.',
+          'Ficar no negativo ~5–6 rodadas pressiona forte Finanças e Diretoria (risco de demissão com campanha ruim).',
+          '1–2 rodadas no vermelho ainda são recuperáveis; sair do negativo zera o contador.',
+        ],
+      },
+    ],
+  },
   {
     version: 'Alpha V.1.25',
     date: '2026-07-20',

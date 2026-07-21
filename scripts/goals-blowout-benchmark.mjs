@@ -260,9 +260,10 @@ const report = {
   references: {
     brasileiraoGpm: '2.45–2.55',
     topLeaguesGpm: '2.6–2.9',
-    targetOver45: '<6%',
+    targetOver45: '<9% even / <12% strong gap',
     targetOver75: '<0.5%',
     targetMargin5: '<3% even / <8% strong gap',
+    targetEvenGpm: '2.40–2.60',
   },
   scenarios: results,
 };

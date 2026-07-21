@@ -44,7 +44,7 @@
   <link rel="stylesheet" href="css/tester-hub.css?v=20260717-fase-d">
   <link rel="stylesheet" href="css/tactics-ui.css?v=20260718-css-feat">
   <link rel="stylesheet" href="css/tactical-confrontation.css?v=20260718-css-feat">
-  <link rel="stylesheet" href="css/economy-office.css?v=20260719-goal-gauge">
+  <link rel="stylesheet" href="css/economy-office.css?v=20260720-overdraft">
   <link rel="stylesheet" href="css/season-summary.css?v=20260719-goal-gauge">
   <link rel="stylesheet" href="css/manager-sack.css?v=20260718-sack-ui">
   <link rel="stylesheet" href="css/sponsor-picker.css?v=20260718-picker-stable">
@@ -180,11 +180,16 @@
               <div class="office-meter-top"><small>PREVENÇÃO</small><b id="officePreventionLevel">0/3</b></div>
               <div class="office-meter-track" aria-hidden="true"><i id="officePreventionBar"></i></div>
             </div>
-            <div class="office-meter" data-meter="finances">
-              <div class="office-meter-top"><small>SAÚDE FINANCEIRA</small><b id="officeFinancesStat">—</b></div>
-              <div class="office-meter-track" aria-hidden="true"><i id="officeFinancesBar"></i></div>
+            <div class="office-meter" data-meter="youth">
+              <div class="office-meter-top"><small>CATEGORIA DE BASE</small><b id="officeYouthLevel">0/5</b></div>
+              <div class="office-meter-track" aria-hidden="true"><i id="officeYouthBar"></i></div>
             </div>
           </div>
+        </article>
+        <article class="card office-bank-loan" id="officeBankLoan" aria-label="Empréstimo bancário">
+          <label>EMPRÉSTIMO BANCÁRIO</label>
+          <p class="office-bank-loan-meta" id="officeBankLoanMeta">Um contrato por vez · cobrança a cada rodada nacional</p>
+          <div id="officeBankLoanBody" class="office-bank-loan-body"></div>
         </article>
         <article class="card economy-investments" id="economyInvestments" aria-label="Investimentos do clube">
           <label>INVESTIMENTOS DO CLUBE</label>
@@ -195,6 +200,10 @@
           <label>PATROCÍNIO</label>
           <p class="office-sponsors-meta" id="officeSponsorsMeta">Contratos da temporada — 1 Master e 3 secundários</p>
           <div id="officeSponsorsList" class="office-sponsors-list"></div>
+        </article>
+        <article class="card office-radar" id="officeRadar" aria-label="Equilíbrio financeiro">
+          <label>EQUILÍBRIO FINANCEIRO</label>
+          <div id="officeRadarBody" class="office-radar-body"></div>
         </article>
         <article class="card office-ledger" aria-label="Fluxo de caixa">
           <label>FLUXO DE CAIXA</label>
@@ -355,7 +364,23 @@
         <div class="transfers-search transfers-search--sell">
           <h2 class="transfers-search-title">SEU ELENCO</h2>
           <p class="transfers-search-hint">Liste à venda, ofereça para empréstimo ou venda direto. Empréstimos voltam no fim da temporada.</p>
-          <p id="transfersSellLoanSlots" class="transfers-loan-slots" aria-live="polite"></p>
+          <div class="transfers-search-grid">
+            <label class="transfers-field"><span>Nome</span><input id="transfersSellFilterQuery" type="search" placeholder="Jogador" /></label>
+            <label class="transfers-field"><span>Posição</span><select id="transfersSellFilterPos"></select></label>
+            <label class="transfers-field"><span>Força mín.</span><input id="transfersSellFilterOvr" type="number" min="0" max="99" placeholder="Qualquer" /></label>
+            <label class="transfers-field"><span>Força máx.</span><input id="transfersSellFilterMaxOvr" type="number" min="0" max="99" placeholder="Qualquer" /></label>
+            <label class="transfers-field"><span>Idade mín.</span><input id="transfersSellFilterMinAge" type="number" min="15" max="45" placeholder="Qualquer" /></label>
+            <label class="transfers-field"><span>Idade máx.</span><input id="transfersSellFilterMaxAge" type="number" min="15" max="45" placeholder="Qualquer" /></label>
+            <label class="transfers-field"><span>Valor máx.</span><input id="transfersSellFilterMaxPrice" type="number" min="0" step="1000" placeholder="R$" /></label>
+            <label class="transfers-field"><span>Salário máx.</span><input id="transfersSellFilterMaxWage" type="number" min="0" step="100" placeholder="R$" /></label>
+          </div>
+          <div class="transfers-search-options">
+            <label class="transfers-filter-check"><input id="transfersSellFilterListed" type="checkbox" /> Só à venda</label>
+            <label class="transfers-filter-check"><input id="transfersSellFilterLoan" type="checkbox" /> Só empréstimo / emprestados</label>
+            <button id="transfersSellApplyFilters" type="button">FILTRAR</button>
+            <span id="transfersSellLoanSlots" class="transfers-loan-slots" aria-live="polite"></span>
+            <span id="transfersSellResultCount" class="transfers-result-count"></span>
+          </div>
         </div>
         <div class="transfers-table-wrap">
           <table class="transfers-table" aria-label="Seu elenco no mercado">
@@ -507,6 +532,44 @@
     <ul id="transfersWindowReportList" class="transfers-report-list"></ul>
     <footer class="transfers-report-actions">
       <button type="button" id="transfersWindowReportOk" class="transfers-offer-submit">CONTINUAR</button>
+    </footer>
+  </div>
+</div>
+<div id="transfersAlertModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="transfersAlertTitle">
+  <div class="modal-card transfers-alert-card" data-tone="ok">
+    <button id="transfersAlertClose" class="close" type="button" aria-label="Fechar">×</button>
+    <label id="transfersAlertEyebrow">MERCADO · ALERTA</label>
+    <h2 id="transfersAlertTitle">Ação no mercado</h2>
+    <p id="transfersAlertLead" class="transfers-alert-lead">—</p>
+    <div id="transfersAlertBody" class="transfers-alert-body"></div>
+    <div id="transfersAlertPayroll" class="transfers-alert-payroll hidden">
+      <div><small>FOLHA AGORA</small><strong id="transfersAlertPayrollPct">—</strong></div>
+      <div><small>GASTO / RODADA</small><strong id="transfersAlertPayrollWage">—</strong></div>
+      <div><small>ARRECADAÇÃO / RODADA</small><strong id="transfersAlertPayrollRev">—</strong></div>
+      <div><small>SAÚDE FINANCEIRA</small><strong id="transfersAlertPayrollFin">—</strong></div>
+    </div>
+    <footer class="transfers-alert-actions">
+      <button type="button" id="transfersAlertSecondary" class="transfers-offer-cancel hidden">AGORA NÃO</button>
+      <button type="button" id="transfersAlertOk" class="transfers-offer-submit">ENTENDI</button>
+    </footer>
+  </div>
+</div>
+<div id="transfersConfirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="transfersConfirmTitle">
+  <div class="modal-card transfers-confirm-card">
+    <button id="transfersConfirmClose" class="close" type="button" aria-label="Fechar">×</button>
+    <label id="transfersConfirmEyebrow">MERCADO · CONFIRMAÇÃO</label>
+    <h2 id="transfersConfirmTitle">Confirmar ação</h2>
+    <p id="transfersConfirmPlayer" class="transfers-offer-player">—</p>
+    <p id="transfersConfirmMeta" class="transfers-offer-meta">—</p>
+    <p id="transfersConfirmLead" class="transfers-alert-lead">—</p>
+    <div id="transfersConfirmFacts" class="transfers-offer-facts">
+      <div><small id="transfersConfirmSlotsLabel">EMPRÉSTIMOS NO ELENCO</small><strong id="transfersConfirmSlots">—</strong></div>
+      <div><small>SALÁRIO</small><strong id="transfersConfirmWage">—</strong></div>
+      <div><small>SEU CAIXA</small><strong id="transfersConfirmBalance">—</strong></div>
+    </div>
+    <footer class="transfers-offer-actions">
+      <button type="button" id="transfersConfirmCancel" class="transfers-offer-cancel">CANCELAR</button>
+      <button type="button" id="transfersConfirmSubmit" class="transfers-offer-submit">CONFIRMAR</button>
     </footer>
   </div>
 </div>

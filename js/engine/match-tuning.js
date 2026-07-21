@@ -8,10 +8,11 @@ export const ENGINE_TUNING = {
   progressiveFoulBase: 0.26,
   progressiveFoulMin: 0.24,
   progressiveFoulMax: 0.42,
-  creationBase: 0.445,
-  actionRateBase: 0.585,
-  actionRateMin: 0.545,
-  actionRateMax: 0.71,
+  /** Calibração v5a — alvo BR ~2.45–2.55 GPM em jogos equilibrados. */
+  creationBase: 0.468,
+  actionRateBase: 0.612,
+  actionRateMin: 0.56,
+  actionRateMax: 0.735,
   bookingBase: 0.055,
   /**
    * Pênalti por tick (live ~55 advances): base rara; combatividade soma
@@ -32,17 +33,20 @@ export const ENGINE_TUNING = {
   penaltyChanceOnGoodAttackBase: 0.00155,
   penaltyChanceOnGoodAttackMin: 0.0007,
   penaltyChanceOnGoodAttackMax: 0.012,
-  /** Calibração v4c — alvo Brasileirão (~2.5 GPM), freio forte a goleadas 8+. */
-  blowoutGapStart: 2,
-  blowoutDampPerPoint: 0.085,
-  blowoutDampMin: 0.42,
+  /**
+   * Calibração v5a — freio a partir de +4 OVR; piso baixo em gaps extremos.
+   * Placar: amortece time que já lidera.
+   */
+  blowoutGapStart: 4,
+  blowoutDampPerPoint: 0.13,
+  blowoutDampMin: 0.26,
   scoreGapStart: 1,
-  scoreDampPerGoal: 0.15,
-  scoreDampMin: 0.38,
-  xgOpenBase: 0.118,
-  xgOpenDivisor: 210,
-  xgOpenCeil: 0.27,
-  xgOpenFloor: 0.062,
+  scoreDampPerGoal: 0.235,
+  scoreDampMin: 0.25,
+  xgOpenBase: 0.133,
+  xgOpenDivisor: 198,
+  xgOpenCeil: 0.275,
+  xgOpenFloor: 0.07,
   xgOverallGapDivisor: 720,
   liveShotAttackBoost: 8,
   liveShotCreationBoost: 8,

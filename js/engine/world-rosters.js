@@ -5,6 +5,7 @@
 
 import { ensurePlayerId } from './player-identity.js';
 import { ensureMarketFields } from './player-value.js';
+import { sanitizeSetPieceForDivision } from './player-generation.js';
 
 const WORKLOAD_DEFAULT = {
   minutesLast7Days: 0,
@@ -25,6 +26,7 @@ const PLAYER_WORLD_KEYS = [
   'potential',
   'height',
   'preferredFoot',
+  'setPieceSpecialist',
   'personality',
   'number',
   'injuryProneness',
@@ -50,6 +52,8 @@ const PLAYER_WORLD_KEYS = [
   'loanListed',
   'onLoan',
   'loanFrom',
+  'loanBuyOption',
+  'transferWindowLock',
 ];
 
 /** Serializa jogador para career.worldRosters (sem workload/histórico pesado). */
@@ -138,8 +142,10 @@ export function applyWorldRosters(clubs, worldRosters, context = {}) {
  */
 export function stampWorldPlayers(clubs, context = {}) {
   let seq = 0;
+  let setPieceRepaired = 0;
   Object.entries(clubs || {}).forEach(([clubName, club]) => {
     if (!Array.isArray(club?.roster)) return;
+    const division = club.division || context.division || 'D';
     club.roster.forEach((player, index) => {
       ensurePlayerId(player, {
         seed: context.seed,
@@ -147,10 +153,12 @@ export function stampWorldPlayers(clubs, context = {}) {
         index: index + seq,
       });
       ensureMarketFields(player, {
-        division: club.division || 'D',
+        division,
         season: context.season,
       });
+      if (sanitizeSetPieceForDivision(player, division)) setPieceRepaired += 1;
     });
     seq += club.roster.length;
   });
+  return setPieceRepaired;
 }

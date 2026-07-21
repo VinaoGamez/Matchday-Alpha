@@ -22,6 +22,8 @@ import {
   assignTvRights,
   estimateTvInstallment,
   creditTvInstallment,
+  creditHomeTv,
+  tvHomeSlots,
   credit,
   getSeasonCashflowStatement,
   getBalance,
@@ -374,44 +376,65 @@ const expectedFirst = Math.floor(early.sponsors.total / 38);
 if (first === expectedFirst) ok(`primeira parcela ≈ total/38 (${first})`);
 else fail('primeira parcela ≈ total/38', `${first} vs ${expectedFirst}`);
 
-console.log('\n=== 8) Direitos de TV parcelados ===\n');
+console.log('\n=== 8) Direitos de TV por mando ===\n');
 const tvClub = makeClub({ division: 'A', budgetRatio: 1 });
 const tvStart = getBalance(tvClub);
+const homeSlotsA = tvHomeSlots('A');
 assignTvRights(tvClub, {
   division: 'A',
   season: 2026,
-  installments: 38,
+  installments: homeSlotsA,
   random: () => 0.5,
 });
 const [tvMin, tvMax] = TV_VALUE_BY_DIVISION.A;
-console.log(`TV total A=${tvClub.tvRights.total} (faixa ${tvMin}–${tvMax})`);
+console.log(`TV total A=${tvClub.tvRights.total} (faixa ${tvMin}–${tvMax}) · mandos=${homeSlotsA}`);
 if (getBalance(tvClub) === tvStart) ok('assign TV sem crédito à vista');
 else fail('assign TV sem crédito à vista', String(getBalance(tvClub) - tvStart));
 if (tvClub.tvRights.total >= tvMin && tvClub.tvRights.total <= tvMax) ok('total TV na faixa da Série A');
 else fail('total TV na faixa da Série A', String(tvClub.tvRights.total));
+if (tvClub.tvRights.installments === homeSlotsA) ok(`slots de mando A=${homeSlotsA}`);
+else fail('slots de mando A', String(tvClub.tvRights.installments));
 let tvSum = 0;
-for (let round = 1; round <= 38; round++) {
-  const paid = creditTvInstallment(tvClub, { round, installments: 38 });
-  tvSum += paid.amount;
-  const againTv = creditTvInstallment(tvClub, { round, installments: 38 });
+for (let home = 1; home <= homeSlotsA; home++) {
+  const game = {
+    home: tvClub.name,
+    away: `Visitante ${home}`,
+    round: home * 2 - 1,
+    competition: 'LEAGUE',
+  };
+  const paid = creditHomeTv(tvClub, game, { division: 'A', season: 2026 });
+  tvSum += paid.amount || 0;
+  const againTv = creditHomeTv(tvClub, game, { division: 'A', season: 2026 });
   if (!againTv.skipped || againTv.amount !== 0) {
-    fail('idempotência parcela TV', `r${round}`);
+    fail('idempotência TV mando', `h${home}`);
     break;
   }
 }
-console.log(`TV soma parcelas=${tvSum} contrato=${tvClub.tvRights.total}`);
-if (tvSum === tvClub.tvRights.total) ok('soma das 38 parcelas TV = total');
-else fail('soma das 38 parcelas TV = total', `${tvSum} vs ${tvClub.tvRights.total}`);
+console.log(`TV soma mandos=${tvSum} contrato=${tvClub.tvRights.total}`);
+if (tvSum === tvClub.tvRights.total) ok(`soma dos ${homeSlotsA} mandos TV = total`);
+else fail(`soma dos ${homeSlotsA} mandos TV = total`, `${tvSum} vs ${tvClub.tvRights.total}`);
 const tvFirst = estimateTvInstallment(
   (() => {
     const c = makeClub({ division: 'A' });
-    assignTvRights(c, { division: 'A', installments: 38, random: () => 0.25 });
+    assignTvRights(c, { division: 'A', installments: homeSlotsA, random: () => 0.25 });
     return c;
   })(),
-  { installments: 38 },
+  { installments: homeSlotsA, division: 'A' },
 );
-if (tvFirst >= 140_000 && tvFirst <= 220_000) ok(`primeira parcela TV A na faixa 140–220k (${tvFirst})`);
-else fail('primeira parcela TV A na faixa 140–220k', String(tvFirst));
+// Pool A v3 ~4–5.44M / 19 mandos ≈ 210–286k
+if (tvFirst >= 200_000 && tvFirst <= 310_000) ok(`primeira parcela TV A mando ~200–310k (${tvFirst})`);
+else fail('primeira parcela TV A mando ~200–310k', String(tvFirst));
+const cupSkip = (() => {
+  const c = makeClub({ division: 'A' });
+  assignTvRights(c, { division: 'A', installments: homeSlotsA, random: () => 0.5 });
+  return creditHomeTv(
+    c,
+    { home: c.name, away: 'X', competition: 'COPA DO BRASIL', round: 1 },
+    { division: 'A', season: 2026 },
+  );
+})();
+if (cupSkip.skipped && cupSkip.reason === 'cup') ok('Copa não credita TV');
+else fail('Copa não credita TV', JSON.stringify(cupSkip));
 
 console.log('\n=== 9) DFC temporada (além do ledger) ===\n');
 const dfcClub = makeClub({ division: 'A', budgetRatio: 1 });

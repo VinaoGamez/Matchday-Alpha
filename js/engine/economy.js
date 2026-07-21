@@ -1,12 +1,20 @@
 import { MODULE_VERSIONS } from '../core/constants.js';
 import { SPONSOR_EXTERNAL_LINKS, sponsorExternalUrlBySlug } from '../core/sponsor-links.js';
+import {
+  OVERDRAFT_PREMIUM_BASE,
+  OVERDRAFT_PREMIUM_WITH_LOAN,
+  OVERDRAFT_TO_LOAN_ABSORB_RATIO,
+  overdraftStreakMultiplier,
+  resolveOverdraftRate,
+  getBankLoan,
+} from './bank-loan.js';
 
-/** Orçamento inicial por divisão (R$ fictícios). */
+/** Orçamento inicial por divisão (R$ fictícios). Calibrado v5. */
 export const INITIAL_BUDGET_BY_DIVISION = {
-  A: 18_000_000,
-  B: 12_000_000,
-  C: 8_000_000,
-  D: 5_000_000,
+  A: 9_500_000,
+  B: 6_200_000,
+  C: 4_200_000,
+  D: 2_700_000,
 };
 
 /** Capacidade inicial e teto por divisão. */
@@ -17,11 +25,17 @@ export const STADIUM_CAPACITY_BY_DIVISION = {
   D: { base: 12_000, max: 28_000, step: 4_000 },
 };
 
-/** Faixas de preço de ingresso (R$). Calibrado para não inundar o caixa. */
+/** Faixas de preço de ingresso (R$). Calibrado v3 — bilheteria não pode dominar o caixa. */
 export const TICKET_PRICE_RANGE = {
-  national: { min: 20, max: 120, step: 5, default: 28 },
-  cups: { min: 30, max: 180, step: 5, default: 45 },
+  national: { min: 15, max: 90, step: 5, default: 22 },
+  cups: { min: 22, max: 140, step: 5, default: 36 },
 };
+
+/**
+ * Escala final da bilheteria (após público × preço).
+ * v4: aperta ops para cobertura baseline ~0,95–1,10× (A ~1,00–1,05×).
+ */
+export const GATE_REVENUE_SCALE = 0.28;
 
 /**
  * Premiação de fim de temporada — calibrada vs INITIAL_BUDGET:
@@ -206,16 +220,99 @@ export function estimatePlayerWage(player, division = 'A') {
   return Math.round(base * scale * wageAgeFactor(player?.age));
 }
 
+/** Prefere `player.wage` persistido; senão estima. */
+export function resolvePlayerRoundWage(player, division = 'A') {
+  const wage = Number(player?.wage);
+  if (Number.isFinite(wage) && wage > 0) return Math.round(wage);
+  return estimatePlayerWage(player, division);
+}
+
 /**
- * Folha salarial da rodada (soma do elenco, com teto suave).
- * @returns {number}
+ * Folha salarial da rodada (soma do elenco).
+ * @param {{ softCap?: boolean }} [options] softCap=false para gate de elenco (impacto real).
  */
-export function estimateWageBill(club, division = club?.division || 'A') {
+export function estimateWageBill(club, division = club?.division || 'A', options = {}) {
   const roster = Array.isArray(club?.roster) ? club.roster : [];
   if (!roster.length) return 0;
-  const raw = roster.reduce((sum, player) => sum + estimatePlayerWage(player, division), 0);
+  const softCap = options.softCap !== false;
+  const raw = roster.reduce((sum, player) => sum + resolvePlayerRoundWage(player, division), 0);
+  if (!softCap) return raw;
   const cap = WAGE_BILL_SOFT_CAP[division] ?? WAGE_BILL_SOFT_CAP.D;
   return Math.min(raw, cap);
+}
+
+/** Teto antifail de elenco (quase nunca atinge se a folha estiver ok). */
+export const ROSTER_HARD_MAX = 40;
+
+/** Fator folha/receita conforme saúde financeira. */
+export function financesPayrollFactor(finances) {
+  const value = Number(finances);
+  if (!Number.isFinite(value)) return 1;
+  if (value >= 70) return 1.15;
+  if (value >= 50) return 1;
+  if (value >= 35) return 0.85;
+  return 0.7;
+}
+
+/**
+ * Receita recorrente estimada por rodada (patrocínio + TV em mando + ~½ bilheteria casa).
+ * TV só cai em jogos como mandante (~metade das rodadas) — usa 50% da próxima parcela.
+ */
+export function estimateRoundRecurringRevenue(club, division = club?.division || 'A') {
+  const sponsor = estimateSponsorInstallment(club) || 0;
+  const tv = Math.round((estimateTvInstallment(club) || 0) * 0.5);
+  let gateShare = 0;
+  try {
+    gateShare = Math.round((estimateGateReceipt(club, { division }).revenue || 0) * 0.45);
+  } catch {
+    gateShare = 0;
+  }
+  const fallback = { A: 180_000, B: 110_000, C: 70_000, D: 40_000 }[division] || 40_000;
+  return Math.max(sponsor + tv + gateShare, fallback);
+}
+
+/**
+ * Gate de expansão/redução de elenco por folha vs receita (modelo livre).
+ * @param {object} club
+ * @param {{ division?: string, extraWage?: number, removeWage?: number, rosterDelta?: number }} [opts]
+ */
+export function evaluateRosterPayroll(club, opts = {}) {
+  const division = opts.division || club?.division || 'A';
+  const extraWage = Math.max(0, Math.round(Number(opts.extraWage) || 0));
+  const removeWage = Math.max(0, Math.round(Number(opts.removeWage) || 0));
+  const rosterDelta = Math.round(Number(opts.rosterDelta) || 0);
+  const sizeNow = Array.isArray(club?.roster) ? club.roster.length : 0;
+  const sizeNext = sizeNow + rosterDelta;
+  const wageBefore = estimateWageBill(club, division, { softCap: false });
+  const wageAfter = Math.max(0, wageBefore + extraWage - removeWage);
+  const revenue = estimateRoundRecurringRevenue(club, division);
+  const factor = financesPayrollFactor(club?.finances);
+  const limit = Math.round(revenue * factor);
+  const pctBefore = revenue > 0 ? (wageBefore / revenue) * 100 : 0;
+  const pctAfter = revenue > 0 ? (wageAfter / revenue) * 100 : 0;
+  const hardFull = rosterDelta > 0 && sizeNext > ROSTER_HARD_MAX;
+  const overPayroll = rosterDelta > 0 && wageAfter > limit;
+  const ok = !hardFull && !overPayroll;
+  let tone = 'ok';
+  if (!ok) tone = 'block';
+  else if (rosterDelta > 0 && wageAfter > limit * 0.85) tone = 'warn';
+  else if (rosterDelta < 0 && pctAfter < pctBefore - 0.5) tone = 'relief';
+  return {
+    ok,
+    tone,
+    reason: hardFull ? 'roster_hard_full' : overPayroll ? 'payroll_pressure' : null,
+    sizeNow,
+    sizeNext,
+    hardMax: ROSTER_HARD_MAX,
+    wageBefore,
+    wageAfter,
+    revenue,
+    factor,
+    limit,
+    pctBefore: Math.round(pctBefore),
+    pctAfter: Math.round(pctAfter),
+    finances: Number(club?.finances) || 50,
+  };
 }
 
 const hashManagerKey = key => {
@@ -402,7 +499,7 @@ const allocateProportional = (balance, parts) => {
 
 /**
  * Cobra folha + comissão + manutenção do estádio na rodada.
- * Rateio proporcional se o caixa não cobrir o total.
+ * Débito integral — o caixa pode ficar negativo (overdraft).
  * Idempotente por `round`.
  */
 export function chargeRoundCosts(club, {
@@ -464,28 +561,35 @@ export function chargeRoundCosts(club, {
   const staffDue = estimateStaffBill(club, division, staffOpts);
   const stadiumDue = estimateStadiumOpsBill(club, division);
   const due = wagesDue + staffDue + stadiumDue;
-  const balance = getBalance(club);
-  const [wagesPart, staffPart, stadiumPart] = allocateProportional(balance, [
-    { key: 'wages', due: wagesDue },
-    { key: 'staff', due: staffDue },
-    { key: 'stadium', due: stadiumDue },
-  ]);
-  const paid = wagesPart.paid + staffPart.paid + stadiumPart.paid;
-  const shortfall = Math.max(0, due - paid);
+  const balanceBefore = getBalance(club);
+  // Débito integral: obrigações entram no caixa mesmo sem cobertura.
+  club.budget = balanceBefore - due;
+  const coveredFromCash = Math.max(0, Math.min(due, Math.max(0, balanceBefore)));
+  const overdraft = Math.max(0, due - coveredFromCash);
+  const shortfall = overdraft;
+  club.wageShortfall = shortfall > 0 || getBalance(club) < 0;
 
-  club.budget = balance - paid;
-  club.wageShortfall = shortfall > 0;
+  const splitOverdraft = (partDue) => {
+    if (!(due > 0) || !(overdraft > 0)) return 0;
+    return Math.round((overdraft * partDue) / due);
+  };
+  const wagesOd = splitOverdraft(wagesDue);
+  const staffOd = splitOverdraft(staffDue);
+  const stadiumOd = Math.max(0, overdraft - wagesOd - staffOd);
+
   club.lastWageBill = {
     due: wagesDue,
-    paid: wagesPart.paid,
-    shortfall: wagesPart.shortfall,
+    paid: wagesDue,
+    shortfall: wagesOd,
+    overdraft: wagesOd,
     round: roundKey,
     at: new Date().toISOString(),
   };
   club.lastStaffBill = {
     due: staffDue,
-    paid: staffPart.paid,
-    shortfall: staffPart.shortfall,
+    paid: staffDue,
+    shortfall: staffOd,
+    overdraft: staffOd,
     reputation: Math.max(40, Math.min(99, Number(managerReputation) || DEFAULT_MANAGER_REPUTATION)),
     managerId: contract?.managerId || null,
     score: contract?.score ?? null,
@@ -494,35 +598,44 @@ export function chargeRoundCosts(club, {
   };
   club.lastStadiumOpsBill = {
     due: stadiumDue,
-    paid: stadiumPart.paid,
-    shortfall: stadiumPart.shortfall,
+    paid: stadiumDue,
+    shortfall: stadiumOd,
+    overdraft: stadiumOd,
     round: roundKey,
     at: new Date().toISOString(),
   };
-  club.lastRoundCostBill = { due, paid, shortfall, round: roundKey, at: new Date().toISOString() };
+  club.lastRoundCostBill = {
+    due,
+    paid: due,
+    shortfall,
+    overdraft,
+    balanceBefore,
+    round: roundKey,
+    at: new Date().toISOString(),
+  };
   if (roundKey != null) club.lastWageRoundCharged = roundKey;
 
   const roundLabel = roundKey != null ? ` · Rodada ${roundKey}` : '';
   pushCostLedger(club, {
     reason: 'wages',
     label: `Folha salarial${roundLabel}`,
-    paid: wagesPart.paid,
+    paid: wagesDue,
     due: wagesDue,
-    shortfall: wagesPart.shortfall,
+    shortfall: wagesOd,
   });
   pushCostLedger(club, {
     reason: 'staff_wages',
     label: `Comissão técnica${roundLabel}`,
-    paid: staffPart.paid,
+    paid: staffDue,
     due: staffDue,
-    shortfall: staffPart.shortfall,
+    shortfall: staffOd,
   });
   pushCostLedger(club, {
     reason: 'stadium_ops',
     label: `Manutenção do estádio${roundLabel}`,
-    paid: stadiumPart.paid,
+    paid: stadiumDue,
     due: stadiumDue,
-    shortfall: stadiumPart.shortfall,
+    shortfall: stadiumOd,
   });
 
   return {
@@ -531,8 +644,9 @@ export function chargeRoundCosts(club, {
     staff: club.lastStaffBill,
     stadium: club.lastStadiumOpsBill,
     due,
-    paid,
+    paid: due,
     shortfall,
+    overdraft,
     balance: club.budget,
     skipped: false,
   };
@@ -694,14 +808,22 @@ export function initialBudget(division = 'A') {
 }
 
 export function formatBudget(value) {
-  const amount = Math.max(0, Math.round(Number(value) || 0));
+  const raw = Math.round(Number(value) || 0);
+  const negative = raw < 0;
+  const amount = Math.abs(raw);
+  let text;
   if (amount >= 1_000_000) {
     const millions = amount / 1_000_000;
-    const text = millions >= 10 ? Math.round(millions).toString() : millions.toFixed(1).replace('.', ',');
-    return `R$ ${text} mi`;
+    text =
+      millions >= 10
+        ? `${Math.round(millions)} mi`
+        : `${millions.toFixed(1).replace('.', ',')} mi`;
+  } else if (amount >= 1_000) {
+    text = `${Math.round(amount / 1_000)} mil`;
+  } else {
+    text = amount.toLocaleString('pt-BR');
   }
-  if (amount >= 1_000) return `R$ ${Math.round(amount / 1_000)} mil`;
-  return `R$ ${amount.toLocaleString('pt-BR')}`;
+  return negative ? `− R$ ${text}` : `R$ ${text}`;
 }
 
 export function formatCapacity(value) {
@@ -782,8 +904,13 @@ export function computeSeasonPrize({
   return { total, lines };
 }
 
+/** Saldo assinado — pode ser negativo (cheque especial / atraso contabilizado). */
 export function getBalance(club) {
-  return Math.max(0, Math.round(Number(club?.budget) || 0));
+  return Math.round(Number(club?.budget) || 0);
+}
+
+export function isOverdrawn(club) {
+  return getBalance(club) < 0;
 }
 
 /** Garante budget numérico; migra saves antigos sem o campo. */
@@ -792,7 +919,7 @@ export function ensureBudget(club, division = 'A') {
   if (!Number.isFinite(Number(club.budget))) {
     club.budget = initialBudget(division);
   } else {
-    club.budget = Math.max(0, Math.round(Number(club.budget)));
+    club.budget = Math.round(Number(club.budget));
   }
   if (!Array.isArray(club.budgetLedger)) club.budgetLedger = [];
   return club.budget;
@@ -856,9 +983,92 @@ function clampTicket(channel, value) {
   return Math.max(range.min, Math.min(range.max, amount));
 }
 
+/** Gastos voluntários exigem saldo ≥ custo (não aprofunda o vermelho por escolha). */
 export function canAfford(club, amount) {
   const cost = Math.max(0, Math.round(Number(amount) || 0));
   return getBalance(club) >= cost;
+}
+
+/**
+ * Fallback legado (flat por divisão). A cobrança usa `resolveOverdraftRate`
+ * (família do empréstimo × prêmio × streak).
+ */
+export const OVERDRAFT_RATE_BY_DIVISION = {
+  A: 0.015,
+  B: 0.018,
+  C: 0.02,
+  D: 0.022,
+};
+
+/**
+ * Cobra juros de saldo negativo (após folha / banco).
+ * Mantém `overdraftStreak` (rodadas consecutivas no vermelho).
+ * Idempotente por `round`.
+ */
+export function serviceOverdraft(club, { division = 'C', round = null } = {}) {
+  if (!club) return { ok: false, skipped: true, reason: 'no_club' };
+  ensureBudget(club, division);
+  const roundKey = Number.isFinite(Number(round)) ? Number(round) : null;
+  if (roundKey != null && club.lastOverdraftRound === roundKey) {
+    return {
+      ok: true,
+      skipped: true,
+      balance: getBalance(club),
+      fee: 0,
+      streak: Math.max(0, Math.round(Number(club.overdraftStreak) || 0)),
+    };
+  }
+  const bal = getBalance(club);
+  if (!(bal < 0)) {
+    club.overdraftActive = false;
+    club.overdraftStreak = 0;
+    if (roundKey != null) club.lastOverdraftRound = roundKey;
+    return { ok: true, skipped: true, balance: bal, fee: 0, active: false, streak: 0 };
+  }
+  const streak = Math.max(0, Math.round(Number(club.overdraftStreak) || 0)) + 1;
+  club.overdraftStreak = streak;
+  const resolved = resolveOverdraftRate(club, { division, streak });
+  const rate =
+    Number.isFinite(resolved?.rate) && resolved.rate > 0
+      ? resolved.rate
+      : OVERDRAFT_RATE_BY_DIVISION[division] ?? OVERDRAFT_RATE_BY_DIVISION.C;
+  const fee = Math.max(1, Math.round(Math.abs(bal) * rate));
+  const paid = spend(club, fee, {
+    reason: 'overdraft_interest',
+    label: 'Juros de saldo negativo (compostos)',
+    meta: {
+      balanceBefore: bal,
+      rate,
+      streak,
+      streakMult: resolved?.streakMult,
+      premium: resolved?.premium,
+      round: roundKey,
+    },
+    allowNegative: true,
+  });
+  // v5: OD prolongado + empréstimo ativo → parte do juro engorda a dívida bancária.
+  let absorbedToLoan = 0;
+  if (streak >= 3 && getBankLoan(club) && club.bankLoan) {
+    absorbedToLoan = Math.max(1, Math.round(fee * OVERDRAFT_TO_LOAN_ABSORB_RATIO));
+    club.bankLoan.balance = Math.max(
+      0,
+      Math.round(Number(club.bankLoan.balance) || 0) + absorbedToLoan,
+    );
+  }
+  club.overdraftActive = true;
+  club.wageShortfall = true;
+  if (roundKey != null) club.lastOverdraftRound = roundKey;
+  return {
+    ok: !!paid?.ok,
+    skipped: false,
+    active: true,
+    fee,
+    rate,
+    streak,
+    streakMult: resolved?.streakMult ?? 1,
+    absorbedToLoan,
+    balance: getBalance(club),
+  };
 }
 
 const EMPTY_SEASON_INFLOWS = () => ({
@@ -866,6 +1076,8 @@ const EMPTY_SEASON_INFLOWS = () => ({
   sponsorship: 0,
   tv: 0,
   prize: 0,
+  bank_loan: 0,
+  transfers_in: 0,
   other_in: 0,
 });
 
@@ -874,21 +1086,30 @@ const EMPTY_SEASON_OUTFLOWS = () => ({
   staff: 0,
   stadium: 0,
   upgrades: 0,
+  loan_service: 0,
+  transfers_out: 0,
   other_out: 0,
 });
 
 const seasonCashflowCategory = (type, reason) => {
+  if (reason === 'transfer') {
+    return type === 'credit' ? ['inflows', 'transfers_in'] : ['outflows', 'transfers_out'];
+  }
   if (type === 'credit') {
     if (reason === 'gate_receipt') return ['inflows', 'gate'];
     if (reason === 'sponsorship') return ['inflows', 'sponsorship'];
-    if (reason === 'tv_rights') return ['inflows', 'tv'];
+    if (reason === 'tv_rights' || reason === 'tv_advance') return ['inflows', 'tv'];
     if (reason === 'season_prize') return ['inflows', 'prize'];
+    if (reason === 'bank_loan') return ['inflows', 'bank_loan'];
     return ['inflows', 'other_in'];
   }
   if (reason === 'wages') return ['outflows', 'wages'];
   if (reason === 'staff_wages') return ['outflows', 'staff'];
   if (reason === 'stadium_ops' || reason === 'name_rights') return ['outflows', 'stadium'];
   if (String(reason || '').startsWith('upgrade:')) return ['outflows', 'upgrades'];
+  if (reason === 'loan_interest' || reason === 'loan_repay' || reason === 'overdraft_interest') {
+    return ['outflows', 'loan_service'];
+  }
   return ['outflows', 'other_out'];
 };
 
@@ -1003,10 +1224,18 @@ export function credit(club, amount, { reason = 'credit', label = 'Crédito', me
   return { ok: true, balance: club.budget, entry };
 }
 
-export function spend(club, amount, { reason = 'spend', label = 'Despesa', meta = null } = {}) {
+/**
+ * @param {{ allowNegative?: boolean }} [opts]
+ * `allowNegative: true` — obrigações (folha, banco, cheque especial) podem aprofundar o vermelho.
+ */
+export function spend(
+  club,
+  amount,
+  { reason = 'spend', label = 'Despesa', meta = null, allowNegative = false } = {},
+) {
   ensureBudget(club);
   const value = Math.max(0, Math.round(Number(amount) || 0));
-  if (!canAfford(club, value)) {
+  if (!allowNegative && !canAfford(club, value)) {
     return { ok: false, balance: getBalance(club), error: 'insufficient_funds' };
   }
   club.budget = getBalance(club) - value;
@@ -1017,7 +1246,10 @@ export function spend(club, amount, { reason = 'spend', label = 'Despesa', meta 
     amount: value,
     balance: club.budget,
     at: new Date().toISOString(),
-    meta,
+    meta: {
+      ...(meta && typeof meta === 'object' ? meta : {}),
+      ...(allowNegative && getBalance(club) < 0 ? { overdraft: true } : {}),
+    },
   };
   pushLedger(club, entry);
   return { ok: true, balance: club.budget, entry };
@@ -1230,8 +1462,9 @@ export function estimateFillRate(club, channel = 'national', options = {}) {
   const noise = options.deterministic === false ? (Math.random() - 0.5) * 0.07 : fixtureAttendanceNoise(options.game);
   // Sem jogo específico (painel do Estádio), Copas têm leve atrativo médio.
   const channelBias = !options.game && channel === 'cups' ? 0.05 : 0;
-  const fill = 0.6 * priceFactor + envBoost + supportBoost + attraction.boost + noise + channelBias;
-  return Math.max(0.32, Math.min(0.99, fill));
+  // Base 0.48 (era 0.60): lotação média mais realista vs folha.
+  const fill = 0.48 * priceFactor + envBoost + supportBoost + attraction.boost + noise + channelBias;
+  return Math.max(0.28, Math.min(0.96, fill));
 }
 
 /** Estimativa de bilheteria — com ou sem jogo concreto. */
@@ -1242,7 +1475,7 @@ export function estimateGateReceipt(club, { channel = 'national', division = 'A'
   const cap = Math.max(1000, Number(capacity) || Number(club.stadiumCapacity) || 12_000);
   const attendance = Math.round(cap * fill);
   const price = club.ticketPrices[resolvedChannel] ?? TICKET_PRICE_RANGE[resolvedChannel].default;
-  const revenue = Math.round(attendance * price);
+  const revenue = Math.round(attendance * price * GATE_REVENUE_SCALE);
   const attraction = competitionAttraction(game);
   return {
     channel: resolvedChannel,
@@ -1269,13 +1502,13 @@ export function computeMatchAttendance(club, game, { division = 'A', capacity = 
   const price = club.ticketPrices[channel] ?? TICKET_PRICE_RANGE[channel].default;
   if (Number.isFinite(Number(game.attendance)) && Number.isFinite(Number(game.fillRate))) {
     const attendance = Math.round(Number(game.attendance));
-    const fillRate = Math.max(0.32, Math.min(0.99, Number(game.fillRate)));
+    const fillRate = Math.max(0.28, Math.min(0.96, Number(game.fillRate)));
     return {
       channel,
       attendance,
       fillRate,
       price,
-      revenue: Math.round(attendance * price),
+      revenue: Math.round(attendance * price * GATE_REVENUE_SCALE),
       capacity: cap,
       attraction: competitionAttraction(game),
       environment: Number(club.environment) || 60,
@@ -1407,12 +1640,12 @@ export function sponsorExternalUrl(name) {
   return sponsorExternalUrlBySlug(sponsorLogoSlug(name));
 }
 
-/** Valor do contrato por temporada (R$), conforme divisão. Calibrado v2 (menos superávit). */
+/** Valor do contrato por temporada (R$), conforme divisão. Calibrado v4 (ops ~0,95–1,10×). */
 export const SPONSOR_VALUE_BY_DIVISION = {
-  A: { master: [5_100_000, 7_200_000], secondary: [1_000_000, 1_450_000] },
-  B: { master: [2_700_000, 4_100_000], secondary: [470_000, 720_000] },
-  C: { master: [1_350_000, 2_050_000], secondary: [240_000, 380_000] },
-  D: { master: [550_000, 950_000], secondary: [100_000, 190_000] },
+  A: { master: [3_750_000, 5_300_000], secondary: [735_000, 1_065_000] },
+  B: { master: [1_985_000, 3_015_000], secondary: [345_000, 530_000] },
+  C: { master: [1_100_000, 1_640_000], secondary: [200_000, 310_000] },
+  D: { master: [440_000, 760_000], secondary: [80_000, 152_000] },
 };
 
 function isRealSponsor(name) {
@@ -1939,12 +2172,25 @@ export function getSponsors(club) {
  * Pool de direitos de TV por temporada (R$).
  * Calibrado para cobrir parte da folha sem deixar o clube rico demais.
  */
+/** Pool de TV por temporada. Calibrado v4 (ops ~0,95–1,10×). */
 export const TV_VALUE_BY_DIVISION = {
-  A: [5_000_000, 6_800_000],
-  B: [2_500_000, 3_800_000],
-  C: [1_250_000, 2_000_000],
-  D: [500_000, 850_000],
+  A: [3_680_000, 5_005_000],
+  B: [1_840_000, 2_795_000],
+  C: [1_020_000, 1_600_000],
+  D: [400_000, 680_000],
 };
+
+/** Parcelas de TV = mandos de campo esperados na temporada nacional. */
+export const TV_HOME_SLOTS_BY_DIVISION = {
+  A: 19,
+  B: 19,
+  C: 19,
+  D: 11,
+};
+
+export function tvHomeSlots(division = 'C') {
+  return TV_HOME_SLOTS_BY_DIVISION[division] ?? TV_HOME_SLOTS_BY_DIVISION.C;
+}
 
 function tvRightsAreValid(tvRights, season) {
   if (!tvRights || typeof tvRights !== 'object') return false;
@@ -1952,12 +2198,26 @@ function tvRightsAreValid(tvRights, season) {
   return Number.isFinite(Number(tvRights.total)) && Number(tvRights.total) > 0;
 }
 
-/** Normaliza contrato de TV para parcelas por rodada nacional. */
-export function normalizeTvRights(tvRights, { installments } = {}) {
+/** Normaliza contrato de TV para parcelas por mando de campo. */
+export function normalizeTvRights(tvRights, { installments, division } = {}) {
   if (!tvRights || typeof tvRights !== 'object') return null;
   const total = Math.max(0, Number(tvRights.total) || 0);
-  const slots = Math.max(1, Number(installments) || Number(tvRights.installments) || 38);
+  const homeSlots = tvHomeSlots(division || tvRights.division || 'C');
+  let slots = Math.max(1, Number(installments) || Number(tvRights.installments) || homeSlots);
+  // 22/38 = calendário nacional (legado); TV paga por mando (A/B/C: 19, D: 11).
+  if (slots === 38 || slots === 22) {
+    const migrating = !tvRights.homeMode;
+    slots = homeSlots;
+    if (migrating && total > 0) {
+      const paidAmount = Math.max(0, Number(tvRights.paidAmount) || 0);
+      tvRights.paidInstallments = Math.min(
+        slots,
+        Math.max(0, Math.round((paidAmount / total) * slots)),
+      );
+    }
+  }
   tvRights.installments = slots;
+  tvRights.homeMode = true;
   const hasPaidAmount = Number.isFinite(Number(tvRights.paidAmount));
   if (tvRights.credited && !hasPaidAmount) {
     tvRights.paidAmount = total;
@@ -1975,9 +2235,13 @@ export function normalizeTvRights(tvRights, { installments } = {}) {
 export function estimateTvInstallment(club, options = {}) {
   const tvRights = club?.tvRights;
   if (!tvRights) return 0;
-  normalizeTvRights(tvRights, { installments: options.installments });
+  const division = options.division || club?.division || tvRights.division || 'C';
+  normalizeTvRights(tvRights, {
+    installments: options.installments ?? tvHomeSlots(division),
+    division,
+  });
   const total = Math.max(0, Number(tvRights.total) || 0);
-  const slots = Math.max(1, Number(tvRights.installments) || 38);
+  const slots = Math.max(1, Number(tvRights.installments) || tvHomeSlots(division));
   const paidInstallments = Number(tvRights.paidInstallments) || 0;
   const paidAmount = Number(tvRights.paidAmount) || 0;
   if (!(total > 0) || paidInstallments >= slots || paidAmount >= total) return 0;
@@ -1987,18 +2251,23 @@ export function estimateTvInstallment(club, options = {}) {
 }
 
 /**
- * Credita uma parcela de direitos de TV (rodada nacional).
- * Idempotente por `round`. Soma das parcelas = total do contrato.
+ * Credita uma parcela de direitos de TV (por mando).
+ * Preferir `creditHomeTv`. Idempotente por `homeGameKey` ou `round`.
  */
-export function creditTvInstallment(club, { round = null, installments = null } = {}) {
+export function creditTvInstallment(
+  club,
+  { round = null, installments = null, homeGameKey = null, opponent = null, division = null } = {},
+) {
   if (!club?.tvRights) {
     return { ok: false, amount: 0, skipped: true };
   }
+  const div = division || club.division || club.tvRights.division || 'C';
   normalizeTvRights(club.tvRights, {
-    installments: installments ?? club.tvRights.installments,
+    installments: installments ?? tvHomeSlots(div),
+    division: div,
   });
   const roundKey = Number.isFinite(Number(round)) ? Number(round) : null;
-  if (roundKey != null && club.tvRights.lastInstallmentRound === roundKey) {
+  if (homeGameKey && club.tvRights.lastHomeGameKey === homeGameKey) {
     return {
       ok: true,
       amount: 0,
@@ -2007,7 +2276,16 @@ export function creditTvInstallment(club, { round = null, installments = null } 
       paidAmount: club.tvRights.paidAmount,
     };
   }
-  const amount = estimateTvInstallment(club);
+  if (!homeGameKey && roundKey != null && club.tvRights.lastInstallmentRound === roundKey) {
+    return {
+      ok: true,
+      amount: 0,
+      skipped: true,
+      paidInstallments: club.tvRights.paidInstallments,
+      paidAmount: club.tvRights.paidAmount,
+    };
+  }
+  const amount = estimateTvInstallment(club, { division: div, installments: club.tvRights.installments });
   if (!(amount > 0)) {
     if ((Number(club.tvRights.total) || 0) > 0) club.tvRights.credited = true;
     return {
@@ -2023,19 +2301,23 @@ export function creditTvInstallment(club, { round = null, installments = null } 
   const slots = club.tvRights.installments;
   credit(club, amount, {
     reason: 'tv_rights',
-    label:
-      roundKey != null
+    label: opponent
+      ? `Direitos de TV · mando vs ${opponent}`
+      : roundKey != null
         ? `Direitos de TV · Rodada ${roundKey}`
-        : `Direitos de TV · parcela ${installmentIndex}/${slots}`,
+        : `Direitos de TV · mando ${installmentIndex}/${slots}`,
     meta: {
       installment: installmentIndex,
       installments: slots,
       total: club.tvRights.total,
       amount,
+      opponent: opponent || null,
+      home: true,
     },
   });
   club.tvRights.paidAmount = (Number(club.tvRights.paidAmount) || 0) + amount;
   club.tvRights.paidInstallments = installmentIndex;
+  if (homeGameKey) club.tvRights.lastHomeGameKey = homeGameKey;
   if (roundKey != null) club.tvRights.lastInstallmentRound = roundKey;
   if (club.tvRights.paidAmount >= (Number(club.tvRights.total) || 0)) {
     club.tvRights.credited = true;
@@ -2045,6 +2327,7 @@ export function creditTvInstallment(club, { round = null, installments = null } 
     round: roundKey,
     installment: installmentIndex,
     installments: slots,
+    opponent: opponent || null,
     at: new Date().toISOString(),
   };
   return {
@@ -2057,27 +2340,73 @@ export function creditTvInstallment(club, { round = null, installments = null } 
   };
 }
 
+/**
+ * Credita parcela de TV no mando de campo (jogador ou IA).
+ * Só competição nacional — Copa não gera parcela de TV do pool da série.
+ */
+export function creditHomeTv(club, game, { division = null, season = null } = {}) {
+  if (!club || !game) return { ok: false, amount: 0, skipped: true, reason: 'no_club' };
+  if (game.home !== club.name) return { ok: false, amount: 0, skipped: true, reason: 'not_home' };
+  if (game.competition === 'COPA DO BRASIL') {
+    return { ok: false, amount: 0, skipped: true, reason: 'cup' };
+  }
+  if (game.tvCredited) return { ok: true, amount: 0, skipped: true, reason: 'already_credited' };
+
+  const div = division || club.division || 'C';
+  ensureBudget(club, div);
+  ensureTvRights(club, {
+    division: div,
+    season: season ?? club.tvRights?.season ?? null,
+    installments: tvHomeSlots(div),
+  });
+
+  const homeGameKey = [
+    game.competition || 'LEAGUE',
+    game.round ?? '',
+    game.home,
+    game.away,
+    game.leg || '',
+    game.phase || '',
+  ].join('|');
+
+  const result = creditTvInstallment(club, {
+    round: game.round ?? null,
+    installments: tvHomeSlots(div),
+    division: div,
+    homeGameKey,
+    opponent: game.away,
+  });
+
+  if (result?.ok && (result.amount > 0 || result.complete)) {
+    game.tvCredited = true;
+    if (result.amount > 0) game.tvRevenue = result.amount;
+  }
+  return { ...result, homeGameKey };
+}
+
 /** Define o contrato de TV da temporada (sem crédito à vista). */
 export function assignTvRights(club, {
   division = 'A',
   season = 2026,
   random = Math.random,
-  installments = 38,
+  installments = null,
 } = {}) {
   if (!club) return null;
   ensureBudget(club, division);
   const range = TV_VALUE_BY_DIVISION[division] || TV_VALUE_BY_DIVISION.A;
   const total = valueInRange(range, random);
-  const slots = Math.max(1, Number(installments) || 38);
+  const slots = Math.max(1, Number(installments) || tvHomeSlots(division));
   club.tvRights = {
     season,
     division,
     total,
     credited: false,
+    homeMode: true,
     installments: slots,
     paidAmount: 0,
     paidInstallments: 0,
     lastInstallmentRound: null,
+    lastHomeGameKey: null,
   };
   return club.tvRights;
 }
@@ -2087,14 +2416,14 @@ export function ensureTvRights(club, options = {}) {
   if (!club) return null;
   const season = options.season ?? 2026;
   const division = options.division || club.division || 'A';
-  const installments = Math.max(1, Number(options.installments) || 38);
+  const installments = Math.max(1, Number(options.installments) || tvHomeSlots(division));
   if (options.savedTvRights && tvRightsAreValid(options.savedTvRights, season)) {
     club.tvRights = { ...options.savedTvRights, division };
-    return normalizeTvRights(club.tvRights, { installments });
+    return normalizeTvRights(club.tvRights, { installments, division });
   }
   if (tvRightsAreValid(club.tvRights, season)) {
     club.tvRights.division = division;
-    return normalizeTvRights(club.tvRights, { installments });
+    return normalizeTvRights(club.tvRights, { installments, division });
   }
   return assignTvRights(club, {
     division,
@@ -2108,12 +2437,182 @@ export function getTvRights(club) {
   return club?.tvRights || null;
 }
 
+/** Saldo de direitos de TV ainda não creditado (R$). */
+export function estimateTvRemaining(club, options = {}) {
+  const tvRights = club?.tvRights;
+  if (!tvRights) return 0;
+  const division = options.division || club?.division || tvRights.division || 'C';
+  normalizeTvRights(tvRights, {
+    installments: options.installments ?? tvHomeSlots(division),
+    division,
+  });
+  const total = Math.max(0, Number(tvRights.total) || 0);
+  const paidAmount = Math.max(0, Number(tvRights.paidAmount) || 0);
+  return Math.max(0, total - paidAmount);
+}
+
+/** Deságio mínimo do adiantamento de TV (crise, ainda no azul). */
+export const TV_ADVANCE_HAIRCUT_BASE = 0.2;
+/** Deságio com caixa negativo. */
+export const TV_ADVANCE_HAIRCUT_RED = 0.25;
+/** Deságio com empréstimo em atraso. */
+export const TV_ADVANCE_HAIRCUT_DELINQUENT = 0.28;
+/** Saldo mínimo restante para liberar adiantamento. */
+export const TV_ADVANCE_MIN_REMAINING = 50_000;
+
+/**
+ * Crisis gate: adiantamento só sob pressão (não farm no dia 1).
+ * 1× por temporada — mandos futuros de TV deixam de pagar.
+ */
+export function resolveTvAdvanceHaircut(club) {
+  const cash = getBalance(club);
+  const loan = getBankLoan(club);
+  const delinquent = Math.max(0, Math.round(Number(loan?.delinquencyStreak) || 0)) >= 1;
+  let haircut = TV_ADVANCE_HAIRCUT_BASE;
+  if (cash < 0) haircut = Math.max(haircut, TV_ADVANCE_HAIRCUT_RED);
+  if (delinquent) haircut = Math.max(haircut, TV_ADVANCE_HAIRCUT_DELINQUENT);
+  return Math.round(haircut * 1000) / 1000;
+}
+
+export function isTvAdvanceCrisis(club) {
+  if (!club) return false;
+  if (getBalance(club) < 0) return true;
+  if (club.warnedInsolvent) return true;
+  const loan = getBankLoan(club);
+  if (Math.max(0, Math.round(Number(loan?.delinquencyStreak) || 0)) >= 1) return true;
+  if (Math.max(0, Math.round(Number(club.overdraftStreak) || 0)) >= 2) return true;
+  return false;
+}
+
+/** Cotação / elegibilidade do adiantamento de direitos de TV. */
+export function tvAdvanceStatus(club, options = {}) {
+  const remaining = estimateTvRemaining(club, options);
+  const haircut = resolveTvAdvanceHaircut(club);
+  const payout = Math.max(0, Math.round(remaining * (1 - haircut)));
+  const discount = Math.max(0, remaining - payout);
+  const already = !!(club?.tvRights?.advancedAt || club?.tvRights?.advanced);
+  const crisis = isTvAdvanceCrisis(club);
+  let reason = null;
+  if (already) reason = 'already_advanced';
+  else if (!(remaining >= TV_ADVANCE_MIN_REMAINING)) reason = 'no_remaining';
+  else if (!crisis) reason = 'not_in_crisis';
+  return {
+    remaining,
+    haircut,
+    haircutPct: Math.round(haircut * 1000) / 10,
+    payout,
+    discount,
+    already,
+    crisis,
+    eligible: !reason,
+    reason,
+    advancedAt: club?.tvRights?.advancedAt || null,
+    advancedGross: Number(club?.tvRights?.advancedGross) || 0,
+    advancedNet: Number(club?.tvRights?.advancedNet) || 0,
+    advancedHaircut: Number(club?.tvRights?.advancedHaircut) || 0,
+  };
+}
+
+/**
+ * Adianta o saldo restante de direitos de TV com deságio.
+ * Credita o líquido e marca o contrato como quitado (sem parcelas futuras).
+ */
+export function advanceTvRights(club, options = {}) {
+  if (!club) return { ok: false, reason: 'no_club' };
+  const division = options.division || club.division || club.tvRights?.division || 'C';
+  ensureBudget(club, division);
+  ensureTvRights(club, {
+    division,
+    season: options.season ?? club.tvRights?.season ?? null,
+    installments: options.installments ?? tvHomeSlots(division),
+  });
+  const status = tvAdvanceStatus(club, { division, installments: club.tvRights?.installments });
+  if (!status.eligible) {
+    return { ok: false, reason: status.reason, ...status };
+  }
+  const { remaining, haircut, payout, discount } = status;
+  const credited = credit(club, payout, {
+    reason: 'tv_advance',
+    label: `Adiantamento de TV (−${Math.round(haircut * 100)}%)`,
+    meta: {
+      gross: remaining,
+      net: payout,
+      discount,
+      haircut,
+      season: club.tvRights.season,
+      division,
+      round: options.round ?? null,
+    },
+  });
+  if (!credited?.ok) {
+    return { ok: false, reason: 'credit_failed', remaining, haircut, payout };
+  }
+  const slots = Math.max(1, Number(club.tvRights.installments) || tvHomeSlots(division));
+  club.tvRights.paidAmount = Math.max(0, Number(club.tvRights.total) || 0);
+  club.tvRights.paidInstallments = slots;
+  club.tvRights.credited = true;
+  club.tvRights.advanced = true;
+  club.tvRights.advancedAt = new Date().toISOString();
+  club.tvRights.advancedRound =
+    Number.isFinite(Number(options.round)) ? Number(options.round) : null;
+  club.tvRights.advancedGross = remaining;
+  club.tvRights.advancedNet = payout;
+  club.tvRights.advancedHaircut = haircut;
+  club.lastTvAdvance = {
+    gross: remaining,
+    net: payout,
+    discount,
+    haircut,
+    round: club.tvRights.advancedRound,
+    at: club.tvRights.advancedAt,
+  };
+  return {
+    ok: true,
+    remaining,
+    haircut,
+    haircutPct: Math.round(haircut * 1000) / 10,
+    payout,
+    discount,
+    clubBalance: getBalance(club),
+    advancedAt: club.tvRights.advancedAt,
+  };
+}
+
+export {
+  BANK_LOAN_RATE_BY_DIVISION,
+  BANK_LOAN_MIN_AMORT_RATIO,
+  BANK_LOAN_MIN_FINANCES,
+  bankLoanRate,
+  clubFinancesScore,
+  bankCreditFactor,
+  bankRateMultiplier,
+  resolveBankCredit,
+  bankLoanStatus,
+  bankLoanBalance,
+  getBankLoan,
+  serializeBankLoan,
+  applyBankLoanSnapshot,
+  takeBankLoan,
+  repayBankLoan,
+  payBankLoanMinimum,
+  serviceBankLoan,
+  clearBankLoan,
+  BANK_LOAN_LATE_FEE_RATIO,
+  BANK_LOAN_FORCE_COLLECT_STREAK,
+  loanDelinquencyRateMult,
+  OVERDRAFT_PREMIUM_BASE,
+  OVERDRAFT_PREMIUM_WITH_LOAN,
+  overdraftStreakMultiplier,
+  resolveOverdraftRate,
+} from './bank-loan.js';
+
 export function createEconomyEngine() {
   return {
     moduleVersion: MODULE_VERSIONS.economy,
     INITIAL_BUDGET_BY_DIVISION,
     STADIUM_CAPACITY_BY_DIVISION,
     TICKET_PRICE_RANGE,
+    GATE_REVENUE_SCALE,
     PITCH_TIERS,
     SPONSOR_POOL,
     SPONSOR_REAL_PARTNERS,
@@ -2169,7 +2668,19 @@ export function createEconomyEngine() {
     getTvRights,
     normalizeTvRights,
     estimateTvInstallment,
+    estimateTvRemaining,
+    tvAdvanceStatus,
+    advanceTvRights,
+    resolveTvAdvanceHaircut,
+    isTvAdvanceCrisis,
+    TV_ADVANCE_HAIRCUT_BASE,
+    TV_ADVANCE_HAIRCUT_RED,
+    TV_ADVANCE_HAIRCUT_DELINQUENT,
+    TV_ADVANCE_MIN_REMAINING,
     creditTvInstallment,
+    creditHomeTv,
+    tvHomeSlots,
+    TV_HOME_SLOTS_BY_DIVISION,
     canAfford,
     credit,
     spend,
@@ -2184,12 +2695,24 @@ export function createEconomyEngine() {
     STADIUM_OPS_BASE_BY_DIVISION,
     STADIUM_OPS_SOFT_CAP,
     estimatePlayerWage,
+    resolvePlayerRoundWage,
     estimateWageBill,
+    estimateRoundRecurringRevenue,
+    financesPayrollFactor,
+    evaluateRosterPayroll,
+    ROSTER_HARD_MAX,
     estimateStaffBill,
     estimateStadiumOpsBill,
     estimateRoundCostBill,
     estimateWageRunway,
     chargeRoundCosts,
+    serviceOverdraft,
+    isOverdrawn,
+    OVERDRAFT_RATE_BY_DIVISION,
+    OVERDRAFT_PREMIUM_BASE,
+    OVERDRAFT_PREMIUM_WITH_LOAN,
+    overdraftStreakMultiplier,
+    resolveOverdraftRate,
     chargeWageBill,
     upgradeCost,
     getUpgrade,

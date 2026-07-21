@@ -8,6 +8,7 @@ import {
   decideShootoutWinner,
   shootoutChoiceOptions,
 } from './shootout-takers.js';
+import { isPenaltySpecialist } from './player-generation.js';
 
 const SPONSOR_LOGO_URLS = Object.fromEntries(
   Object.entries(
@@ -731,7 +732,7 @@ export function createLiveMatchOrchestration(deps) {
       note = 'Leia o comparativo e toque em ASSISTIR para a cobrança.',
     } = {},
   ) => {
-    const specialist = (taker?.penaltyTaking || 0) > 85;
+    const specialist = isPenaltySpecialist(taker);
     const goalChance = Math.round(
       clamp(
         0.69 +
@@ -910,8 +911,8 @@ export function createLiveMatchOrchestration(deps) {
     const kickNo = shootoutAttemptsCount(kickingClub) + 1;
     heading.innerHTML = `<div><strong>Cobrança ${kickNo} — escolha o batedor</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
     const takers = shootoutChoiceOptions(shootoutTakersFor(kickingClub), 5);
-    const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (player.penaltyTaking > 85 ? .035 : 0), .56, .94) * 100);
-    $('#penaltyTakers').innerHTML = takers.length ? takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR OPÇÃO</i>' : player.penaltyTaking > 85 ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('') : '<p class="shootout-empty">Sem cobradores disponíveis.</p>';
+    const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (isPenaltySpecialist(player) ? .035 : 0), .56, .94) * 100);
+    $('#penaltyTakers').innerHTML = takers.length ? takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR OPÇÃO</i>' : isPenaltySpecialist(player) ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('') : '<p class="shootout-empty">Sem cobradores disponíveis.</p>';
     openPenaltyDuel(
       'Disputa de pênaltis',
       `Cobrança ${kickNo}. Escolha o batedor com calma — cada chute decide.`,
@@ -1051,8 +1052,8 @@ export function createLiveMatchOrchestration(deps) {
     if (!heading) { heading = document.createElement('div'); heading.className = 'penalty-choice-heading'; section.prepend(heading); }
     heading.innerHTML = `<div><strong>Escolha o cobrador</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
     const takers = getActiveStarters().filter(player => player.pos !== 'GOL').sort((a, b) => b.penaltyTaking - a.penaltyTaking || b.overall - a.overall).slice(0, 3);
-    const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (player.penaltyTaking > 85 ? .035 : 0), .56, .94) * 100);
-    $('#penaltyTakers').innerHTML = takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR BATEDOR</i>' : player.penaltyTaking > 85 ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('');
+    const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (isPenaltySpecialist(player) ? .035 : 0), .56, .94) * 100);
+    $('#penaltyTakers').innerHTML = takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR BATEDOR</i>' : isPenaltySpecialist(player) ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('');
     openPenaltyDuel('Pênalti!', 'O juiz aponta a marca da cal. Escolha o cobrador.');
     $('#matchStatus').textContent = 'Pênalti: escolha o cobrador na janela da disputa.';
   };

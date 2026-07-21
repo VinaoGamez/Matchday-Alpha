@@ -122,7 +122,7 @@ Quem ataca no tick: probabilidade ≈ fatia de posse (ex.: 58% de posse → ~58%
 
 ### 5.2 Construção (`creation`)
 
-Chance base: **`ENGINE_TUNING.creationBase = 0.47`** (faixa ~0,22–0,88).
+Chance base: **`ENGINE_TUNING.creationBase = 0.468`** (faixa ~0,22–0,88 · calibração v5a).
 
 Peso típico do duelo:
 
@@ -171,9 +171,12 @@ Chance derivada de um **xG implícito**:
 - ruído aleatório pequeno  
 - convertida em probabilidade condicional “dado no alvo”
 
-### 6.3 Amortecimento de goleada (`blowoutDamp`)
+### 6.3 Amortecimento de goleada (`blowoutDamp` + `scoreDamp`)
 
-Se o overall atacante − defensor > **6**, a chance de gol é multiplicada por um fator que cai até ~**0,78**, evitando placares absurdos só por gap de elenco.
+- **Gap de OVR** (`blowoutDamp`): a partir de atacante − defensor > **4**, a chance de gol cai (~0,13 por ponto de gap), com piso **0,26**.
+- **Placar** (`scoreDamp`): time que já lidera por 2+ tem finalização amortecida (~0,235 por gol de vantagem, piso **0,25**).
+
+Juntos, mantêm GPM de jogos equilibrados perto do Brasileirão e cortam goleadas 5+ / margens absurdas.
 
 ### 6.4 Cobranças especiais
 
@@ -296,23 +299,25 @@ Arquivo: `js/engine/match-tuning.js`
 
 | Parâmetro | Valor | Uso |
 |-----------|-------|-----|
-| `creationBase` | 0,445 | Chance base de boa construção (v4c) |
-| `actionRateBase` | 0,585 | Densidade de jogadas na sim |
-| `actionRateMin` / `Max` | 0,545 / 0,71 | Faixa da densidade |
+| `creationBase` | 0,468 | Chance base de boa construção (v5a) |
+| `actionRateBase` | 0,612 | Densidade de jogadas na sim |
+| `actionRateMin` / `Max` | 0,56 / 0,735 | Faixa da densidade |
 | `foulRiskBase` | 0,54 | Base de falta no duelo |
 | `progressiveFoulBase` | 0,26 | Falta após boa construção |
 | `bookingBase` | 0,055 | Base de cartão |
-| `blowoutGapStart` | 2 | Início do amortecimento por OVR |
-| `blowoutDampMin` | 0,42 | Piso do amortecimento por OVR |
+| `blowoutGapStart` | 4 | Início do amortecimento por OVR |
+| `blowoutDampPerPoint` | 0,13 | Queda por ponto de gap |
+| `blowoutDampMin` | 0,26 | Piso do amortecimento por OVR |
 | `scoreGapStart` | 1 | Freio por placar (vantagem &gt; 1) |
-| `xgOpenBase` / divisor / teto | 0,118 / 210 / 0,27 | xG de chute aberto |
+| `scoreDampPerGoal` / `Min` | 0,235 / 0,25 | Freio do time que lidera |
+| `xgOpenBase` / divisor / teto | 0,133 / 198 / 0,275 | xG de chute aberto |
 | `subWindows` | 55, 58, 70, 78, 82 | Janelas de substituição CPU |
 
 ---
 
 ## 12. Frase-resumo
 
-> O Matchday avança o relógio em blocos de 1–3 minutos; a posse (força + tática + mando + momento) escolhe quem ataca; cada ataque é um duelo de atributos com chance base ~44,5% de virar boa jogada; o desfecho vira chute, escanteio, falta ou impedimento. Freios de OVR e de placar limitam goleadas extremas. O **ritmo das Opções** só define quão rápido você assiste a esse ciclo na tela — as pausas e decisões continuam com o treinador.
+> O Matchday avança o relógio em blocos de 1–3 minutos; a posse (força + tática + mando + momento) escolhe quem ataca; cada ataque é um duelo de atributos com chance base ~46,8% de virar boa jogada; o desfecho vira chute, escanteio, falta ou impedimento. Freios de OVR (a partir de +4) e de placar limitam goleadas extremas, com GPM de jogos equilibrados perto do Brasileirão (~2,4–2,5). O **ritmo das Opções** só define quão rápido você assiste a esse ciclo na tela — as pausas e decisões continuam com o treinador.
 
 ---
 

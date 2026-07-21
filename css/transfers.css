@@ -250,6 +250,41 @@ main > .view.active.transfers-view {
   vertical-align: middle;
 }
 
+/* Emprestado no meu elenco (entrada) */
+.transfers-loan-tag--in {
+  border-color: #2f7a4a;
+  background: #143522;
+  color: #8fefb0;
+}
+
+.transfers-loan-tag--in .club-link {
+  color: inherit;
+}
+
+/* Cedido a outro clube (saída) */
+.transfers-loan-tag--out {
+  border-color: #8a3a3a;
+  background: #3a1818;
+  color: #ff9a9a;
+}
+
+.transfers-loan-tag--out .club-link {
+  color: inherit;
+}
+
+/* Ofertado para empréstimo (ainda no elenco) */
+.transfers-loan-tag--offer {
+  border-color: #6a5a28;
+  background: #2a2410;
+  color: #e6d08a;
+}
+
+.transfers-loan-away-note {
+  color: #c49a9a;
+  font: 700 10px 'DM Sans', sans-serif;
+  letter-spacing: .3px;
+}
+
 /* —— Tabela de resultados —— */
 .transfers-table-wrap {
   flex: 1 1 auto;
@@ -946,4 +981,106 @@ body.transfers-col-resizing * {
   .transfers-toolbar-left strong {
     font-size: 24px;
   }
+}
+
+/* Alerta efêmero de mercado (não grava no inbox) */
+.transfers-alert-card {
+  width: min(440px, calc(100vw - 28px));
+  text-align: left;
+  padding: 26px 28px 22px !important;
+  border: 1px solid #2a5560;
+}
+.transfers-alert-card[data-tone='block'] {
+  border-color: #8a3a3a;
+  box-shadow: inset 4px 0 #e85d5d;
+}
+.transfers-alert-card[data-tone='warn'] {
+  border-color: #8a6a2a;
+  box-shadow: inset 4px 0 #e8c15d;
+}
+.transfers-alert-card[data-tone='relief'],
+.transfers-alert-card[data-tone='ok'] {
+  border-color: #2a6a58;
+  box-shadow: inset 4px 0 #5de8b0;
+}
+.transfers-alert-card > label {
+  display: block;
+  color: #7eb8c4;
+  font: 700 10px 'DM Sans', sans-serif;
+  letter-spacing: 0.55px;
+  margin-bottom: 8px;
+}
+.transfers-alert-card > h2 {
+  margin: 0 0 10px;
+  color: #edf8f5;
+  font: 700 26px 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.3px;
+}
+.transfers-alert-lead {
+  margin: 0 0 14px;
+  color: #c5dde3;
+  font: 600 13px 'DM Sans', sans-serif;
+  line-height: 1.45;
+}
+.transfers-alert-body {
+  margin: 0 0 16px;
+  color: #9eb6b8;
+  font: 500 12px 'DM Sans', sans-serif;
+  line-height: 1.5;
+}
+.transfers-alert-body.hidden {
+  display: none;
+}
+.transfers-confirm-card {
+  width: min(440px, calc(100vw - 28px));
+  text-align: left;
+  padding: 26px 28px 22px !important;
+  border: 1px solid #2a5560;
+}
+.transfers-confirm-card > label {
+  display: block;
+  color: #7eb8c4;
+  font: 700 10px 'DM Sans', sans-serif;
+  letter-spacing: 0.55px;
+  margin-bottom: 8px;
+}
+.transfers-confirm-card > h2 {
+  margin: 0 0 10px;
+  color: #edf8f5;
+  font: 700 26px 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.3px;
+}
+.transfers-alert-payroll {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid #234650;
+  border-radius: 6px;
+  background: #0a1c24;
+}
+.transfers-alert-payroll.hidden {
+  display: none;
+}
+.transfers-alert-payroll small {
+  display: block;
+  color: #6f97a2;
+  font: 700 9px 'DM Sans', sans-serif;
+  letter-spacing: 0.45px;
+  margin-bottom: 3px;
+}
+.transfers-alert-payroll strong {
+  color: #edf8f5;
+  font: 700 15px 'Barlow Condensed', sans-serif;
+}
+.transfers-alert-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.transfers-alert-actions .hidden {
+  display: none !important;
 }

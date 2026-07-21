@@ -1,5 +1,5 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
-import { initialBudget, estimateRoundCostBill } from '../economy.js';
+import { initialBudget, estimateRoundCostBill, bankLoanBalance } from '../economy.js';
 import { STATUS_MAX, STATUS_MIN } from './constants.js';
 import * as environmentRules from './rules/environment.js';
 import * as supportRules from './rules/support.js';
@@ -33,7 +33,10 @@ export function createClubStatusEngine(deps) {
     if (!club) return;
     const div = division || club.division || 'A';
     const baseline = initialBudget(div) || 1;
-    const balance = typeof getBalance === 'function' ? getBalance(club) : Number(club.budget) || 0;
+    const cash = typeof getBalance === 'function' ? getBalance(club) : Number(club.budget) || 0;
+    // Dívida bancária pressiona a saúde financeira (caixa líquido; pode ficar negativo).
+    const debt = bankLoanBalance(club);
+    const balance = cash - Math.round(debt * 0.65);
     const wageBill = estimateRoundCostBill(club, div, {
       managerReputation: club.managerReputation,
     });
@@ -41,7 +44,11 @@ export function createClubStatusEngine(deps) {
       balance,
       baseline,
       wageBill,
-      shortfall: !!club.wageShortfall,
+      shortfall:
+        !!club.wageShortfall ||
+        !!club.loanServiceShortfall ||
+        !!club.overdraftActive ||
+        cash < 0,
       clamp,
       clampStatus,
     });
@@ -160,13 +167,16 @@ export function createClubStatusEngine(deps) {
       const wageBill = estimateRoundCostBill(user, division, {
         managerReputation: user.managerReputation,
       });
-      const runwayRounds = wageBill > 0 ? balance / wageBill : 99;
+      const overdrawn = balance < 0;
+      const runwayRounds = overdrawn ? -1 : wageBill > 0 ? balance / wageBill : 99;
+      const overdraftStreak = Math.max(0, Math.round(Number(user.overdraftStreak) || 0));
       applyDeltas(user, {
         board:
           boardRules.financePressureDelta({
             finances: user.finances,
             runwayRounds,
-            shortfall: !!user.wageShortfall,
+            shortfall: !!user.wageShortfall || overdrawn || !!user.overdraftActive,
+            overdraftStreak,
             clamp,
           }) +
           boardRules.financeGapCeilingDelta({

@@ -1,5 +1,6 @@
 import { MODULE_VERSIONS } from '../core/constants.js';
 import { ownGoalChance } from './match-clock.js';
+import { isFreeKickSpecialist, isPenaltySpecialist } from './player-generation.js';
 
 /**
  * Ações de partida ao vivo — passes, finalização e construção de jogadas.
@@ -77,8 +78,9 @@ export function createLiveMatchActions(deps) {
     const attacker = options.taker || playerFor(side, 'shot');
     const goalkeeper = playerFor(side === 'home' ? 'away' : 'home', 'save');
     const keeperData = actorData(side === 'home' ? 'away' : 'home', goalkeeper, 'save');
-    const penaltySkill = Number(options.penaltySkill) || actorData(side, attacker, 'shot').penaltyTaking || 70;
-    const specialist = penaltySkill > 85;
+    const takerData = actorData(side, attacker, 'shot');
+    const penaltySkill = Number(options.penaltySkill) || takerData.penaltyTaking || 70;
+    const specialist = isPenaltySpecialist({ ...takerData, penaltyTaking: penaltySkill });
     const forced = options.forcedOutcome;
     let outcome = forced;
     if (!outcome) {
@@ -113,8 +115,8 @@ export function createLiveMatchActions(deps) {
     const goalkeeper=playerFor(side === 'home' ? 'away' : 'home','save'), keeperData=actorData(side === 'home' ? 'away' : 'home',goalkeeper,'save');
     const label=options.shootout ? 'na cobrança do shootout' : options.penalty ? 'na cobrança de pênalti' : options.freeKick ? 'na cobrança de falta' : options.corner ? 'de cabeça após o escanteio' : 'na finalização';
     const finishing=options.corner ? attackerData.heading : options.freeKick ? attackerData.freeKick : attackerData.finishing;
-    const freeKickSpecialist=options.freeKick && attackerData.freeKick>85;
-    const penaltySpecialist=options.penalty && options.penaltySkill>85;
+    const freeKickSpecialist=options.freeKick && isFreeKickSpecialist(attackerData);
+    const penaltySpecialist=options.penalty && isPenaltySpecialist({...attackerData,penaltyTaking:options.penaltySkill||attackerData.penaltyTaking});
     if(!options.shootout){s.shots++; influencePossession(side,1.8);}
     const forcedOutcome = options.forcedOutcome;
     const onTarget = forcedOutcome
@@ -196,14 +198,14 @@ export function createLiveMatchActions(deps) {
     if(!taker) return;
     const directAttempt=clamp(.30+(taker.freeKick-45)/105,.22,.72);
     if(random()<directAttempt){
-      log(`${taker.name} assume a cobrança de falta na entrada da área.`, `free-kick-${taker.freeKick>85?'specialist':'standard'}`, side);
+      log(`${taker.name} assume a cobrança de falta na entrada da área.`, `free-kick-${isFreeKickSpecialist(taker)?'specialist':'standard'}`, side);
       shot(side,current,other,{freeKick:true,taker:taker.name});
     } else log(`${taker.name} levanta a falta na área, mas a defesa afasta.`, '', side);
   };
   const penaltyTaker = side => {
     const lineup=side==='home'?getStarters():getMatchClub().roster.slice(0,11);
     const eligible=lineup.filter((player,index)=>player.pos!=='GOL' && !getCards()[side][index].red).sort((a,b)=>b.penaltyTaking-a.penaltyTaking);
-    const specialists=eligible.filter(player=>player.penaltyTaking>85);
+    const specialists=eligible.filter(player=>isPenaltySpecialist(player));
     const choices=specialists.length ? specialists : eligible;
     return choices[random()<.80?0:Math.min(1,choices.length-1)] || eligible[0];
   };

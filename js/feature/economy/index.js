@@ -35,6 +35,9 @@ export function createEconomyFeature(deps) {
     estimateStaffBill,
     estimateStadiumOpsBill,
     estimateRoundCostBill,
+    estimateWageRunway,
+    resolveOverdraftRate,
+    isOverdrawn,
     ensureStadium,
     getTicketPrices,
     adjustTicketPrice,
@@ -42,7 +45,14 @@ export function createEconomyFeature(deps) {
     getSponsors,
     estimateSponsorInstallment,
     estimateTvInstallment,
+    tvAdvanceStatus,
+    advanceTvRights,
+    tvHomeSlots,
     getSeasonCashflowStatement,
+    takeBankLoan,
+    repayBankLoan,
+    payBankLoanMinimum,
+    bankLoanStatus,
     getStructureLevel,
     getPitchLevel,
     maxPitchForStructure,
@@ -133,9 +143,23 @@ export function createEconomyFeature(deps) {
     const metaEl = $('#officeBudgetMeta');
     const medicalEl = $('#officeMedicalLevel');
     const preventionEl = $('#officePreventionLevel');
-    if (balanceEl) balanceEl.textContent = formatBudget(balance);
+    if (balanceEl) {
+      balanceEl.textContent = formatBudget(balance);
+      balanceEl.classList.toggle('is-negative', balance < 0);
+    }
     if (metaEl) {
-      metaEl.textContent = `${getUserClub()} · Série ${getUserDivision?.() || club.division || 'A'} · caixa disponível para investimentos`;
+      const div = getUserDivision?.() || club.division || 'A';
+      const runway =
+        typeof estimateWageRunway === 'function'
+          ? estimateWageRunway(club, div, { managerReputation: club.managerReputation })
+          : null;
+      const runwayTxt =
+        balance < 0
+          ? 'saldo negativo — cheque especial ativo'
+          : runway != null && runway < 4
+            ? `runway ${runway.toFixed(1).replace('.', ',')} rodadas`
+            : 'caixa disponível para investimentos';
+      metaEl.textContent = `${getUserClub()} · Série ${div} · ${runwayTxt}`;
     }
     const goalEl = $('#officeSeasonGoal');
     const goalMetaEl = $('#officeSeasonGoalMeta');
@@ -175,17 +199,21 @@ export function createEconomyFeature(deps) {
     }
     const medicalLevel = Number(club.medicalInvestment) || 0;
     const preventionLevel = Number(club.preventionProgram) || 0;
-    const financesPct = Math.round(Number(club.finances) || 0);
+    const youthRow = listUpgrades?.(club)?.find?.(row => row.id === 'youth_academy');
+    const youthMax = Number(youthRow?.maxLevel) || 5;
+    const youthLevel = Math.max(0, Math.min(youthMax, Number(youthRow?.level) || 0));
     if (medicalEl) medicalEl.textContent = `${medicalLevel}/5`;
     if (preventionEl) preventionEl.textContent = `${preventionLevel}/3`;
-    const financesEl = $('#officeFinancesStat');
-    if (financesEl) financesEl.textContent = `${financesPct}%`;
+    const youthEl = $('#officeYouthLevel');
+    if (youthEl) youthEl.textContent = `${youthLevel}/${youthMax}`;
     setMeterBar('#officeMedicalBar', (medicalLevel / 5) * 100);
     setMeterBar('#officePreventionBar', (preventionLevel / 3) * 100);
-    setMeterBar('#officeFinancesBar', financesPct, '.office-meter[data-meter="finances"]');
+    setMeterBar('#officeYouthBar', (youthLevel / youthMax) * 100);
     renderBoardBrief(club);
     renderInvestments();
     renderSponsors();
+    renderBankLoan();
+    renderRadar();
     renderCashflow();
   };
 
@@ -248,6 +276,248 @@ export function createEconomyFeature(deps) {
       ...(sponsors.secondaries || []).map(item => sponsorCardHtml(item)),
     ];
     list.innerHTML = cards.join('');
+  };
+
+  const bankLoanRejectCopy = reason =>
+    ({
+      loan_active: 'Já existe um empréstimo ativo. Amortize o saldo antes de pedir outro.',
+      over_limit: 'Valor acima do crédito que o banco libera hoje para o seu clube.',
+      credit_denied:
+        'Banco recusou crédito. Melhore receitas, controle a folha e recupere a saúde financeira para voltar a negociar.',
+      invalid_amount: 'Informe um valor válido.',
+      insufficient_funds: 'Caixa insuficiente para essa amortização.',
+      no_loan: 'Não há empréstimo ativo para amortizar.',
+      no_club: 'Clube indisponível.',
+    })[reason] || 'Não foi possível concluir a operação bancária.';
+
+  /** Aceita 1800000, 1.800.000, 1,8 mi, R$ 500.000 */
+  const parseLoanAmount = raw => {
+    let s = String(raw || '')
+      .trim()
+      .toLowerCase()
+      .replace(/r\$\s*/g, '')
+      .replace(/\s+/g, '');
+    if (!s) return 0;
+    const mi = s.match(/^([\d.,]+)mi(lh(ão|ao|ões|oes)?)?$/);
+    if (mi) {
+      const token = mi[1];
+      const n = token.includes(',')
+        ? Number(token.replace(/\./g, '').replace(',', '.'))
+        : Number(token.replace(/\./g, ''));
+      return Number.isFinite(n) ? Math.round(n * 1_000_000) : 0;
+    }
+    if (/^\d{1,3}(\.\d{3})+$/.test(s)) return Math.round(Number(s.replace(/\./g, '')));
+    if (/^\d+$/.test(s)) return Math.round(Number(s));
+    const normalized = s.replace(/\./g, '').replace(',', '.');
+    const n = Number(normalized);
+    return Number.isFinite(n) ? Math.round(n) : 0;
+  };
+
+  const bankLoanFinTone = finances => {
+    const f = Number(finances) || 0;
+    if (f < 40) return 'risk';
+    if (f < 55) return 'warn';
+    return 'ok';
+  };
+
+  const bankLoanMetricsHtml = (status, ratePct) => {
+    const fin = Math.max(0, Math.min(100, Math.round(Number(status.finances) || 0)));
+    const tone = bankLoanFinTone(fin);
+    return `
+      <div class="office-bank-loan-metrics" role="group" aria-label="Condições do banco">
+        <div class="office-bank-loan-metric office-bank-loan-metric--health" data-meter="finances" data-tone="${tone}">
+          <div class="office-meter-top"><small>SAÚDE</small><b>${fin}%</b></div>
+          <div class="office-meter-track" aria-hidden="true"><i style="width:${fin}%"></i></div>
+        </div>
+        <div class="office-bank-loan-metrics-row">
+          <div class="office-bank-loan-metric" data-meter="credit">
+            <div class="office-meter-top"><small>CRÉDITO</small><b>${formatBudget(status.available || 0)}</b></div>
+            <span class="office-bank-loan-metric-sub">Teto liberado agora</span>
+          </div>
+          <div class="office-bank-loan-metric" data-meter="rate">
+            <div class="office-meter-top"><small>JUROS</small><b>${ratePct}%</b></div>
+            <span class="office-bank-loan-metric-sub">por rodada nacional</span>
+          </div>
+        </div>
+      </div>`;
+  };
+
+  const renderBankLoan = () => {
+    const body = $('#officeBankLoanBody');
+    const meta = $('#officeBankLoanMeta');
+    if (!body || !bankLoanStatus) return;
+    const club = userClubState();
+    if (!club) return;
+    const division = getUserDivision?.() || club.division || 'A';
+    const status = bankLoanStatus(club, { division });
+    const ratePct = status.active
+      ? status.ratePct
+      : status.offerRatePct ?? status.ratePct ?? Math.round((status.rate || 0) * 1000) / 10;
+
+    if (meta) {
+      meta.textContent = status.active
+        ? status.delinquent
+          ? `Série ${division} · ATRASO ${status.delinquencyStreak}r · taxa efetiva ${ratePct}% / rodada`
+          : `Série ${division} · juros ${ratePct}% / rodada (auto) · mínimo 5,5% no Escritório`
+        : `Um contrato por vez · juros automáticos · amortização no Escritório`;
+    }
+
+    if (!status.active) {
+      const metrics = bankLoanMetricsHtml(status, ratePct);
+      if (!status.eligible) {
+        body.innerHTML = `
+          ${metrics}
+          <p class="office-bank-loan-warn">${
+            status.shortfall
+              ? 'Há atraso de folha ou de serviço do empréstimo — normalize os pagamentos antes de pedir crédito de novo.'
+              : `Crédito indisponível agora (saúde ${status.finances}%). Melhore o caixa e a cobertura da folha.`
+          }</p>`;
+        return;
+      }
+      body.innerHTML = `
+        ${metrics}
+        <form class="office-bank-loan-form" id="officeBankLoanForm" autocomplete="off">
+          <label class="office-bank-loan-form-label" for="officeBankLoanAmount">VALOR SOLICITADO</label>
+          <div class="office-bank-loan-form-row">
+            <input
+              id="officeBankLoanAmount"
+              class="office-bank-loan-input"
+              type="text"
+              inputmode="decimal"
+              placeholder="Ex.: 1.800.000 ou 1,8 mi"
+              maxlength="18"
+              aria-label="Valor do empréstimo"
+            />
+            <button type="submit" class="office-bank-loan-submit" data-bank-borrow-submit title="Contratar empréstimo">OK</button>
+          </div>
+          <p class="office-bank-loan-hint">Máximo ${formatBudget(status.available)} · mínimo útil R$ 50 mil · amortização não é automática</p>
+        </form>`;
+      return;
+    }
+
+    const cash = getBalance?.(club) ?? 0;
+    const minPay = Math.max(
+      0,
+      (Number(status.minAmortDue) || 0) + (Number(status.penaltyDue) || 0),
+    );
+    const repayAll = status.balance + (Number(status.penaltyDue) || 0);
+    const repayHalf = Math.max(1, Math.round(status.balance / 2));
+    const canMin = minPay > 0 ? cash >= minPay : cash >= (Number(status.minAmort) || 0);
+    const canHalf = cash >= repayHalf;
+    const canAll = cash >= repayAll;
+    const warnHtml = status.delinquent
+      ? `<p class="office-bank-loan-warn">Mínimo em atraso (${status.delinquencyStreak} rodada${
+          status.delinquencyStreak === 1 ? '' : 's'
+        }). Juros compostos (taxa reaplicada) + multa. Cobrança no caixa em ${
+          status.roundsToForce > 0 ? `${status.roundsToForce} rodada(s)` : 'curso'
+        }.</p>`
+      : minPay > 0
+        ? `<p class="office-bank-loan-hint-inline">Pague o mínimo no Escritório antes da próxima rodada nacional — atraso gera juros compostos.</p>`
+        : '';
+    body.innerHTML = `
+      <div class="office-bank-loan-stats">
+        <div><small>SALDO DEVEDOR</small><b class="spend">${formatBudget(status.balance)}</b></div>
+        <div><small>MÍNIMO DEVIDO</small><b class="spend">${formatBudget(
+          minPay > 0 ? minPay : status.minAmort,
+        )}</b>
+          <span>${
+            status.penaltyDue > 0
+              ? `Amort ${formatBudget(status.minAmortDue)} + multa ${formatBudget(status.penaltyDue)}`
+              : `5,5% do principal · juros auto ${formatBudget(status.interestDue)}`
+          }</span>
+        </div>
+        <div><small>TAXA EFETIVA</small><b class="spend">${ratePct}%</b>
+          <span>${
+            status.delinquent
+              ? `Base ${status.baseRatePct}% · atraso ×${(status.rate / Math.max(status.baseRate || status.rate, 0.0001)).toFixed(2)}`
+              : 'Juros simples no caixa / rodada'
+          }</span>
+        </div>
+      </div>
+      ${warnHtml}
+      <div class="office-bank-loan-actions">
+        <button type="button" data-bank-pay-min ${canMin ? '' : 'disabled'} title="${
+          canMin ? 'Pagar mínimo / obrigação vencida' : 'Saldo insuficiente'
+        }">PAGAR MÍNIMO ${formatBudget(minPay > 0 ? minPay : status.minAmort)}</button>
+        <button type="button" data-bank-repay="${repayHalf}" ${canHalf ? '' : 'disabled'} title="${
+          canHalf ? 'Amortizar metade do saldo' : 'Saldo insuficiente'
+        }">AMORTIZAR ${formatBudget(repayHalf)}</button>
+        <button type="button" data-bank-repay="${repayAll}" ${canAll ? '' : 'disabled'} title="${
+          canAll ? 'Quitar o empréstimo' : 'Saldo insuficiente'
+        }">QUITAR ${formatBudget(repayAll)}</button>
+      </div>`;
+  };
+
+  const tvAdvanceRejectCopy = reason =>
+    ({
+      no_remaining: 'Não há saldo suficiente de direitos de TV para adiantar nesta temporada.',
+      already_advanced: 'Os direitos de TV desta temporada já foram adiantados.',
+      not_in_crisis:
+        'Adiantamento só sob pressão financeira (atraso de empréstimo, aviso de risco ou caixa no vermelho).',
+      no_club: 'Clube indisponível.',
+      credit_failed: 'Não foi possível creditar o adiantamento.',
+    })[reason] || 'Não foi possível adiantar os direitos de TV.';
+
+  const TV_ADVANCE_MODAL_HTML = `
+<div id="officeTvAdvanceModal" class="modal hidden">
+  <div class="modal-card manager-sack-modal">
+    <label>ADIANTAMENTO DE TV</label>
+    <h2 id="officeTvAdvanceModalTitle">Direitos antecipados</h2>
+    <p id="officeTvAdvanceModalLead" class="manager-sack-lead"></p>
+    <div class="manager-sack-actions">
+      <button id="officeTvAdvanceModalDismiss" type="button" class="manager-sack-refuse">ENTENDI</button>
+    </div>
+  </div>
+</div>`;
+
+  let tvAdvanceModalBound = false;
+  const ensureTvAdvanceModal = () => {
+    if (!$('#officeTvAdvanceModal')) {
+      document.body.insertAdjacentHTML('beforeend', TV_ADVANCE_MODAL_HTML);
+    }
+    if (tvAdvanceModalBound) return;
+    tvAdvanceModalBound = true;
+    document.addEventListener('click', event => {
+      const btn = event.target.closest('#officeTvAdvanceModalDismiss');
+      if (!btn) return;
+      event.preventDefault();
+      $('#officeTvAdvanceModal')?.classList.add('hidden');
+    });
+  };
+
+  /** Modal efêmero — não grava na inbox. */
+  const openTvAdvanceModal = ({ title, lead }) => {
+    ensureTvAdvanceModal();
+    const titleEl = $('#officeTvAdvanceModalTitle');
+    const leadEl = $('#officeTvAdvanceModalLead');
+    if (titleEl) titleEl.textContent = title;
+    if (leadEl) leadEl.textContent = lead;
+    $('#officeTvAdvanceModal')?.classList.remove('hidden');
+  };
+
+  const submitTvAdvance = () => {
+    const club = userClubState();
+    if (!club || !advanceTvRights) return;
+    const result = advanceTvRights(club, {
+      division: getUserDivision?.() || club.division || 'A',
+      season: getCareerSeason?.() ?? null,
+      round: getCurrentRound?.() ?? null,
+    });
+    if (!result.ok) {
+      openTvAdvanceModal({
+        title: 'Adiantamento indisponível',
+        lead: tvAdvanceRejectCopy(result.reason),
+      });
+      renderOffice();
+      onBudgetChanged?.();
+      return;
+    }
+    openTvAdvanceModal({
+      title: `${formatBudget(result.payout)} creditados`,
+      lead: `Você antecipou os direitos de TV com deságio de ${result.haircutPct}% (bruto ${formatBudget(result.remaining)}). No decorrer desta temporada não haverá mais ganhos com TV nos mandos de campo. Orçamento atual: ${formatBudget(result.clubBalance)}.`,
+    });
+    renderOffice();
+    onBudgetChanged?.();
   };
 
   const renderInvestments = () => {
@@ -333,8 +603,14 @@ export function createEconomyFeature(deps) {
   const INFLOW_CATEGORIES = [
     { key: 'gate', label: 'Bilheteria', match: reason => reason === 'gate_receipt' },
     { key: 'sponsorship', label: 'Patrocínios', match: reason => reason === 'sponsorship' },
-    { key: 'tv', label: 'Direitos de TV', match: reason => reason === 'tv_rights' },
+    {
+      key: 'tv',
+      label: 'Direitos de TV',
+      match: reason => reason === 'tv_rights' || reason === 'tv_advance',
+    },
     { key: 'prize', label: 'Premiações', match: reason => reason === 'season_prize' },
+    { key: 'bank_loan', label: 'Empréstimo bancário', match: reason => reason === 'bank_loan' },
+    { key: 'transfers_in', label: 'Transferências (vendas)', match: reason => reason === 'transfer' },
     { key: 'other_in', label: 'Outras receitas', match: () => true },
   ];
 
@@ -343,11 +619,24 @@ export function createEconomyFeature(deps) {
     { key: 'staff', label: 'Comissão técnica', match: reason => reason === 'staff_wages' },
     { key: 'stadium', label: 'Manutenção do estádio', match: reason => reason === 'stadium_ops' },
     { key: 'upgrades', label: 'Investimentos', match: reason => String(reason || '').startsWith('upgrade:') },
+    {
+      key: 'loan_service',
+      label: 'Crédito / saldo negativo',
+      match: reason =>
+        reason === 'loan_interest' ||
+        reason === 'loan_repay' ||
+        reason === 'overdraft_interest',
+    },
+    { key: 'transfers_out', label: 'Transferências (compras)', match: reason => reason === 'transfer' },
     { key: 'other_out', label: 'Outras despesas', match: () => true },
   ];
 
-  const categorizeAmount = (categories, reason, amount, buckets) => {
-    const hit = categories.find(cat => cat.match(reason));
+  const categorizeAmount = (categories, reason, amount, buckets, type) => {
+    const hit = categories.find(cat => {
+      if (cat.key === 'transfers_in' && type !== 'credit') return false;
+      if (cat.key === 'transfers_out' && type !== 'spend') return false;
+      return cat.match(reason);
+    });
     if (!hit) return;
     buckets[hit.key] = (buckets[hit.key] || 0) + amount;
   };
@@ -359,8 +648,8 @@ export function createEconomyFeature(deps) {
       const amount = Math.max(0, Number(entry?.amount) || 0);
       if (!(amount > 0)) continue;
       const reason = entry?.reason || '';
-      if (entry?.type === 'credit') categorizeAmount(INFLOW_CATEGORIES, reason, amount, inflows);
-      else categorizeAmount(OUTFLOW_CATEGORIES, reason, amount, outflows);
+      if (entry?.type === 'credit') categorizeAmount(INFLOW_CATEGORIES, reason, amount, inflows, 'credit');
+      else categorizeAmount(OUTFLOW_CATEGORIES, reason, amount, outflows, 'spend');
     }
     const totalIn = INFLOW_CATEGORIES.reduce((sum, cat) => sum + (inflows[cat.key] || 0), 0);
     const totalOut = OUTFLOW_CATEGORIES.reduce((sum, cat) => sum + (outflows[cat.key] || 0), 0);
@@ -386,6 +675,119 @@ export function createEconomyFeature(deps) {
       )
       .join('');
 
+  const averageHomeGate = (club, { limit = 5 } = {}) => {
+    const ledger = Array.isArray(club?.budgetLedger) ? club.budgetLedger : [];
+    const gates = ledger
+      .filter(e => e?.type === 'credit' && e?.reason === 'gate_receipt' && Number(e.amount) > 0)
+      .slice(0, limit);
+    if (!gates.length) return { avg: 0, count: 0 };
+    const sum = gates.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    return { avg: Math.round(sum / gates.length), count: gates.length };
+  };
+
+  const renderRadar = () => {
+    const body = $('#officeRadarBody');
+    if (!body) return;
+    const club = userClubState();
+    if (!club) {
+      body.innerHTML = '';
+      return;
+    }
+    const division = getUserDivision?.() || club.division || 'A';
+    const staffOpts = { managerReputation: club.managerReputation };
+    const roundCost = estimateRoundCostBill?.(club, division, staffOpts) || 0;
+    const balance = getBalance?.(club) ?? (Number(club.budget) || 0);
+    const overdrawn = typeof isOverdrawn === 'function' ? isOverdrawn(club) : balance < 0;
+    const runwayRaw =
+      typeof estimateWageRunway === 'function'
+        ? estimateWageRunway(club, division, staffOpts)
+        : roundCost > 0
+          ? balance / roundCost
+          : 99;
+    const runway = Number.isFinite(runwayRaw) ? runwayRaw : 99;
+
+    const sponsorSlots = Math.max(
+      1,
+      Number(club?.sponsors?.installments) || (division === 'D' ? 22 : 38),
+    );
+    const tvSlots = Math.max(
+      1,
+      Number(club?.tvRights?.installments) ||
+        (typeof tvHomeSlots === 'function' ? tvHomeSlots(division) : division === 'D' ? 11 : 19),
+    );
+    const sponsorNext = estimateSponsorInstallment?.(club, { installments: sponsorSlots }) || 0;
+    const tvNext = estimateTvInstallment?.(club, { installments: tvSlots, division }) || 0;
+    const loanStatus = bankLoanStatus?.(club, { division });
+    const bankDue = loanStatus?.active ? Number(loanStatus.roundDue) || 0 : 0;
+    let overdraftFee = 0;
+    if (overdrawn && typeof resolveOverdraftRate === 'function') {
+      const streak = Math.max(0, Math.round(Number(club.overdraftStreak) || 0)) + 1;
+      const od = resolveOverdraftRate(club, { division, streak });
+      overdraftFee = Math.max(1, Math.round(Math.abs(balance) * od.rate));
+    }
+
+    const gate = averageHomeGate(club, { limit: 5 });
+    let gateEst = gate.avg;
+    if (!(gateEst > 0) && typeof estimateGateReceipt === 'function') {
+      try {
+        gateEst = Math.round(estimateGateReceipt(club, { channel: 'national', division }).revenue || 0);
+      } catch {
+        gateEst = 0;
+      }
+    }
+
+    const costPressure = Math.max(0, roundCost) + Math.max(0, bankDue) + Math.max(0, overdraftFee);
+    const revenuePressure = Math.max(0, sponsorNext) + Math.max(0, tvNext) + Math.max(0, gateEst);
+    const total = costPressure + revenuePressure;
+
+    // 0 = só CUSTO (esquerda) · 1 = só ARRECADAÇÃO (direita)
+    let balanceRatio = total > 0 ? revenuePressure / total : 0.5;
+    if (overdrawn) balanceRatio = Math.min(balanceRatio, 0.12);
+    else if (runway < 1.5) balanceRatio = Math.min(balanceRatio, 0.28);
+    else if (runway < 4) balanceRatio = Math.min(balanceRatio, 0.42);
+    balanceRatio = Math.max(0.04, Math.min(0.96, balanceRatio));
+
+    const markerPct = Math.round(balanceRatio * 100);
+    let tone = 'ok';
+    let reading = 'Equilíbrio saudável';
+    if (overdrawn || balanceRatio < 0.38) {
+      tone = 'risk';
+      reading = 'Pressão de custo — precisa arrecadar ou cortar';
+    } else if (balanceRatio < 0.48) {
+      tone = 'warn';
+      reading = 'Custo pesando — fique de olho na cobertura';
+    } else if (balanceRatio > 0.62) {
+      tone = 'good';
+      reading = 'Arrecadação cobrindo bem os custos';
+    }
+
+    const runwayLabel =
+      overdrawn || runway < 0
+        ? '0 rodadas'
+        : runway >= 99
+          ? '99+ rodadas'
+          : `${runway.toFixed(1).replace('.', ',')} rodadas`;
+
+    const tip = [
+      `Custo/rodada ${formatBudget(costPressure)}`,
+      `Arrecadação ~${formatBudget(revenuePressure)}`,
+      `Runway ${runwayLabel}`,
+      overdrawn ? 'Caixa negativo' : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    body.innerHTML = `
+      <div class="office-balance-bar" data-tone="${tone}" title="${tip}" role="img" aria-label="${reading}. Marcador em ${markerPct}% rumo à arrecadação.">
+        <span class="office-balance-end is-cost">CUSTO</span>
+        <div class="office-balance-track">
+          <i class="office-balance-fill" aria-hidden="true"></i>
+          <b class="office-balance-marker" style="left:${markerPct}%" aria-hidden="true"></b>
+        </div>
+        <span class="office-balance-end is-rev">ARRECADAÇÃO</span>
+      </div>`;
+  };
+
   const renderCashflow = () => {
     const root = $('#officeCashflow');
     const meta = $('#officeCashflowMeta');
@@ -405,13 +807,16 @@ export function createEconomyFeature(deps) {
     const stadiumBill = estimateStadiumOpsBill?.(club, division) || 0;
     const roundCost =
       estimateRoundCostBill?.(club, division, staffOpts) || wageBill + staffBill + stadiumBill;
-    const installments = Math.max(
+    const sponsorSlots = Math.max(
       1,
-      Number(club?.sponsors?.installments) ||
-        Number(club?.tvRights?.installments) ||
-        (division === 'D' ? 22 : 38),
+      Number(club?.sponsors?.installments) || (division === 'D' ? 22 : 38),
     );
-    const sponsorInstallment = estimateSponsorInstallment?.(club, { installments }) || 0;
+    const tvSlots = Math.max(
+      1,
+      Number(club?.tvRights?.installments) ||
+        (typeof tvHomeSlots === 'function' ? tvHomeSlots(division) : division === 'D' ? 11 : 19),
+    );
+    const sponsorInstallment = estimateSponsorInstallment?.(club, { installments: sponsorSlots }) || 0;
     const lastSponsor = club?.lastSponsorInstallment;
     const sponsorValue =
       sponsorInstallment > 0
@@ -421,24 +826,64 @@ export function createEconomyFeature(deps) {
           : 0;
     const sponsorNote =
       sponsorInstallment > 0
-        ? `Próxima parcela · ${(Number(club?.sponsors?.paidInstallments) || 0) + 1}/${installments}`
+        ? `Próxima parcela · ${(Number(club?.sponsors?.paidInstallments) || 0) + 1}/${sponsorSlots}`
         : lastSponsor?.round != null
           ? `Última · Rodada ${lastSponsor.round}`
           : club?.sponsors?.credited
             ? 'Contrato quitado nesta temporada'
             : 'Sem parcela pendente';
-    const tvInstallment = estimateTvInstallment?.(club, { installments }) || 0;
+    const tvInstallment = estimateTvInstallment?.(club, { installments: tvSlots, division }) || 0;
     const lastTv = club?.lastTvInstallment;
+    const tvAdvance = tvAdvanceStatus?.(club, { division }) || null;
+    const tvAlready = !!tvAdvance?.already;
+    const tvEligible = !!tvAdvance?.eligible;
     const tvValue =
-      tvInstallment > 0 ? tvInstallment : lastTv?.amount > 0 ? lastTv.amount : 0;
-    const tvNote =
-      tvInstallment > 0
-        ? `Próxima parcela · ${(Number(club?.tvRights?.paidInstallments) || 0) + 1}/${installments}`
-        : lastTv?.round != null
-          ? `Última · Rodada ${lastTv.round}`
-          : club?.tvRights?.credited
-            ? 'Contrato quitado nesta temporada'
-            : 'Sem parcela pendente';
+      tvAlready
+        ? tvAdvance.advancedNet || 0
+        : tvInstallment > 0
+          ? tvInstallment
+          : lastTv?.amount > 0
+            ? lastTv.amount
+            : 0;
+    const tvNote = tvAlready
+      ? `Adiantado (−${Math.round((tvAdvance.advancedHaircut || 0) * 100)}%) · sem parcelas futuras`
+      : tvInstallment > 0
+        ? `Próximo mando · ${(Number(club?.tvRights?.paidInstallments) || 0) + 1}/${tvSlots}`
+        : lastTv?.opponent
+          ? `Última · vs ${lastTv.opponent}`
+          : lastTv?.round != null
+            ? `Última · Rodada ${lastTv.round}`
+            : club?.tvRights?.credited
+              ? 'Contrato quitado nesta temporada'
+              : 'Sem parcela pendente';
+    const tvAdvanceTitle = tvAlready
+      ? 'Direitos de TV já adiantados nesta temporada'
+      : tvEligible
+        ? `Adiantar saldo restante · recebe ${formatBudget(tvAdvance.payout)} (−${tvAdvance.haircutPct}%)`
+        : tvAdvanceRejectCopy(tvAdvance?.reason);
+    const tvAdvanceBtnLabel = tvAlready
+      ? 'ADIANTADO'
+      : tvEligible
+        ? `ADIANTAR ${formatBudget(tvAdvance.payout)}`
+        : 'ADIANTAR';
+    const tvCardClass = [
+      'office-cashflow-tv',
+      tvEligible ? 'is-ready' : '',
+      tvAlready ? 'is-done' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const loanStatus = bankLoanStatus?.(club, { division });
+    const bankDue = loanStatus?.active ? Number(loanStatus.roundDue) || 0 : 0;
+    const bankNote = loanStatus?.active
+      ? loanStatus.delinquent
+        ? `ATRASO ${loanStatus.delinquencyStreak}r · juros ${formatBudget(loanStatus.interestDue)} + devido ${formatBudget(
+            (loanStatus.minAmortDue || 0) + (loanStatus.penaltyDue || 0),
+          )}`
+        : `Juros auto ${formatBudget(loanStatus.interestDue)} · mínimo Escritório ${formatBudget(
+            loanStatus.minAmortDue || loanStatus.minAmort,
+          )}`
+      : 'Sem contrato ativo';
     const balance = getBalance?.(club) ?? (Number(club?.budget) || 0);
     const netTone = statement.net > 0 ? 'credit' : statement.net < 0 ? 'spend' : '';
     const netSign = statement.net > 0 ? '+' : statement.net < 0 ? '−' : '';
@@ -462,10 +907,24 @@ export function createEconomyFeature(deps) {
           <b class="credit">${sponsorValue > 0 ? formatBudget(sponsorValue) : '—'}</b>
           <span>${sponsorNote}</span>
         </div>
+        <div class="${tvCardClass}">
+          <div class="office-cashflow-tv-copy">
+            <small>TV / MANDO</small>
+            <b class="credit">${tvValue > 0 ? formatBudget(tvValue) : '—'}</b>
+            <span>${tvNote}</span>
+          </div>
+          <button
+            type="button"
+            class="office-cashflow-tv-btn"
+            data-tv-advance
+            ${tvEligible ? '' : 'disabled'}
+            title="${tvAdvanceTitle}"
+          >${tvAdvanceBtnLabel}</button>
+        </div>
         <div>
-          <small>TV / RODADA</small>
-          <b class="credit">${tvValue > 0 ? formatBudget(tvValue) : '—'}</b>
-          <span>${tvNote}</span>
+          <small>BANCO / RODADA</small>
+          <b class="${bankDue > 0 ? 'spend' : ''}">${bankDue > 0 ? formatBudget(bankDue) : '—'}</b>
+          <span>${bankNote}</span>
         </div>
       </div>`;
 
@@ -551,7 +1010,134 @@ export function createEconomyFeature(deps) {
     onBudgetChanged?.();
   };
 
+  const submitBankLoanBorrow = amount => {
+    const club = userClubState();
+    if (!club || !takeBankLoan) return;
+    const result = takeBankLoan(club, amount, {
+      division: getUserDivision?.() || club.division || 'A',
+      season: getCareerSeason?.() ?? null,
+      round: getCurrentRound?.() ?? null,
+    });
+    if (!result.ok) {
+      pushMessage?.({
+        category: 'club',
+        type: 'budget',
+        title: 'Empréstimo bancário',
+        body: bankLoanRejectCopy(result.reason),
+        round: getCurrentRound?.() ?? 1,
+        meta: { competition: 'Finanças' },
+      });
+      renderOffice();
+      onBudgetChanged?.();
+      const input = $('#officeBankLoanAmount');
+      if (input) {
+        input.focus();
+        input.select?.();
+      }
+      return;
+    }
+    pushMessage?.({
+      category: 'club',
+      type: 'budget',
+      title: 'Empréstimo contratado',
+      body: `${formatBudget(result.amount)} creditados · juros ${(result.rate * 1000) / 10}% / rodada (auto). Amortização mínima no Escritório — atraso capitaliza. Orçamento: ${formatBudget(result.clubBalance)}.`,
+      round: getCurrentRound?.() ?? 1,
+      meta: { competition: 'Finanças' },
+    });
+    renderOffice();
+    onBudgetChanged?.();
+  };
+
   const bindHandlers = () => {
+    const loanBody = $('#officeBankLoanBody');
+    if (loanBody && !loanBody.dataset.bankLoanFormBound) {
+      loanBody.dataset.bankLoanFormBound = '1';
+      loanBody.addEventListener('submit', event => {
+        const form = event.target.closest('#officeBankLoanForm');
+        if (!form) return;
+        event.preventDefault();
+        const input = form.querySelector('#officeBankLoanAmount');
+        submitBankLoanBorrow(parseLoanAmount(input?.value));
+      });
+    }
+
+    onClick('#officeCashflow', event => {
+      const btn = event.target.closest('[data-tv-advance]');
+      if (!btn || btn.disabled) return;
+      submitTvAdvance();
+    });
+
+    onClick('#officeBankLoanBody', event => {
+      const minBtn = event.target.closest('[data-bank-pay-min]');
+      if (minBtn && !minBtn.disabled) {
+        const club = userClubState();
+        if (!club || !payBankLoanMinimum) return;
+        const result = payBankLoanMinimum(club, {
+          division: getUserDivision?.() || club.division || 'A',
+        });
+        if (!result.ok) {
+          pushMessage?.({
+            category: 'club',
+            type: 'budget',
+            title: 'Pagamento mínimo',
+            body: bankLoanRejectCopy(result.reason),
+            round: getCurrentRound?.() ?? 1,
+            meta: { competition: 'Finanças' },
+          });
+          renderOffice();
+          onBudgetChanged?.();
+          return;
+        }
+        pushMessage?.({
+          category: 'club',
+          type: 'budget',
+          title: result.cleared ? 'Empréstimo quitado' : 'Mínimo pago',
+          body: result.cleared
+            ? `Pago ${formatBudget(result.paid)}. Dívida encerrada. Orçamento: ${formatBudget(result.clubBalance)}.`
+            : `Pago ${formatBudget(result.paid)}. Saldo: ${formatBudget(result.remaining)}. Orçamento: ${formatBudget(result.clubBalance)}.`,
+          round: getCurrentRound?.() ?? 1,
+          meta: { competition: 'Finanças' },
+        });
+        renderOffice();
+        onBudgetChanged?.();
+        return;
+      }
+
+      const repayBtn = event.target.closest('[data-bank-repay]');
+      if (!repayBtn || repayBtn.disabled) return;
+      const club = userClubState();
+      if (!club || !repayBankLoan) return;
+      const amount = Number(repayBtn.dataset.bankRepay);
+      const result = repayBankLoan(club, amount, {
+        division: getUserDivision?.() || club.division || 'A',
+      });
+      if (!result.ok) {
+        pushMessage?.({
+          category: 'club',
+          type: 'budget',
+          title: 'Amortização',
+          body: bankLoanRejectCopy(result.reason),
+          round: getCurrentRound?.() ?? 1,
+          meta: { competition: 'Finanças' },
+        });
+        renderOffice();
+        onBudgetChanged?.();
+        return;
+      }
+      pushMessage?.({
+        category: 'club',
+        type: 'budget',
+        title: result.cleared ? 'Empréstimo quitado' : 'Amortização registrada',
+        body: result.cleared
+          ? `Pago ${formatBudget(result.paid)}. Dívida encerrada. Orçamento: ${formatBudget(result.clubBalance)}.`
+          : `Pago ${formatBudget(result.paid)}. Saldo devedor: ${formatBudget(result.remaining)}. Orçamento: ${formatBudget(result.clubBalance)}.`,
+        round: getCurrentRound?.() ?? 1,
+        meta: { competition: 'Finanças' },
+      });
+      renderOffice();
+      onBudgetChanged?.();
+    });
+
     onClick('#economyInvestmentsList', event => {
       const button = event.target.closest('[data-buy-upgrade]');
       if (!button || button.disabled) return;

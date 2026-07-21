@@ -1,5 +1,10 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { traitCodes } from '../../engine/player-generation.js';
+import {
+  formatSellerRejectLetter,
+  formatLoanLevelPlayerReply,
+  transferRejectReasonLine,
+} from '../../engine/transfer-offer-copy.js';
 
 const POSITIONS = ['GOL', 'ZAG', 'LAT', 'VOL', 'MC', 'MEI', 'PE', 'PD', 'ATA'];
 const DIVISIONS = ['A', 'B', 'C', 'D'];
@@ -127,6 +132,18 @@ export function createTransfersFeature(deps) {
     sortBy: 'ovr',
     sortDir: 'desc',
   };
+  let sellFilters = {
+    pos: '',
+    query: '',
+    minOvr: 0,
+    maxOvr: 0,
+    minAge: 0,
+    maxAge: 0,
+    maxPrice: 0,
+    maxWage: 0,
+    listedOnly: false,
+    loanOnly: false,
+  };
   let persistSeason = typeof deps.onPersist === 'function' ? deps.onPersist : () => {};
   let statusText = '';
   let seededListings = false;
@@ -199,6 +216,7 @@ export function createTransfersFeature(deps) {
 
   const rejectReasonHint = reason =>
     ({
+      division_gap: 'diferença de série',
       contract_long: 'contrato longo',
       pos_thin: 'poucos na posição',
       roster_thin: 'elenco curto',
@@ -230,25 +248,58 @@ export function createTransfersFeature(deps) {
         ? `Nenhum clube topa este preço. Tente perto de ${formatMoney(extra.askCap)} ou menos.`
         : 'Preço alto demais — nenhum clube aceitou. Tente baixar.';
     }
+    if (
+      (reason === 'rejected' || reason === 'division_gap') &&
+      (Array.isArray(extra.reasons) || extra.playerName || extra.clubName)
+    ) {
+      return formatSellerRejectLetter({
+        clubName: extra.clubName || extra.from || extra.sellerName,
+        playerName: extra.playerName || extra.player?.name,
+        reasons:
+          reason === 'division_gap' && !(extra.reasons || []).includes('division_gap')
+            ? ['division_gap', ...(extra.reasons || [])]
+            : extra.reasons || (reason === 'division_gap' ? ['division_gap'] : ['rejected']),
+      });
+    }
     if (reason === 'rejected' && Array.isArray(extra.reasons) && extra.reasons.length) {
       const bits = extra.reasons
-        .map(rejectReasonHint)
+        .map(r => transferRejectReasonLine(r) || rejectReasonHint(r))
         .filter(Boolean)
         .slice(0, 2);
-      if (bits.length) return `O clube recusou (${bits.join(', ')}).`;
+      if (bits.length) {
+        return formatSellerRejectLetter({
+          clubName: extra.clubName,
+          playerName: extra.playerName,
+          reasons: extra.reasons,
+        });
+      }
     }
     return (
       {
         market_closed: 'Mercado fechado no momento (partida ou transição em andamento).',
         window_closed: 'Janela de transferências fechada no momento.',
         cannot_afford: 'Caixa insuficiente para esta oferta.',
-        rejected: 'O clube recusou a oferta (abaixo do valor mínimo).',
-        roster_full: 'Seu elenco está no limite máximo.',
+        rejected: formatSellerRejectLetter({
+          clubName: extra.clubName,
+          playerName: extra.playerName,
+          reasons: ['rejected'],
+        }),
+        division_gap: formatSellerRejectLetter({
+          clubName: extra.clubName,
+          playerName: extra.playerName,
+          reasons: ['division_gap'],
+        }),
+        roster_full: 'Elenco no limite antifail (40 jogadores).',
+        roster_hard_full: 'Elenco no limite antifail (40 jogadores).',
+        payroll_pressure:
+          'Folha ficaria acima do confortável para sua saúde financeira. Venda, empreste ou escolha um salário menor.',
         min_roster: 'Elenco no mínimo — não é possível vender ou ceder.',
         seller_min_roster: 'O clube vendedor não pode ficar abaixo do mínimo.',
         not_found: 'Jogador não encontrado.',
         no_buyer: 'Nenhum clube interessado no momento.',
-        offer_too_high: 'Preço alto demais — nenhum clube aceitou. Tente baixar.',
+        offer_too_high:
+          transferRejectReasonLine('offer_too_high') ||
+          'Preço alto demais — nenhum clube aceitou. Tente baixar.',
         no_club: 'Clube inválido.',
         on_loan: 'Jogador está emprestado e não pode ser negociado assim.',
         not_on_loan: 'Este jogador não está emprestado.',
@@ -256,8 +307,187 @@ export function createTransfersFeature(deps) {
         loan_in_limit: 'Limite de 3 empréstimos no elenco atingido.',
         loan_out_limit: 'Limite de 3 jogadores cedidos por empréstimo atingido.',
         no_loan_host: 'Nenhum clube disponível para receber o empréstimo.',
+        loan_level: formatLoanLevelPlayerReply({
+          playerName: extra.playerName || extra.player?.name,
+        }),
+        no_buy_option: 'Este empréstimo não tem opção de compra registrada.',
+        invalid_fee: 'Taxa da opção de compra inválida.',
+        no_funds: 'Caixa insuficiente para exercer a opção de compra.',
+        same_club: 'Não é possível exercer a opção no próprio clube.',
+        already_moved:
+          transferRejectReasonLine('already_moved') ||
+          'Este jogador já se movimentou nesta janela — só volta a negociar na próxima.',
       }[reason] || 'Não foi possível concluir a operação.'
     );
+  };
+
+  let alertState = null;
+
+  const closeActionAlert = () => {
+    alertState = null;
+    const secondary = $('#transfersAlertSecondary');
+    if (secondary) {
+      secondary.classList.add('hidden');
+      secondary.textContent = 'AGORA NÃO';
+    }
+    const ok = $('#transfersAlertOk');
+    if (ok) ok.textContent = 'ENTENDI';
+    $('#transfersAlertModal')?.classList.add('hidden');
+  };
+
+  const fillPayrollPanel = payroll => {
+    const box = $('#transfersAlertPayroll');
+    if (!box) return;
+    if (!payroll) {
+      box.classList.add('hidden');
+      return;
+    }
+    box.classList.remove('hidden');
+    const pctEl = $('#transfersAlertPayrollPct');
+    const wageEl = $('#transfersAlertPayrollWage');
+    const revEl = $('#transfersAlertPayrollRev');
+    const finEl = $('#transfersAlertPayrollFin');
+    if (pctEl) {
+      const arrow =
+        payroll.pctBefore != null && payroll.pctAfter != null && payroll.pctBefore !== payroll.pctAfter
+          ? `${payroll.pctBefore}% → ${payroll.pctAfter}%`
+          : `${payroll.pctAfter ?? payroll.pctBefore ?? '—'}%`;
+      pctEl.textContent = arrow;
+    }
+    if (wageEl) wageEl.textContent = formatMoney(payroll.wageAfter ?? payroll.wageBefore ?? 0);
+    if (revEl) revEl.textContent = formatMoney(payroll.revenue ?? 0);
+    if (finEl) finEl.textContent = String(Math.round(Number(payroll.finances) || 0));
+  };
+
+  /** Texto curto do impacto — sem % no corpo (números ficam no box). */
+  const payrollComfortBody = (tone, ok = true) => {
+    if (!ok) {
+      return 'Folha acima do seguro para suas Finanças. Venda, empreste ou escolha outro jogador.';
+    }
+    if (tone === 'warn') return 'Folha no limite — cuidado com novas contratações.';
+    if (tone === 'relief') return 'Folha mais leve após esta operação.';
+    if (tone === 'block') return 'Folha acima do seguro para suas Finanças.';
+    return 'Folha confortável.';
+  };
+
+  /**
+   * Modal estilo mensagem — efêmero, NÃO grava no inbox de Mensagens.
+   */
+  const showActionAlert = ({
+    title = 'Mercado',
+    lead = '',
+    body = '',
+    tone = 'ok',
+    payroll = null,
+    primaryLabel = 'ENTENDI',
+    secondaryLabel = null,
+    onPrimary = null,
+    onSecondary = null,
+  } = {}) => {
+    const modal = $('#transfersAlertModal');
+    const card = modal?.querySelector('.transfers-alert-card');
+    if (!modal || !card) return;
+    alertState = {
+      onPrimary: typeof onPrimary === 'function' ? onPrimary : null,
+      onSecondary: typeof onSecondary === 'function' ? onSecondary : null,
+    };
+    card.dataset.tone = tone || 'ok';
+    const eyebrow = $('#transfersAlertEyebrow');
+    if (eyebrow) {
+      eyebrow.textContent =
+        tone === 'block' ? 'MERCADO · BLOQUEADO' : tone === 'warn' ? 'MERCADO · ATENÇÃO' : 'MERCADO · ALERTA';
+    }
+    const titleEl = $('#transfersAlertTitle');
+    const leadEl = $('#transfersAlertLead');
+    const bodyEl = $('#transfersAlertBody');
+    if (titleEl) titleEl.textContent = title;
+    if (leadEl) leadEl.textContent = lead || '—';
+    if (bodyEl) {
+      bodyEl.textContent = body || '';
+      bodyEl.classList.toggle('hidden', !body);
+    }
+    const ok = $('#transfersAlertOk');
+    if (ok) ok.textContent = primaryLabel || 'ENTENDI';
+    const secondary = $('#transfersAlertSecondary');
+    if (secondary) {
+      if (secondaryLabel) {
+        secondary.textContent = secondaryLabel;
+        secondary.classList.remove('hidden');
+      } else {
+        secondary.classList.add('hidden');
+        secondary.textContent = 'AGORA NÃO';
+      }
+    }
+    fillPayrollPanel(payroll);
+    modal.classList.remove('hidden');
+  };
+
+  const alertTransferResult = (result, { titleOk, titleFail, leadOk, detailOk } = {}) => {
+    const ok = !!result?.ok;
+    const payroll = result?.payroll || null;
+    const tone = !ok ? 'block' : payroll?.tone || 'ok';
+    const failLead = reasonLabel(result?.reason, result || {});
+    showActionAlert({
+      title: ok ? titleOk || 'Operação concluída' : titleFail || 'Operação não concluída',
+      lead: ok ? leadOk || 'Ação registrada no mercado.' : failLead,
+      body: ok
+        ? detailOk || (payroll ? payrollComfortBody(tone, true) : '')
+        : payroll
+          ? payrollComfortBody('block', false)
+          : 'Revise caixa, elenco e condições da proposta.',
+      tone,
+      payroll,
+    });
+  };
+
+  let confirmState = null;
+
+  const closeConfirmModal = () => {
+    confirmState = null;
+    $('#transfersConfirmModal')?.classList.add('hidden');
+  };
+
+  const openConfirmModal = ({
+    title,
+    eyebrow = 'MERCADO · CONFIRMAÇÃO',
+    playerName,
+    meta,
+    lead,
+    slotsLabel,
+    slotsCaption = 'EMPRÉSTIMOS NO ELENCO',
+    wage,
+    submitLabel = 'CONFIRMAR',
+    onConfirm,
+  }) => {
+    confirmState = { onConfirm };
+    const modal = $('#transfersConfirmModal');
+    if (!modal) return;
+    const setText = (sel, value) => {
+      const el = $(sel);
+      if (el) el.textContent = value;
+    };
+    setText('#transfersConfirmEyebrow', eyebrow);
+    setText('#transfersConfirmTitle', title || 'Confirmar ação');
+    setText('#transfersConfirmPlayer', playerName || '—');
+    setText('#transfersConfirmMeta', meta || '—');
+    setText('#transfersConfirmLead', lead || '—');
+    setText('#transfersConfirmSlotsLabel', slotsCaption);
+    setText('#transfersConfirmSlots', slotsLabel || '—');
+    setText('#transfersConfirmWage', formatMoney(wage || 0));
+    try {
+      setText('#transfersConfirmBalance', formatBudget?.(getBalance?.()) || '—');
+    } catch {
+      setText('#transfersConfirmBalance', '—');
+    }
+    const submit = $('#transfersConfirmSubmit');
+    if (submit) submit.textContent = submitLabel;
+    modal.classList.remove('hidden');
+  };
+
+  const submitConfirmModal = () => {
+    const action = confirmState?.onConfirm;
+    closeConfirmModal();
+    if (typeof action === 'function') action();
   };
 
   const readFiltersFromDom = () => ({
@@ -329,6 +559,92 @@ export function createTransfersFeature(deps) {
     if (!el) return;
     const count = Number(n) || 0;
     el.textContent = count === 1 ? '1 jogador encontrado' : `${count} jogadores encontrados`;
+  };
+
+  const setSellResultCount = (shown, total) => {
+    const el = $('#transfersSellResultCount');
+    if (!el) return;
+    const s = Number(shown) || 0;
+    const t = Number(total) || 0;
+    if (s === t) {
+      el.textContent = s === 1 ? '1 jogador no elenco' : `${s} jogadores no elenco`;
+      return;
+    }
+    el.textContent = `${s} de ${t} jogadores`;
+  };
+
+  const readSellFiltersFromDom = () => ({
+    pos: $('#transfersSellFilterPos')?.value || '',
+    query: String($('#transfersSellFilterQuery')?.value || '').trim(),
+    minOvr: Number($('#transfersSellFilterOvr')?.value) || 0,
+    maxOvr: Number($('#transfersSellFilterMaxOvr')?.value) || 0,
+    minAge: Number($('#transfersSellFilterMinAge')?.value) || 0,
+    maxAge: Number($('#transfersSellFilterMaxAge')?.value) || 0,
+    maxPrice: Number($('#transfersSellFilterMaxPrice')?.value) || 0,
+    maxWage: Number($('#transfersSellFilterMaxWage')?.value) || 0,
+    listedOnly: Boolean($('#transfersSellFilterListed')?.checked),
+    loanOnly: Boolean($('#transfersSellFilterLoan')?.checked),
+  });
+
+  const renderSellFilters = () => {
+    const pos = $('#transfersSellFilterPos');
+    if (pos && !pos.dataset.ready) {
+      pos.innerHTML =
+        `<option value="">Qualquer</option>` +
+        POSITIONS.map(item => `<option value="${item}">${item}</option>`).join('');
+      pos.dataset.ready = '1';
+    }
+    if (pos) pos.value = sellFilters.pos || '';
+    const query = $('#transfersSellFilterQuery');
+    if (query) query.value = sellFilters.query || '';
+    const ovr = $('#transfersSellFilterOvr');
+    if (ovr) ovr.value = sellFilters.minOvr || '';
+    const maxOvr = $('#transfersSellFilterMaxOvr');
+    if (maxOvr) maxOvr.value = sellFilters.maxOvr || '';
+    const minAge = $('#transfersSellFilterMinAge');
+    if (minAge) minAge.value = sellFilters.minAge || '';
+    const maxAge = $('#transfersSellFilterMaxAge');
+    if (maxAge) maxAge.value = sellFilters.maxAge || '';
+    const maxPrice = $('#transfersSellFilterMaxPrice');
+    if (maxPrice) maxPrice.value = sellFilters.maxPrice || '';
+    const maxWage = $('#transfersSellFilterMaxWage');
+    if (maxWage) maxWage.value = sellFilters.maxWage || '';
+    const listed = $('#transfersSellFilterListed');
+    if (listed) listed.checked = !!sellFilters.listedOnly;
+    const loan = $('#transfersSellFilterLoan');
+    if (loan) loan.checked = !!sellFilters.loanOnly;
+  };
+
+  const filterSellRows = rows => {
+    const f = sellFilters;
+    const query = String(f.query || '')
+      .trim()
+      .toLocaleLowerCase('pt-BR');
+    return rows.filter(row => {
+      const p = row.player || {};
+      if (f.pos && p.pos !== f.pos) return false;
+      const ovr = Number(p.overall) || 0;
+      const age = Number(p.age) || 0;
+      const wage = Number(p.wage) || 0;
+      const value = Number(row.value) || Number(p.marketValue) || 0;
+      if (f.minOvr > 0 && ovr < f.minOvr) return false;
+      if (f.maxOvr > 0 && ovr > f.maxOvr) return false;
+      if (f.minAge > 0 && age < f.minAge) return false;
+      if (f.maxAge > 0 && age > f.maxAge) return false;
+      if (f.maxPrice > 0 && value > f.maxPrice) return false;
+      if (f.maxWage > 0 && wage > f.maxWage) return false;
+      if (f.listedOnly && !row.listed) return false;
+      if (f.loanOnly && !(row.loanListed || row.onLoan || row.loanOut)) return false;
+      if (
+        query &&
+        !String(p.name || '')
+          .toLocaleLowerCase('pt-BR')
+          .includes(query)
+      ) {
+        return false;
+      }
+      return true;
+    });
   };
 
   const markSortedHeader = () => {
@@ -481,7 +797,7 @@ export function createTransfersFeature(deps) {
           const wage = Number(p.wage || row.wage) || 0;
           const canLoan = !!p.loanListed;
           return `<tr>
-          <td class="col-name">${escapeHtml(p.name)}${canLoan ? ' <small class="transfers-loan-tag">EMPR.</small>' : ''}</td>
+          <td class="col-name">${escapeHtml(p.name)}${p.setPieceSpecialist ? ' <span class="player-specialist-star" title="Especialista em bola parada" aria-label="Especialista">★</span>' : ''}${canLoan ? ' <small class="transfers-loan-tag transfers-loan-tag--offer" title="Disponível para empréstimo">EMPR.</small>' : ''}</td>
           <td class="col-club" title="${escapeHtml(row.clubName)}"><span class="club-link" data-club="${escapeHtml(row.clubName)}" role="button" tabindex="0">${escapeHtml(row.clubName)}</span></td>
           <td>${escapeHtml(p.pos)}</td>
           <td>${escapeHtml(sideLetter(p))}</td>
@@ -510,19 +826,24 @@ export function createTransfersFeature(deps) {
   const renderSellTable = () => {
     const body = $('#transfersSellBody');
     if (!body) return;
+    renderSellFilters();
     const api = engine();
     if (!api) {
       body.innerHTML =
         '<tr><td class="transfers-empty" colspan="10">Motor de transferências indisponível.</td></tr>';
-      setResultCount(0);
+      setSellResultCount(0, 0);
       return;
     }
-    const rows = api.listSellCandidates();
-    setResultCount(rows.length);
+    const allRows = api.listSellCandidates();
+    const rows = filterSellRows(allRows);
+    setSellResultCount(rows.length, allRows.length);
     renderLoanSlots();
-    if (!rows.length) {
+    if (!allRows.length) {
       body.innerHTML =
         '<tr><td class="transfers-empty" colspan="10">Nenhum jogador no elenco para negociar.</td></tr>';
+    } else if (!rows.length) {
+      body.innerHTML =
+        '<tr><td class="transfers-empty" colspan="10">Nenhum jogador com esses filtros.</td></tr>';
     } else {
       body.innerHTML = rows
         .map(row => {
@@ -530,20 +851,53 @@ export function createTransfersFeature(deps) {
           const wage = Number(p.wage) || 0;
           const price = row.listed && row.askingPrice > 0 ? row.askingPrice : row.value;
           const onLoan = !!row.onLoan;
-          const loanTag = onLoan
-            ? row.loanFrom
-              ? ` <small class="transfers-loan-tag">← <span class="club-link" data-club="${escapeHtml(row.loanFrom)}" role="button" tabindex="0">${escapeHtml(row.loanFrom)}</span></small>`
-              : ' <small class="transfers-loan-tag">← emp.</small>'
-            : row.loanListed
-              ? ' <small class="transfers-loan-tag">EMPR.</small>'
+          const loanOut = !!row.loanOut;
+          const clubTag = (clubName, tone) =>
+            clubName
+              ? ` <small class="transfers-loan-tag transfers-loan-tag--${tone}"><span class="club-link" data-club="${escapeHtml(clubName)}" role="button" tabindex="0">${escapeHtml(clubName)}</span></small>`
               : '';
-          const actions = onLoan
-            ? `<button type="button" class="transfers-action secondary" data-return-loan-id="${escapeHtml(row.playerId)}">DEVOLVER</button>`
-            : `<button type="button" class="transfers-action secondary" data-list-id="${escapeHtml(row.playerId)}" data-listed="${row.listed ? '1' : '0'}">${row.listed ? 'RETIRAR' : 'LISTAR'}</button>
+          let loanTag = '';
+          if (loanOut) {
+            loanTag = ` <small class="transfers-loan-tag transfers-loan-tag--out" title="Cedido por empréstimo">EMPR.</small>${clubTag(row.loanTo, 'out')}`;
+          } else if (onLoan) {
+            loanTag = ` <small class="transfers-loan-tag transfers-loan-tag--in" title="Emprestado no elenco">EMPR.</small>${clubTag(row.loanFrom, 'in')}`;
+          } else if (row.loanListed) {
+            loanTag =
+              ' <small class="transfers-loan-tag transfers-loan-tag--offer" title="Disponível para empréstimo">EMPR.</small>';
+          }
+          const buyFee =
+            onLoan && row.loanBuyFee > 0
+              ? ` <small class="transfers-loan-tag" title="Opção de compra">OPC ${escapeHtml(formatMoney(row.loanBuyFee))}</small>`
+              : '';
+          const windowLocked = !!row.windowLocked;
+          let actions = '';
+          if (loanOut) {
+            actions = '<span class="transfers-loan-away-note">CEDIDO</span>';
+          } else if (onLoan) {
+            actions = `<button type="button" class="transfers-action" data-loan-buy-id="${escapeHtml(row.playerId)}">COMPRAR</button>
+            <button type="button" class="transfers-action secondary" data-return-loan-id="${escapeHtml(row.playerId)}">DEVOLVER</button>`;
+          } else if (windowLocked) {
+            const withdraw = [];
+            if (row.listed) {
+              withdraw.push(
+                `<button type="button" class="transfers-action secondary" data-list-id="${escapeHtml(row.playerId)}" data-listed="1">RETIRAR</button>`,
+              );
+            }
+            if (row.loanListed) {
+              withdraw.push(
+                `<button type="button" class="transfers-action secondary" data-loan-list-id="${escapeHtml(row.playerId)}" data-loan-listed="1">RET. EMPR.</button>`,
+              );
+            }
+            actions = withdraw.length
+              ? withdraw.join('')
+              : '<span class="transfers-loan-away-note" title="Já se movimentou nesta janela">JÁ NEGOCIADO</span>';
+          } else {
+            actions = `<button type="button" class="transfers-action secondary" data-list-id="${escapeHtml(row.playerId)}" data-listed="${row.listed ? '1' : '0'}">${row.listed ? 'RETIRAR' : 'LISTAR'}</button>
             <button type="button" class="transfers-action secondary" data-loan-list-id="${escapeHtml(row.playerId)}" data-loan-listed="${row.loanListed ? '1' : '0'}">${row.loanListed ? 'RET. EMPR.' : 'EMPRESTAR'}</button>
             <button type="button" class="transfers-action" data-sell-id="${escapeHtml(row.playerId)}">VENDER</button>`;
+          }
           return `<tr>
-          <td class="col-name">${escapeHtml(p.name)}${loanTag}</td>
+          <td class="col-name">${escapeHtml(p.name)}${p.setPieceSpecialist ? ' <span class="player-specialist-star" title="Especialista em bola parada" aria-label="Especialista">★</span>' : ''}${loanTag}${buyFee}</td>
           <td>${escapeHtml(p.pos)}</td>
           <td>${escapeHtml(sideLetter(p))}</td>
           <td class="col-force">${escapeHtml(p.overall)}</td>
@@ -745,8 +1099,16 @@ export function createTransfersFeature(deps) {
       const api = engine();
       const found = api?.findPlayerInWorld?.(offerState.playerId);
       if (found && api.evaluateSellerAccept) {
+        const phase1 = api.getBuyDivisionFit?.(offerState.playerId);
+        if (phase1 && !phase1.ok) {
+          hint.textContent =
+            'Aviso: diferença de série — a negociação é difícil e a oferta pode falhar.';
+          hint.className = 'transfers-offer-hint is-warn';
+          return;
+        }
         const verdict = api.evaluateSellerAccept(found.player, offer, found.club, {
           clubName: found.clubName,
+          divisionUnit: () => 0, // Fase 1 já validada acima com a mesma seed no motor
         });
         if (verdict.accept) {
           let text =
@@ -758,6 +1120,12 @@ export function createTransfersFeature(deps) {
           }
           hint.textContent = text;
           hint.className = 'transfers-offer-hint is-good';
+          return;
+        }
+        if ((verdict.reasons || []).includes('division_gap')) {
+          hint.textContent =
+            'Aviso: diferença de série — a negociação é difícil e a oferta pode falhar.';
+          hint.className = 'transfers-offer-hint is-warn';
           return;
         }
         const hard = (verdict.reasons || [])
@@ -782,7 +1150,7 @@ export function createTransfersFeature(deps) {
       }
       return;
     }
-    // sell
+    // sell / list — mesmo critério de atratividade do preço pedido
     if (offer >= value * 1.15) {
       hint.textContent = 'Preço alto — pode não haver comprador disposto.';
       hint.className = 'transfers-offer-hint is-warn';
@@ -799,12 +1167,32 @@ export function createTransfersFeature(deps) {
   };
 
   const openOfferModal = ({ mode, playerId, name, clubName, pos, overall, age, ask, value, wage }) => {
-    offerState = { mode, playerId, ask, value, wage };
+    offerState = { mode, playerId, ask, value, wage, playerName: name, clubName };
     const modal = $('#transfersOfferModal');
     if (!modal) return;
-    $('#transfersOfferEyebrow').textContent = mode === 'buy' ? 'NEGOCIAÇÃO · COMPRA' : 'NEGOCIAÇÃO · VENDA';
-    $('#transfersOfferTitle').textContent =
-      mode === 'buy' ? 'Oferta de contratação' : 'Preço de venda';
+    const copy =
+      mode === 'buy'
+        ? {
+            eyebrow: 'NEGOCIAÇÃO · COMPRA',
+            title: 'Oferta de contratação',
+            inputLabel: 'Sua oferta (R$)',
+            submit: 'ENVIAR OFERTA',
+          }
+        : mode === 'list'
+          ? {
+              eyebrow: 'NEGOCIAÇÃO · LISTA',
+              title: 'Preço pedido na lista',
+              inputLabel: 'Preço pedido na lista (R$)',
+              submit: 'CONFIRMAR LISTAGEM',
+            }
+          : {
+              eyebrow: 'NEGOCIAÇÃO · VENDA',
+              title: 'Preço de venda',
+              inputLabel: 'Preço pedido na venda (R$)',
+              submit: 'CONFIRMAR VENDA',
+            };
+    $('#transfersOfferEyebrow').textContent = copy.eyebrow;
+    $('#transfersOfferTitle').textContent = copy.title;
     $('#transfersOfferPlayer').textContent = name || '—';
     $('#transfersOfferMeta').textContent = [
       clubName,
@@ -824,11 +1212,10 @@ export function createTransfersFeature(deps) {
     } catch {
       $('#transfersOfferBalance').textContent = '—';
     }
-    $('#transfersOfferInputLabel').textContent =
-      mode === 'buy' ? 'Sua oferta (R$)' : 'Preço pedido na venda (R$)';
+    $('#transfersOfferInputLabel').textContent = copy.inputLabel;
     $('#transfersOfferInput').value = formatOfferInput(ask || value);
     $('#transfersOfferError').textContent = '';
-    $('#transfersOfferSubmit').textContent = mode === 'buy' ? 'ENVIAR OFERTA' : 'CONFIRMAR VENDA';
+    $('#transfersOfferSubmit').textContent = copy.submit;
     modal.classList.remove('hidden');
     updateOfferHint();
     queueMicrotask(() => {
@@ -853,33 +1240,107 @@ export function createTransfersFeature(deps) {
     if (offerState.mode === 'buy') {
       const result = api.buyPlayer(offerState.playerId, offer);
       if (!result.ok) {
-        if (result.reason === 'rejected' && result.floor) {
-          const why = reasonLabel('rejected', { reasons: result.reasons });
-          if (errorEl) {
-            errorEl.textContent = `${why} Tente perto de ${formatMoney(result.floor)} ou mais.`;
-          }
-          setStatus(`Oferta recusada. Mínimo aproximado: ${formatMoney(result.floor)}.`);
-          updateOfferHint();
+        const letterCtx = {
+          reasons: result.reasons,
+          clubName: result.from || offerState.clubName,
+          playerName: offerState.playerName || result.player?.name,
+        };
+        if (result.reason === 'counter_offer' && result.counterFee > 0) {
+          const counterFee = Math.round(Number(result.counterFee) || 0);
+          const playerId = offerState.playerId;
+          const clubName = result.clubName || offerState.clubName || 'O clube';
+          const playerName = offerState.playerName || result.playerName || 'o jogador';
+          setStatus(`Contra-proposta: ${formatMoney(counterFee)}`);
+          closeOfferModal();
+          showActionAlert({
+            title: 'Contra-proposta',
+            lead: `${clubName} não aceitou ${formatMoney(result.fee)}, mas contra-propôs ${formatMoney(counterFee)}.`,
+            body: `Aceitar fecha a contratação de ${playerName} neste valor.`,
+            tone: 'warn',
+            primaryLabel: 'ACEITAR CONTRA-PROPOSTA',
+            secondaryLabel: 'AGORA NÃO',
+            onSecondary: () => setStatus('Contra-proposta deixada de lado por agora.'),
+            onPrimary: () => {
+              const buyApi = engine();
+              if (!buyApi) return;
+              const done = buyApi.buyPlayer(playerId, counterFee);
+              if (!done.ok) {
+                setStatus(reasonLabel(done.reason, done));
+                alertTransferResult(done, { titleFail: 'Contratação bloqueada' });
+                render();
+                return;
+              }
+              setStatus(`Contratado: ${done.player.name} · ${formatMoney(done.fee)}`);
+              alertTransferResult(done, {
+                titleOk: 'Contratação concluída',
+                leadOk: `${done.player.name} chegou ao ${done.to} por ${formatMoney(done.fee)} (vindo de ${done.from}).`,
+              });
+              onDealComplete?.(done);
+              persistSeason();
+              render();
+            },
+          });
           return;
         }
-        const msg = reasonLabel(result.reason, result);
-        if (errorEl) {
-          errorEl.textContent = msg + (result.fee ? ` (${formatMoney(result.fee)})` : '');
+        if (
+          (result.reason === 'rejected' || result.reason === 'division_gap') &&
+          (result.floor || result.reason === 'division_gap')
+        ) {
+          const why = reasonLabel(result.reason, letterCtx);
+          setStatus(
+            result.reason === 'division_gap'
+              ? 'Negociação encerrada — diferença de série.'
+              : `Oferta recusada. Mínimo aproximado: ${formatMoney(result.floor)}.`,
+          );
+          closeOfferModal();
+          showActionAlert({
+            title: 'Oferta recusada',
+            lead: why,
+            body:
+              result.reason === 'division_gap'
+                ? 'Nenhuma mudança de elenco ou folha.'
+                : `Nenhuma mudança de elenco ou folha. Tente perto de ${formatMoney(result.floor)} ou mais.`,
+            tone: 'block',
+          });
+          return;
         }
+        const msg = reasonLabel(result.reason, { ...result, ...letterCtx });
         setStatus(msg);
+        closeOfferModal();
+        alertTransferResult(result, { titleFail: 'Contratação bloqueada' });
         return;
       }
-      pushMessage?.({
-        category: 'transfer',
-        type: 'deal',
-        title: 'Contratação concluída',
-        body: `${result.player.name} chegou ao ${result.to} por ${formatMoney(result.fee)} (vindo de ${result.from}).`,
-        round: getCurrentRound?.() || 1,
-        meta: { competition: 'Mercado', playerId: result.player.playerId, fee: result.fee },
-      });
       setStatus(`Contratado: ${result.player.name} · ${formatMoney(result.fee)}`);
       closeOfferModal();
+      alertTransferResult(result, {
+        titleOk: 'Contratação concluída',
+        leadOk: `${result.player.name} chegou ao ${result.to} por ${formatMoney(result.fee)} (vindo de ${result.from}).`,
+      });
       onDealComplete?.(result);
+      persistSeason();
+      render();
+      return;
+    }
+
+    if (offerState.mode === 'list') {
+      const result = api.setListed(offerState.playerId, true, offer);
+      if (!result.ok) {
+        const msg = reasonLabel(result.reason, result);
+        setStatus(msg);
+        closeOfferModal();
+        alertTransferResult(result, { titleFail: 'Lista de transferências' });
+        return;
+      }
+      setStatus(`${result.player.name} listado por ${formatMoney(result.player.askingPrice)}`);
+      closeOfferModal();
+      const payroll = result.payroll || api.evaluateUserPayroll?.() || null;
+      showActionAlert({
+        title: 'Jogador listado',
+        lead: `${result.player.name} à venda por ${formatMoney(result.player.askingPrice)}.`,
+        body: 'Uma venda bem-sucedida reduz a folha e libera espaço financeiro.',
+        tone: 'ok',
+        payroll,
+      });
       persistSeason();
       render();
       return;
@@ -888,20 +1349,17 @@ export function createTransfersFeature(deps) {
     const result = api.sellPlayer(offerState.playerId, offer);
     if (!result.ok) {
       const msg = reasonLabel(result.reason, result);
-      if (errorEl) errorEl.textContent = msg;
       setStatus(msg);
+      closeOfferModal();
+      alertTransferResult(result, { titleFail: 'Venda não concluída' });
       return;
     }
-    pushMessage?.({
-      category: 'transfer',
-      type: 'deal',
-      title: 'Venda concluída',
-      body: `${result.player.name} foi negociado com ${result.to} por ${formatMoney(result.fee)}.`,
-      round: getCurrentRound?.() || 1,
-      meta: { competition: 'Mercado', playerId: result.player.playerId, fee: result.fee },
-    });
     setStatus(`Vendido: ${result.player.name} → ${result.to} · ${formatMoney(result.fee)}`);
     closeOfferModal();
+    alertTransferResult(result, {
+      titleOk: 'Venda concluída',
+      leadOk: `${result.player.name} foi negociado com ${result.to} por ${formatMoney(result.fee)}.`,
+    });
     onDealComplete?.(result);
     persistSeason();
     render();
@@ -965,29 +1423,41 @@ export function createTransfersFeature(deps) {
       const result = api.setListed(playerId, false);
       if (!result.ok) {
         setStatus(reasonLabel(result.reason));
+        alertTransferResult(result, { titleFail: 'Lista de transferências' });
         return;
       }
       setStatus(`${result.player.name} removido da lista`);
+      const payroll = api.evaluateUserPayroll?.() || null;
+      showActionAlert({
+        title: 'Removido da lista',
+        lead: `${result.player.name} não está mais à venda.`,
+        body: 'Isso não altera a folha — só a disponibilidade no mercado.',
+        tone: 'ok',
+        payroll,
+      });
       persistSeason();
       render();
       return;
     }
     const row = api.listSellCandidates().find(item => item.playerId === playerId);
-    const suggested = Math.round(Number(row?.value) || Number(row?.player?.marketValue) || 0);
-    const raw = window.prompt(
-      `Preço pedido para listar ${row?.player?.name || 'jogador'} (sugerido ${formatMoney(suggested)}):`,
-      String(suggested || ''),
-    );
-    if (raw == null) return;
-    const asking = Number(String(raw).replace(/\D/g, '')) || suggested;
-    const result = api.setListed(playerId, true, asking);
-    if (!result.ok) {
-      setStatus(reasonLabel(result.reason));
+    if (!row) {
+      setStatus(reasonLabel('not_found'));
       return;
     }
-    setStatus(`${result.player.name} listado por ${formatMoney(result.player.askingPrice)}`);
-    persistSeason();
-    render();
+    const value = Number(row.value) || 0;
+    const ask = row.askingPrice > 0 ? Number(row.askingPrice) : value;
+    openOfferModal({
+      mode: 'list',
+      playerId,
+      name: row.player.name,
+      clubName: getUserClub?.() || 'Seu clube',
+      pos: row.player.pos,
+      overall: row.player.overall,
+      age: row.player.age,
+      ask,
+      value,
+      wage: row.player.wage,
+    });
   };
 
   const confirmLoanIn = playerId => {
@@ -999,42 +1469,53 @@ export function createTransfersFeature(deps) {
       return;
     }
     const slots = api.loanSlots?.(getUserClub?.()) || { incoming: 0, max: 3 };
-    const ok = window.confirm(
-      `Emprestar ${found.player.name} de ${found.clubName} até o fim da temporada?\nEmpréstimos no elenco: ${slots.incoming}/${slots.max}`,
-    );
-    if (!ok) return;
-    const result = api.loanPlayer(playerId);
-    if (!result.ok) {
-      const msg = reasonLabel(result.reason, result);
-      setStatus(msg);
-      pushMessage?.({
-        category: 'transfer',
-        type: 'offer-rejected',
-        title: 'Empréstimo recusado',
-        body: `${found.player.name} (${found.clubName}): ${msg}`,
-        round: getCurrentRound?.() || 1,
-        meta: {
-          competition: 'Mercado',
-          playerId: found.player.playerId || playerId,
-          loan: true,
-          actionResult: 'rejected',
-        },
-      });
-      render();
-      return;
-    }
-    pushMessage?.({
-      category: 'transfer',
-      type: 'loan',
-      title: 'Empréstimo concluído',
-      body: `${result.player.name} chega por empréstimo de ${result.from} até o fim da temporada.`,
-      round: getCurrentRound?.() || 1,
-      meta: { competition: 'Mercado', playerId: result.player.playerId, loan: true },
+    const p = found.player;
+    openConfirmModal({
+      title: 'Confirmar empréstimo',
+      eyebrow: 'MERCADO · EMPRÉSTIMO',
+      playerName: p.name,
+      meta: [found.clubName, p.pos, p.overall != null ? `OVR ${p.overall}` : null, p.age != null ? `${p.age} anos` : null]
+        .filter(Boolean)
+        .join(' · '),
+      lead: 'Trazer até o fim da temporada, com opção de compra fixa (100–120% do valor). O salário entra na folha enquanto ele estiver no elenco.',
+      slotsLabel: `${slots.incoming}/${slots.max}`,
+      wage: p.wage,
+      submitLabel: 'CONFIRMAR EMPRÉSTIMO',
+      onConfirm: () => {
+        const result = api.loanPlayer(playerId);
+        if (!result.ok) {
+          if (result.reason === 'loan_level') {
+            const lead = formatLoanLevelPlayerReply({ playerName: p.name });
+            setStatus('Empréstimo negado pelo jogador.');
+            showActionAlert({
+              title: 'Empréstimo Negado',
+              lead,
+              body: 'A proposta foi recusada, mas a porta fica aberta para novas oportunidades.',
+              tone: 'warn',
+            });
+            render();
+            return;
+          }
+          const msg = reasonLabel(result.reason, { ...result, playerName: p.name });
+          setStatus(msg);
+          alertTransferResult(result, { titleFail: 'Empréstimo Negado' });
+          render();
+          return;
+        }
+        const feeBit =
+          result.loanBuyFee > 0
+            ? ` Opção de compra: ${formatMoney(result.loanBuyFee)} (exerce quando quiser, na janela).`
+            : '';
+        setStatus(`Emprestado: ${result.player.name} ← ${result.from}`);
+        alertTransferResult(result, {
+          titleOk: 'Empréstimo concluído',
+          leadOk: `${result.player.name} chega por empréstimo de ${result.from} até o fim da temporada.${feeBit}`,
+        });
+        onDealComplete?.(result);
+        persistSeason();
+        render();
+      },
     });
-    setStatus(`Emprestado: ${result.player.name} ← ${result.from}`);
-    onDealComplete?.(result);
-    persistSeason();
-    render();
   };
 
   const toggleLoanList = (playerId, currentlyListed) => {
@@ -1043,14 +1524,28 @@ export function createTransfersFeature(deps) {
     const result = api.setLoanListed(playerId, !currentlyListed);
     if (!result.ok) {
       setStatus(reasonLabel(result.reason));
+      alertTransferResult(result, { titleFail: 'Lista de empréstimo' });
       render();
       return;
     }
+    const listed = !!result.player.loanListed;
     setStatus(
-      result.player.loanListed
+      listed
         ? `${result.player.name} disponível para empréstimo`
         : `${result.player.name} retirado da lista de empréstimo`,
     );
+    const payroll = api.evaluateUserPayroll?.() || null;
+    showActionAlert({
+      title: listed ? 'Disponível para empréstimo' : 'Empréstimo retirado',
+      lead: listed
+        ? `${result.player.name} pode ser cedido até o fim da temporada.`
+        : `${result.player.name} saiu da lista de empréstimo.`,
+      body: listed
+        ? 'Ceder por empréstimo alivia a folha enquanto o jogador estiver fora.'
+        : 'Sem impacto imediato na folha.',
+      tone: 'ok',
+      payroll,
+    });
     persistSeason();
     render();
   };
@@ -1063,24 +1558,86 @@ export function createTransfersFeature(deps) {
       setStatus(reasonLabel('not_found'));
       return;
     }
-    const ok = window.confirm(
-      `Devolver ${row.player.name} ao ${row.loanFrom || 'clube de origem'} agora?`,
-    );
-    if (!ok) return;
-    const result = api.returnLoanPlayer(playerId);
-    if (!result.ok) {
-      setStatus(reasonLabel(result.reason));
-      render();
+    const p = row.player;
+    openConfirmModal({
+      title: 'Devolver empréstimo',
+      eyebrow: 'MERCADO · DEVOLUÇÃO',
+      playerName: p.name,
+      meta: [p.pos, p.overall != null ? `OVR ${p.overall}` : null].filter(Boolean).join(' · '),
+      lead: `Devolver ${p.name} ao ${row.loanFrom || 'clube de origem'} agora?`,
+      slotsCaption: 'TIPO',
+      slotsLabel: 'Devolução antecipada',
+      wage: p.wage,
+      submitLabel: 'CONFIRMAR DEVOLUÇÃO',
+      onConfirm: () => {
+        const result = api.returnLoanPlayer(playerId);
+        if (!result.ok) {
+          setStatus(reasonLabel(result.reason));
+          alertTransferResult(result, { titleFail: 'Devolução bloqueada' });
+          render();
+          return;
+        }
+        setStatus(`Devolvido: ${result.player.name} → ${result.to}`);
+        alertTransferResult(result, {
+          titleOk: 'Empréstimo devolvido',
+          leadOk: `${result.player.name} retornou ao ${result.to}.`,
+        });
+        onDealComplete?.(result);
+        persistSeason();
+        render();
+      },
+    });
+  };
+
+  const confirmLoanBuy = playerId => {
+    const api = engine();
+    if (!api) return;
+    const row = api.listSellCandidates().find(item => item.playerId === playerId && item.onLoan);
+    if (!row) {
+      setStatus(reasonLabel('not_found'));
       return;
     }
-    setStatus(`Devolvido: ${result.player.name} → ${result.to}`);
-    onDealComplete?.(result);
-    persistSeason();
-    render();
+    const p = row.player;
+    const fee = Math.round(Number(row.loanBuyFee) || Number(p.loanBuyOption?.fee) || 0);
+    openConfirmModal({
+      title: 'Exercer opção de compra',
+      eyebrow: 'MERCADO · OPÇÃO DE COMPRA',
+      playerName: p.name,
+      meta: [row.loanFrom, p.pos, p.overall != null ? `OVR ${p.overall}` : null]
+        .filter(Boolean)
+        .join(' · '),
+      lead: `Comprar ${p.name} por ${formatMoney(fee)}? Taxa fixa do empréstimo — o ${row.loanFrom || 'clube de origem'} não pode recusar. O jogador já está no elenco.`,
+      slotsCaption: 'TAXA DA OPÇÃO',
+      slotsLabel: formatMoney(fee),
+      wage: p.wage,
+      submitLabel: 'CONFIRMAR COMPRA',
+      onConfirm: () => {
+        const result = api.exerciseLoanBuyOption(playerId);
+        if (!result.ok) {
+          setStatus(reasonLabel(result.reason, result));
+          alertTransferResult(result, { titleFail: 'Opção de compra bloqueada' });
+          render();
+          return;
+        }
+        setStatus(`Comprado: ${result.player.name} · ${formatMoney(result.fee)}`);
+        alertTransferResult(result, {
+          titleOk: 'Opção de compra exercida',
+          leadOk: `${result.player.name} é definitivo no elenco. Pago ${formatMoney(result.fee)} a ${result.from}.`,
+        });
+        onDealComplete?.(result);
+        persistSeason();
+        render();
+      },
+    });
   };
 
   const applySearch = () => {
     filters = readFiltersFromDom();
+    render();
+  };
+
+  const applySellSearch = () => {
+    sellFilters = readSellFiltersFromDom();
     render();
   };
 
@@ -1089,6 +1646,26 @@ export function createTransfersFeature(deps) {
     onClick('#transfersWindowReportOk', () => closeWindowReport());
     onClick('#transfersWindowReportModal', event => {
       if (event.target?.id === 'transfersWindowReportModal') closeWindowReport();
+    });
+    onClick('#transfersAlertClose', () => closeActionAlert());
+    onClick('#transfersAlertOk', () => {
+      const fn = alertState?.onPrimary;
+      closeActionAlert();
+      if (typeof fn === 'function') fn();
+    });
+    onClick('#transfersAlertSecondary', () => {
+      const fn = alertState?.onSecondary;
+      closeActionAlert();
+      if (typeof fn === 'function') fn();
+    });
+    onClick('#transfersAlertModal', event => {
+      if (event.target?.id === 'transfersAlertModal') closeActionAlert();
+    });
+    onClick('#transfersConfirmClose', () => closeConfirmModal());
+    onClick('#transfersConfirmCancel', () => closeConfirmModal());
+    onClick('#transfersConfirmSubmit', () => submitConfirmModal());
+    onClick('#transfersConfirmModal', event => {
+      if (event.target?.id === 'transfersConfirmModal') closeConfirmModal();
     });
     const incomingBox = $('#transfersIncomingOffers');
     incomingBox?.addEventListener('pointerover', event => {
@@ -1131,11 +1708,19 @@ export function createTransfersFeature(deps) {
       render();
     });
     onClick('#transfersApplyFilters', () => applySearch());
+    onClick('#transfersSellApplyFilters', () => applySellSearch());
     const queryInput = $('#transfersFilterQuery');
     queryInput?.addEventListener('keydown', event => {
       if (event.key === 'Enter') {
         event.preventDefault();
         applySearch();
+      }
+    });
+    const sellQueryInput = $('#transfersSellFilterQuery');
+    sellQueryInput?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        applySellSearch();
       }
     });
 
@@ -1192,6 +1777,11 @@ export function createTransfersFeature(deps) {
       confirmBuy(button.dataset.buyId);
     });
     onClick('#transfersSellBody', event => {
+      const buy = event.target.closest('button[data-loan-buy-id]');
+      if (buy) {
+        confirmLoanBuy(buy.dataset.loanBuyId);
+        return;
+      }
       const ret = event.target.closest('button[data-return-loan-id]');
       if (ret) {
         confirmReturnLoan(ret.dataset.returnLoanId);
@@ -1218,5 +1808,7 @@ export function createTransfersFeature(deps) {
     bindHandlers,
     setPersist,
     showWindowReport,
+    showActionAlert,
+    closeActionAlert,
   };
 }

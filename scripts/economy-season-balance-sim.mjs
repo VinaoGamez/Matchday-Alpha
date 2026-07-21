@@ -13,7 +13,8 @@ import {
   assignSponsors,
   assignTvRights,
   creditSponsorInstallment,
-  creditTvInstallment,
+  creditHomeTv,
+  tvHomeSlots,
   ensureStadium,
   getBalance,
   TV_VALUE_BY_DIVISION,
@@ -62,10 +63,11 @@ const simulateSeason = ({
   random = () => 0.45,
 }) => {
   const rounds = seasonRounds(division);
+  const homeSlots = tvHomeSlots(division);
   const club = makeClub({ division, overall, rosterSize, budgetRatio });
   const start = getBalance(club);
   assignSponsors(club, { division, season: 2026, installments: rounds, creditPackage: false, random });
-  assignTvRights(club, { division, season: 2026, installments: rounds, random });
+  assignTvRights(club, { division, season: 2026, installments: homeSlots, random });
 
   const wage = estimateWageBill(club, division);
   const staff = estimateStaffBill(club, division, { managerReputation: 70 });
@@ -87,10 +89,20 @@ const simulateSeason = ({
     if (isHome) {
       club.budget += gatePerHome;
       income += gatePerHome;
+      const tv = creditHomeTv(
+        club,
+        {
+          home: club.name,
+          away: `Opp ${round}`,
+          round,
+          competition: 'LEAGUE',
+        },
+        { division, season: 2026 },
+      );
+      income += tv.amount || 0;
     }
     const sp = creditSponsorInstallment(club, { round, installments: rounds });
-    const tv = creditTvInstallment(club, { round, installments: rounds });
-    income += (sp.amount || 0) + (tv.amount || 0);
+    income += sp.amount || 0;
     const charged = chargeRoundCosts(club, {
       division,
       round,
@@ -169,7 +181,7 @@ for (const division of ['A', 'B', 'C', 'D']) {
 
 console.log('\n=== Calibração de fluxo sazonal (sem prêmio de fim) ===\n');
 console.log(
-  'Meta: minBal > 0 na maioria; end/start entre ~0.6 e ~2.2; elenco caro pode apertar sem falir cedo.\n',
+  'Meta v3: cobertura ~1,1–1,3× (médio); elenco caro ~0,9×; end/start ~0,7–1,4; vermelho possível se gastar agressivo.\n',
 );
 
 for (const p of profiles) {

@@ -69,7 +69,7 @@ export function createPlayerCells({
   };
 
   const playerStatusBadges = (player, liveState = null, options = {}) => {
-    const { allCompetitions = false } = options;
+    const { allCompetitions = false, showLoan = false } = options;
     const parts = [];
     const seasonYellows = seasonYellowHtml(player, { allCompetitions });
     if (seasonYellows) parts.push(seasonYellows);
@@ -122,18 +122,40 @@ export function createPlayerCells({
       }
     }
 
-    if (player?.onLoan) {
+    // Tag de empréstimo: só na lista Elenco (showLoan). Pausa/táticas/análise ficam limpas.
+    if (showLoan && player?.onLoan) {
       const from = player.loanFrom ? ` de ${player.loanFrom}` : '';
       parts.push(
         `<small class="player-loan-tag" title="Emprestado${from} até o fim da temporada">EMPR.</small>`,
       );
+      if (player.loanFrom) {
+        parts.push(
+          `<small class="player-loan-tag player-loan-tag-club" title="Clube de origem">${player.loanFrom}</small>`,
+        );
+      }
     }
 
     return parts.length ? `<span class="player-status-badges">${parts.join('')}</span>` : '';
   };
 
-  const playerNameCell = (name, player, { prefix = '', liveState = null, allCompetitions = false } = {}) =>
-    `<b class="player-name-cell">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span class="player-name-text">${name}</span>${playerStatusBadges(player, liveState, { allCompetitions })}</b>`;
+  const specialistStar = player => {
+    const flag = player?.setPieceSpecialist;
+    if (!(flag === 'freeKick' || flag === 'penalty' || flag === 'both' || flag === true)) return '';
+    const title =
+      flag === 'both'
+        ? 'Especialista em faltas e pênaltis'
+        : flag === 'penalty'
+          ? 'Especialista em pênaltis'
+          : 'Especialista em faltas';
+    return `<span class="player-specialist-star" title="${title}" aria-label="${title}">★</span>`;
+  };
+
+  const playerNameCell = (
+    name,
+    player,
+    { prefix = '', liveState = null, allCompetitions = false, showLoan = false } = {},
+  ) =>
+    `<b class="player-name-cell">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span class="player-name-text">${name}</span>${specialistStar(player)}${playerStatusBadges(player, liveState, { allCompetitions, showLoan })}</b>`;
 
   return { playerNameCell, playerStatusBadges };
 }
