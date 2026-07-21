@@ -69,7 +69,7 @@ export function createPlayerCells({
   };
 
   const playerStatusBadges = (player, liveState = null, options = {}) => {
-    const { allCompetitions = false, showLoan = false } = options;
+    const { allCompetitions = false } = options;
     const parts = [];
     const seasonYellows = seasonYellowHtml(player, { allCompetitions });
     if (seasonYellows) parts.push(seasonYellows);
@@ -122,20 +122,18 @@ export function createPlayerCells({
       }
     }
 
-    // Tag de empréstimo: só na lista Elenco (showLoan). Pausa/táticas/análise ficam limpas.
-    if (showLoan && player?.onLoan) {
-      const from = player.loanFrom ? ` de ${player.loanFrom}` : '';
-      parts.push(
-        `<small class="player-loan-tag" title="Emprestado${from} até o fim da temporada">EMPR.</small>`,
-      );
-      if (player.loanFrom) {
-        parts.push(
-          `<small class="player-loan-tag player-loan-tag-club" title="Clube de origem">${player.loanFrom}</small>`,
-        );
-      }
-    }
-
+    // Empréstimo fica em linha própria (playerLoanLine) — não compete com o nome.
     return parts.length ? `<span class="player-status-badges">${parts.join('')}</span>` : '';
+  };
+
+  /** Tags EMPR. + clube — só Elenco (showLoan). Linha abaixo do nome. */
+  const playerLoanLine = player => {
+    if (!player?.onLoan) return '';
+    const from = player.loanFrom ? ` de ${player.loanFrom}` : '';
+    const club = player.loanFrom
+      ? `<small class="player-loan-tag player-loan-tag-club" title="Clube de origem">${player.loanFrom}</small>`
+      : '';
+    return `<span class="player-loan-line"><small class="player-loan-tag" title="Emprestado${from} até o fim da temporada">EMPR.</small>${club}</span>`;
   };
 
   const specialistStar = player => {
@@ -154,8 +152,11 @@ export function createPlayerCells({
     name,
     player,
     { prefix = '', liveState = null, allCompetitions = false, showLoan = false } = {},
-  ) =>
-    `<b class="player-name-cell">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span class="player-name-text">${name}</span>${specialistStar(player)}${playerStatusBadges(player, liveState, { allCompetitions, showLoan })}</b>`;
+  ) => {
+    const loanLine = showLoan ? playerLoanLine(player) : '';
+    const badges = playerStatusBadges(player, liveState, { allCompetitions, showLoan: false });
+    return `<b class="player-name-cell${loanLine ? ' has-loan' : ''}"><span class="player-name-line">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span class="player-name-text">${name}</span>${specialistStar(player)}${badges}</span>${loanLine}</b>`;
+  };
 
   return { playerNameCell, playerStatusBadges };
 }
