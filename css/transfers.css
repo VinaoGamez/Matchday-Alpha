@@ -576,6 +576,34 @@ body.transfers-col-resizing * {
   white-space: normal;
   overflow: visible;
   text-overflow: unset;
+  vertical-align: middle;
+}
+
+.transfers-name-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.transfers-name-main {
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.transfers-name-loan {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.transfers-name-loan .transfers-loan-tag {
+  margin-left: 0;
 }
 
 /* —— Modal de oferta editável —— */

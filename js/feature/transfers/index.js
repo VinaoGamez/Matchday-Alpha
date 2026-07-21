@@ -143,6 +143,8 @@ export function createTransfersFeature(deps) {
     maxWage: 0,
     listedOnly: false,
     loanOnly: false,
+    sortBy: 'ovr',
+    sortDir: 'desc',
   };
   let persistSeason = typeof deps.onPersist === 'function' ? deps.onPersist : () => {};
   let statusText = '';
@@ -584,6 +586,8 @@ export function createTransfersFeature(deps) {
     maxWage: Number($('#transfersSellFilterMaxWage')?.value) || 0,
     listedOnly: Boolean($('#transfersSellFilterListed')?.checked),
     loanOnly: Boolean($('#transfersSellFilterLoan')?.checked),
+    sortBy: sellFilters.sortBy || 'ovr',
+    sortDir: sellFilters.sortDir || 'desc',
   });
 
   const renderSellFilters = () => {
@@ -647,15 +651,48 @@ export function createTransfersFeature(deps) {
     });
   };
 
-  const markSortedHeader = () => {
-    document.querySelectorAll('#transfersBuyPanel th[data-sort]').forEach(th => {
-      const active = th.getAttribute('data-sort') === filters.sortBy;
+  const sellSortValue = (row, key) => {
+    const p = row.player || {};
+    if (key === 'name') return String(p.name || '').toLocaleLowerCase('pt-BR');
+    if (key === 'pos') return String(p.pos || '');
+    if (key === 'foot') return sideLetter(p);
+    if (key === 'ovr') return Number(p.overall) || 0;
+    if (key === 'age') return Number(p.age) || 0;
+    if (key === 'wage') return Number(p.wage) || 0;
+    if (key === 'price') {
+      return row.listed && row.askingPrice > 0
+        ? Number(row.askingPrice) || 0
+        : Number(row.value) || Number(p.marketValue) || 0;
+    }
+    if (key === 'listed') return row.listed ? 1 : 0;
+    return 0;
+  };
+
+  const sortSellRows = rows => {
+    const key = sellFilters.sortBy || 'ovr';
+    const dir = sellFilters.sortDir === 'asc' ? 1 : -1;
+    return rows.slice().sort((a, b) => {
+      const va = sellSortValue(a, key);
+      const vb = sellSortValue(b, key);
+      if (typeof va === 'string' || typeof vb === 'string') {
+        return String(va).localeCompare(String(vb), 'pt-BR') * dir;
+      }
+      return (va - vb) * dir;
+    });
+  };
+
+  const markSortedHeader = (panelSelector, sortBy, sortDir) => {
+    document.querySelectorAll(`${panelSelector} th[data-sort]`).forEach(th => {
+      const active = th.getAttribute('data-sort') === sortBy;
       th.classList.toggle('is-sorted', active);
-      th.classList.toggle('is-asc', active && filters.sortDir === 'asc');
-      th.classList.toggle('is-desc', active && filters.sortDir === 'desc');
-      th.setAttribute('title', active
-        ? `Ordenado ${filters.sortDir === 'asc' ? 'crescente' : 'decrescente'} — clique para inverter`
-        : 'Clique para ordenar');
+      th.classList.toggle('is-asc', active && sortDir === 'asc');
+      th.classList.toggle('is-desc', active && sortDir === 'desc');
+      th.setAttribute(
+        'title',
+        active
+          ? `Ordenado ${sortDir === 'asc' ? 'crescente' : 'decrescente'} — clique para inverter`
+          : 'Clique para ordenar',
+      );
     });
   };
 
@@ -670,6 +707,17 @@ export function createTransfersFeature(deps) {
       filters.sortDir = defaultSortDir(key);
     }
     renderBuyTable();
+  };
+
+  const applySellColumnSort = key => {
+    if (!key) return;
+    if (sellFilters.sortBy === key) {
+      sellFilters.sortDir = sellFilters.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sellFilters.sortBy = key;
+      sellFilters.sortDir = defaultSortDir(key);
+    }
+    renderSellTable();
   };
 
   const applyColgroup = (table, widths) => {
@@ -784,7 +832,7 @@ export function createTransfersFeature(deps) {
       sortDir: filters.sortDir || 'desc',
     });
     setResultCount(rows.length);
-    markSortedHeader();
+    markSortedHeader('#transfersBuyPanel', filters.sortBy, filters.sortDir);
     renderLoanSlots();
     if (!rows.length) {
       body.innerHTML =
@@ -835,8 +883,9 @@ export function createTransfersFeature(deps) {
       return;
     }
     const allRows = api.listSellCandidates();
-    const rows = filterSellRows(allRows);
+    const rows = sortSellRows(filterSellRows(allRows));
     setSellResultCount(rows.length, allRows.length);
+    markSortedHeader('#transfersSellPanel', sellFilters.sortBy, sellFilters.sortDir);
     renderLoanSlots();
     if (!allRows.length) {
       body.innerHTML =
@@ -854,21 +903,34 @@ export function createTransfersFeature(deps) {
           const loanOut = !!row.loanOut;
           const clubTag = (clubName, tone) =>
             clubName
-              ? ` <small class="transfers-loan-tag transfers-loan-tag--${tone}"><span class="club-link" data-club="${escapeHtml(clubName)}" role="button" tabindex="0">${escapeHtml(clubName)}</span></small>`
+              ? `<small class="transfers-loan-tag transfers-loan-tag--${tone}"><span class="club-link" data-club="${escapeHtml(clubName)}" role="button" tabindex="0">${escapeHtml(clubName)}</span></small>`
               : '';
-          let loanTag = '';
+          const loanBits = [];
           if (loanOut) {
-            loanTag = ` <small class="transfers-loan-tag transfers-loan-tag--out" title="Cedido por empréstimo">EMPR.</small>${clubTag(row.loanTo, 'out')}`;
+            loanBits.push(
+              `<small class="transfers-loan-tag transfers-loan-tag--out" title="Cedido por empréstimo">EMPR.</small>${clubTag(row.loanTo, 'out')}`,
+            );
           } else if (onLoan) {
-            loanTag = ` <small class="transfers-loan-tag transfers-loan-tag--in" title="Emprestado no elenco">EMPR.</small>${clubTag(row.loanFrom, 'in')}`;
+            loanBits.push(
+              `<small class="transfers-loan-tag transfers-loan-tag--in" title="Emprestado no elenco">EMPR.</small>${clubTag(row.loanFrom, 'in')}`,
+            );
           } else if (row.loanListed) {
-            loanTag =
-              ' <small class="transfers-loan-tag transfers-loan-tag--offer" title="Disponível para empréstimo">EMPR.</small>';
+            loanBits.push(
+              '<small class="transfers-loan-tag transfers-loan-tag--offer" title="Disponível para empréstimo">EMPR.</small>',
+            );
           }
-          const buyFee =
-            onLoan && row.loanBuyFee > 0
-              ? ` <small class="transfers-loan-tag" title="Opção de compra">OPC ${escapeHtml(formatMoney(row.loanBuyFee))}</small>`
-              : '';
+          if (onLoan && row.loanBuyFee > 0) {
+            loanBits.push(
+              `<small class="transfers-loan-tag" title="Opção de compra">OPC ${escapeHtml(formatMoney(row.loanBuyFee))}</small>`,
+            );
+          }
+          const loanLine = loanBits.length
+            ? `<span class="transfers-name-loan">${loanBits.join('')}</span>`
+            : '';
+          const nameMain = `${escapeHtml(p.name)}${p.setPieceSpecialist ? ' <span class="player-specialist-star" title="Especialista em bola parada" aria-label="Especialista">★</span>' : ''}`;
+          const nameCell = loanLine
+            ? `<span class="transfers-name-stack"><span class="transfers-name-main">${nameMain}</span>${loanLine}</span>`
+            : nameMain;
           const windowLocked = !!row.windowLocked;
           let actions = '';
           if (loanOut) {
@@ -897,7 +959,7 @@ export function createTransfersFeature(deps) {
             <button type="button" class="transfers-action" data-sell-id="${escapeHtml(row.playerId)}">VENDER</button>`;
           }
           return `<tr>
-          <td class="col-name">${escapeHtml(p.name)}${p.setPieceSpecialist ? ' <span class="player-specialist-star" title="Especialista em bola parada" aria-label="Especialista">★</span>' : ''}${loanTag}${buyFee}</td>
+          <td class="col-name">${nameCell}</td>
           <td>${escapeHtml(p.pos)}</td>
           <td>${escapeHtml(sideLetter(p))}</td>
           <td class="col-force">${escapeHtml(p.overall)}</td>
@@ -1776,7 +1838,13 @@ export function createTransfersFeature(deps) {
       if (!button) return;
       confirmBuy(button.dataset.buyId);
     });
-    onClick('#transfersSellBody', event => {
+    onClick('#transfersSellPanel', event => {
+      if (event.target.closest('.transfers-col-resizer')) return;
+      const sortTh = event.target.closest('th[data-sort]');
+      if (sortTh) {
+        applySellColumnSort(sortTh.getAttribute('data-sort') || 'ovr');
+        return;
+      }
       const buy = event.target.closest('button[data-loan-buy-id]');
       if (buy) {
         confirmLoanBuy(buy.dataset.loanBuyId);

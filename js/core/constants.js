@@ -56,7 +56,7 @@ export const MODULE_VERSIONS = {
   playerHistory: 1,
   playerMatchStats: 1,
   playerDevelopment: 1,
-  transfers: 1,
+  transfers: 2,
 };
 
 /** Vite injeta `__MATCHDAY_ENABLE_TRANSFERS__`; em Node/scripts fica off. */

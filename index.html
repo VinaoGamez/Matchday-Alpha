@@ -64,7 +64,7 @@
       <button class="nav" data-view="office">▥ Escritório</button>
       <button class="nav" data-view="stadium">⬡ Estádio</button>
       <button class="nav" data-view="training">◎ Treinamento</button>
-      <button class="nav" data-view="transfers"><span class="nav-label"><img class="nav-transfer-icon" src="./brand/transfer-coins.png" alt="" width="16" height="16" aria-hidden="true">Transferências</span></button>
+      <button class="nav" data-view="transfers"><span class="nav-label"><img class="nav-transfer-icon" src="./brand/transfer-coins.png" alt="" width="16" height="16" aria-hidden="true">Mercado</span></button>
       <button class="nav" data-view="youth">◆ Categoria de Base</button>
       <button class="nav" data-view="ranking">≣ Ranking Nacional</button>
       <button class="nav" data-view="managers">♛ Ranking de Técnicos</button>
@@ -296,7 +296,7 @@
     <section id="transfers" class="view transfers-view">
       <div class="title transfers-page-heading">
         <p>MERCADO DE JOGADORES</p>
-        <h1>Transferências</h1>
+        <h1>Mercado</h1>
       </div>
       <div class="transfers-toolbar">
         <div class="transfers-toolbar-left">
@@ -361,9 +361,8 @@
       </div>
 
       <div id="transfersSellPanel" class="card transfers-panel hidden">
-        <div class="transfers-search transfers-search--sell">
-          <h2 class="transfers-search-title">SEU ELENCO</h2>
-          <p class="transfers-search-hint">Liste à venda, ofereça para empréstimo ou venda direto. Empréstimos voltam no fim da temporada.</p>
+        <div class="transfers-search">
+          <h2 class="transfers-search-title">BUSCA NO ELENCO</h2>
           <div class="transfers-search-grid">
             <label class="transfers-field"><span>Nome</span><input id="transfersSellFilterQuery" type="search" placeholder="Jogador" /></label>
             <label class="transfers-field"><span>Posição</span><select id="transfersSellFilterPos"></select></label>
@@ -377,7 +376,7 @@
           <div class="transfers-search-options">
             <label class="transfers-filter-check"><input id="transfersSellFilterListed" type="checkbox" /> Só à venda</label>
             <label class="transfers-filter-check"><input id="transfersSellFilterLoan" type="checkbox" /> Só empréstimo / emprestados</label>
-            <button id="transfersSellApplyFilters" type="button">FILTRAR</button>
+            <button id="transfersSellApplyFilters" type="button">PROCURAR</button>
             <span id="transfersSellLoanSlots" class="transfers-loan-slots" aria-live="polite"></span>
             <span id="transfersSellResultCount" class="transfers-result-count"></span>
           </div>
@@ -386,15 +385,15 @@
           <table class="transfers-table" aria-label="Seu elenco no mercado">
             <thead>
               <tr>
-                <th>Jogador</th>
-                <th>Posição</th>
-                <th>Pé</th>
-                <th>Overall</th>
-                <th>Idade</th>
-                <th>Salário</th>
-                <th>Valor</th>
+                <th data-sort="name">Jogador</th>
+                <th data-sort="pos">Posição</th>
+                <th data-sort="foot">Pé</th>
+                <th data-sort="ovr">Overall</th>
+                <th data-sort="age">Idade</th>
+                <th data-sort="wage">Salário</th>
+                <th data-sort="price">Valor</th>
                 <th>Caract.</th>
-                <th>Venda</th>
+                <th data-sort="listed">Venda</th>
                 <th></th>
               </tr>
             </thead>
