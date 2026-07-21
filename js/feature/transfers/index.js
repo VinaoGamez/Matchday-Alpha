@@ -1,6 +1,10 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { traitCodes } from '../../engine/player-generation.js';
 import {
+  softEnvelopeFromPayroll,
+  softCashEnvelope,
+} from '../../engine/economy.js';
+import {
   formatSellerRejectLetter,
   formatLoanLevelPlayerReply,
   transferRejectReasonLine,
@@ -319,6 +323,13 @@ export function createTransfersFeature(deps) {
         already_moved:
           transferRejectReasonLine('already_moved') ||
           'Este jogador já se movimentou nesta janela — só volta a negociar na próxima.',
+        financial_restriction:
+          'Restrição financeira: compras e empréstimos de jogadores suspensos. Venda, adiante TV ou regularize o banco no Escritório.',
+        buyout_rejected:
+          'Diferença de série: nem a oferta elevada fechou. A chance era baixa — tente valor ainda maior ou outro alvo.',
+        buyout_below_min: extra.minFee
+          ? `Diferença de série: oferta mínima para tentar ~${formatMoney(extra.minFee)} (chance rara).`
+          : 'Diferença de série: só uma oferta bem acima do valor abre uma chance rara.',
       }[reason] || 'Não foi possível concluir a operação.'
     );
   };
@@ -370,6 +381,73 @@ export function createTransfersFeature(deps) {
     if (tone === 'relief') return 'Folha mais leve após esta operação.';
     if (tone === 'block') return 'Folha acima do seguro para suas Finanças.';
     return 'Folha confortável.';
+  };
+
+  /** Preview de expansão de elenco (compra / empréstimo de entrada). */
+  const previewExpandPayroll = player => {
+    const api = engine();
+    if (!api?.evaluateUserPayroll || !player) return null;
+    const wage =
+      typeof api.resolvePlayerWage === 'function'
+        ? api.resolvePlayerWage(player)
+        : Math.round(Number(player.wage) || 0);
+    return api.evaluateUserPayroll({
+      extraWage: Math.max(0, Math.round(Number(wage) || 0)),
+      rosterDelta: 1,
+    });
+  };
+
+  const fillEnvelopePanel = (prefix, payroll, { fee = 0, roundCost = 0 } = {}) => {
+    const box = $(`#${prefix}`);
+    if (!box) return { allow: true };
+    if (!payroll) {
+      box.classList.add('hidden');
+      return { allow: true };
+    }
+    const soft = softEnvelopeFromPayroll(payroll);
+    let cashSoft = { level: 'none', message: '', allow: true };
+    try {
+      cashSoft = softCashEnvelope({
+        balance: typeof getBalance === 'function' ? getBalance() : 0,
+        fee,
+        roundCost: roundCost || payroll.wageAfter || 0,
+      });
+    } catch {
+      cashSoft = { level: 'none', message: '', allow: true };
+    }
+    const level =
+      soft.level === 'block'
+        ? 'block'
+        : soft.level === 'warn' || cashSoft.level === 'warn'
+          ? 'warn'
+          : soft.level === 'relief'
+            ? 'relief'
+            : 'ok';
+    const msgParts = [soft.message];
+    if (cashSoft.level === 'warn' && cashSoft.message) msgParts.push(cashSoft.message);
+    box.classList.remove('hidden');
+    box.dataset.tone = level;
+    const msgEl = $(`#${prefix}Msg`);
+    if (msgEl) msgEl.textContent = msgParts.filter(Boolean).join(' ');
+    const pctEl = $(`#${prefix}Pct`);
+    const wageEl = $(`#${prefix}Wage`);
+    const revEl = $(`#${prefix}Rev`);
+    const finEl = $(`#${prefix}Fin`);
+    if (pctEl) {
+      pctEl.textContent =
+        payroll.pctBefore != null && payroll.pctAfter != null && payroll.pctBefore !== payroll.pctAfter
+          ? `${payroll.pctBefore}% → ${payroll.pctAfter}%`
+          : `${payroll.pctAfter ?? payroll.pctBefore ?? '—'}%`;
+    }
+    if (wageEl) wageEl.textContent = formatMoney(payroll.wageAfter ?? payroll.wageBefore ?? 0);
+    if (revEl) revEl.textContent = formatMoney(payroll.revenue ?? 0);
+    if (finEl) finEl.textContent = String(Math.round(Number(payroll.finances) || 0));
+    return { allow: soft.allow, level, payroll };
+  };
+
+  const hideEnvelopePanel = prefix => {
+    const box = $(`#${prefix}`);
+    if (box) box.classList.add('hidden');
   };
 
   /**
@@ -459,6 +537,8 @@ export function createTransfersFeature(deps) {
     slotsCaption = 'EMPRÉSTIMOS NO ELENCO',
     wage,
     submitLabel = 'CONFIRMAR',
+    payroll = null,
+    fee = 0,
     onConfirm,
   }) => {
     confirmState = { onConfirm };
@@ -481,8 +561,17 @@ export function createTransfersFeature(deps) {
     } catch {
       setText('#transfersConfirmBalance', '—');
     }
+    const envelope = payroll
+      ? fillEnvelopePanel('transfersConfirmEnvelope', payroll, { fee })
+      : (hideEnvelopePanel('transfersConfirmEnvelope'), { allow: true });
     const submit = $('#transfersConfirmSubmit');
-    if (submit) submit.textContent = submitLabel;
+    if (submit) {
+      submit.textContent = submitLabel;
+      submit.disabled = !envelope.allow;
+      submit.title = envelope.allow
+        ? ''
+        : 'Folha acima do seguro — operação bloqueada pelo limite de folha.';
+    }
     modal.classList.remove('hidden');
   };
 
@@ -838,6 +927,10 @@ export function createTransfersFeature(deps) {
       body.innerHTML =
         '<tr><td class="transfers-empty" colspan="11">Nenhum jogador encontrado com estes filtros.</td></tr>';
     } else {
+      const buyBlocked = !!api.isBuyRestricted?.();
+      const blockTitle = buyBlocked
+        ? ' title="Restrição financeira — compras e empréstimos suspensos"'
+        : '';
       body.innerHTML = rows
         .slice(0, 200)
         .map(row => {
@@ -856,8 +949,8 @@ export function createTransfersFeature(deps) {
           <td class="col-traits">${escapeHtml(traitCodes(p))}</td>
           <td>${listedMark(!!p.listed)}</td>
           <td class="transfers-actions-cell">
-            ${canLoan ? `<button type="button" class="transfers-action secondary" data-loan-id="${escapeHtml(row.playerId)}">EMPRESTAR</button>` : ''}
-            <button type="button" class="transfers-action" data-buy-id="${escapeHtml(row.playerId)}">COMPRAR</button>
+            ${canLoan ? `<button type="button" class="transfers-action secondary" data-loan-id="${escapeHtml(row.playerId)}"${buyBlocked ? ' disabled' : ''}${blockTitle}>EMPRESTAR</button>` : ''}
+            <button type="button" class="transfers-action" data-buy-id="${escapeHtml(row.playerId)}"${buyBlocked ? ' disabled' : ''}${blockTitle}>COMPRAR</button>
           </td>
         </tr>`;
         })
@@ -936,7 +1029,9 @@ export function createTransfersFeature(deps) {
           if (loanOut) {
             actions = '<span class="transfers-loan-away-note">CEDIDO</span>';
           } else if (onLoan) {
-            actions = `<button type="button" class="transfers-action" data-loan-buy-id="${escapeHtml(row.playerId)}">COMPRAR</button>
+            const buyBlocked = !!api.isBuyRestricted?.();
+            const buyDisabled = buyBlocked ? ' disabled title="Restrição financeira — compras suspensas"' : '';
+            actions = `<button type="button" class="transfers-action" data-loan-buy-id="${escapeHtml(row.playerId)}"${buyDisabled}>COMPRAR</button>
             <button type="button" class="transfers-action secondary" data-return-loan-id="${escapeHtml(row.playerId)}">DEVOLVER</button>`;
           } else if (windowLocked) {
             const withdraw = [];
@@ -1025,6 +1120,18 @@ export function createTransfersFeature(deps) {
     modal.classList.remove('hidden');
   };
 
+  const renderRestrictionBanner = () => {
+    const banner = $('#transfersRestrictionBanner');
+    if (!banner) return;
+    const api = engine();
+    const restricted = !!api?.isBuyRestricted?.();
+    banner.classList.toggle('hidden', !restricted);
+    if (restricted) {
+      banner.textContent =
+        'Restrição financeira: compras e empréstimos suspensos. Vendas e listagens liberadas — regularize no Escritório.';
+    }
+  };
+
   const renderHeader = () => {
     const bal = $('#transfersBalance');
     const open = $('#transfersMarketState');
@@ -1040,21 +1147,28 @@ export function createTransfersFeature(deps) {
       const status = api.marketStatus?.() || { open: api.marketOpen(), label: null };
       const isOpen = !!status.open;
       const phase = status.phase;
-      open.textContent = phase?.isDeadlineDay
-        ? 'DEADLINE DAY'
-        : status.label || (isOpen ? 'MERCADO ABERTO' : 'MERCADO FECHADO');
-      open.classList.toggle('is-closed', !isOpen);
-      open.classList.toggle('is-deadline', !!phase?.isDeadlineWeek && isOpen);
-      if (!isOpen && status.reason === 'window_closed' && status.nextOpenLabel) {
+      const restricted = !!api.isBuyRestricted?.();
+      open.textContent = restricted
+        ? 'COMPRAS BLOQUEADAS'
+        : phase?.isDeadlineDay
+          ? 'DEADLINE DAY'
+          : status.label || (isOpen ? 'MERCADO ABERTO' : 'MERCADO FECHADO');
+      open.classList.toggle('is-closed', !isOpen || restricted);
+      open.classList.toggle('is-deadline', !!phase?.isDeadlineWeek && isOpen && !restricted);
+      open.classList.toggle('is-restricted', restricted);
+      if (restricted) {
+        open.title = 'Restrição financeira — compras e empréstimos suspensos';
+      } else if (!isOpen && status.reason === 'window_closed' && status.nextOpenLabel) {
         open.title = `Janela fechada — reabre em ${status.nextOpenLabel}`;
       } else if (isOpen && phase?.isDeadlineDay) {
         open.title = 'Último dia da janela — última chance de negociar';
       } else if (isOpen) {
-        open.title = 'Mercado aberto (janela CBF)';
+        open.title = 'Mercado aberto (janela de transferências)';
       } else {
         open.title = 'Mercado indisponível';
       }
     }
+    renderRestrictionBanner();
   };
 
   const $$tabs = () => {
@@ -1143,6 +1257,12 @@ export function createTransfersFeature(deps) {
 
   const closeOfferModal = () => {
     offerState = null;
+    hideEnvelopePanel('transfersOfferEnvelope');
+    const submitBtn = $('#transfersOfferSubmit');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.title = '';
+    }
     $('#transfersOfferModal')?.classList.add('hidden');
   };
 
@@ -1152,6 +1272,18 @@ export function createTransfersFeature(deps) {
     if (!hint || !input || !offerState) return;
     const offer = parseMoneyInput(input.value);
     const { ask, value, mode } = offerState;
+    if (mode === 'buy' && offerState.payroll) {
+      const envelope = fillEnvelopePanel('transfersOfferEnvelope', offerState.payroll, {
+        fee: offer || Math.round(Number(ask) || Number(value) || 0),
+      });
+      const submitBtn = $('#transfersOfferSubmit');
+      if (submitBtn) {
+        submitBtn.disabled = !envelope.allow;
+        submitBtn.title = envelope.allow
+          ? ''
+          : 'Folha acima do seguro — operação bloqueada pelo limite de folha.';
+      }
+    }
     if (!offer) {
       hint.textContent = 'Digite um valor para negociar.';
       hint.className = 'transfers-offer-hint';
@@ -1163,6 +1295,21 @@ export function createTransfersFeature(deps) {
       if (found && api.evaluateSellerAccept) {
         const phase1 = api.getBuyDivisionFit?.(offerState.playerId);
         if (phase1 && !phase1.ok) {
+          const buyout = api.previewSellDownBuyout?.(offerState.playerId, offer);
+          if (buyout?.eligible) {
+            if (!buyout.attemptable) {
+              hint.textContent = `Série inferior: oferta mín. para tentar ${formatMoney(buyout.minFee)} (chance rara, teto ~${Math.round(buyout.maxChance * 100)}%).`;
+              hint.className = 'transfers-offer-hint is-warn';
+              return;
+            }
+            const pct = Math.max(1, Math.round(buyout.chance * 100));
+            hint.textContent = `Série inferior: oferta extrema — chance estimada ~${pct}% (teto ~${Math.round(buyout.maxChance * 100)}%). Sem garantia.`;
+            hint.className =
+              pct >= Math.round(buyout.maxChance * 100) * 0.7
+                ? 'transfers-offer-hint is-warn'
+                : 'transfers-offer-hint is-bad';
+            return;
+          }
           hint.textContent =
             'Aviso: diferença de série — a negociação é difícil e a oferta pode falhar.';
           hint.className = 'transfers-offer-hint is-warn';
@@ -1185,6 +1332,12 @@ export function createTransfersFeature(deps) {
           return;
         }
         if ((verdict.reasons || []).includes('division_gap')) {
+          const buyout = api.previewSellDownBuyout?.(offerState.playerId, offer);
+          if (buyout?.eligible && !buyout.attemptable) {
+            hint.textContent = `Série inferior: oferta mín. para tentar ${formatMoney(buyout.minFee)}.`;
+            hint.className = 'transfers-offer-hint is-warn';
+            return;
+          }
           hint.textContent =
             'Aviso: diferença de série — a negociação é difícil e a oferta pode falhar.';
           hint.className = 'transfers-offer-hint is-warn';
@@ -1278,6 +1431,27 @@ export function createTransfersFeature(deps) {
     $('#transfersOfferInput').value = formatOfferInput(ask || value);
     $('#transfersOfferError').textContent = '';
     $('#transfersOfferSubmit').textContent = copy.submit;
+    let envelopeAllow = true;
+    if (mode === 'buy') {
+      const api = engine();
+      const found = api?.findPlayerInWorld?.(playerId);
+      const payroll = found ? previewExpandPayroll(found.player) : null;
+      const fee = Math.round(Number(ask) || Number(value) || 0);
+      const envelope = fillEnvelopePanel('transfersOfferEnvelope', payroll, { fee });
+      envelopeAllow = envelope.allow;
+      offerState.payroll = payroll;
+    } else {
+      hideEnvelopePanel('transfersOfferEnvelope');
+      offerState.payroll = null;
+    }
+    const submitBtn = $('#transfersOfferSubmit');
+    if (submitBtn) {
+      submitBtn.disabled = mode === 'buy' && !envelopeAllow;
+      submitBtn.title =
+        mode === 'buy' && !envelopeAllow
+          ? 'Folha acima do seguro — operação bloqueada pelo limite de folha.'
+          : '';
+    }
     modal.classList.remove('hidden');
     updateOfferHint();
     queueMicrotask(() => {
@@ -1345,23 +1519,38 @@ export function createTransfersFeature(deps) {
           return;
         }
         if (
-          (result.reason === 'rejected' || result.reason === 'division_gap') &&
-          (result.floor || result.reason === 'division_gap')
+          result.reason === 'buyout_rejected' ||
+          ((result.reason === 'rejected' || result.reason === 'division_gap') &&
+            (result.floor || result.reason === 'division_gap'))
         ) {
-          const why = reasonLabel(result.reason, letterCtx);
+          const buyout = result.buyout || null;
+          const why = reasonLabel(result.reason, {
+            ...letterCtx,
+            minFee: buyout?.minFee || result.floor,
+          });
           setStatus(
-            result.reason === 'division_gap'
-              ? 'Negociação encerrada — diferença de série.'
-              : `Oferta recusada. Mínimo aproximado: ${formatMoney(result.floor)}.`,
+            result.reason === 'buyout_rejected'
+              ? 'Oferta extrema recusada — diferença de série.'
+              : result.reason === 'division_gap'
+                ? buyout?.minFee
+                  ? `Série inferior — tente a partir de ${formatMoney(buyout.minFee)}.`
+                  : 'Negociação encerrada — diferença de série.'
+                : `Oferta recusada. Mínimo aproximado: ${formatMoney(result.floor)}.`,
           );
           closeOfferModal();
           showActionAlert({
-            title: 'Oferta recusada',
+            title: result.reason === 'buyout_rejected' ? 'Chance rara falhou' : 'Oferta recusada',
             lead: why,
             body:
-              result.reason === 'division_gap'
-                ? 'Nenhuma mudança de elenco ou folha.'
-                : `Nenhuma mudança de elenco ou folha. Tente perto de ${formatMoney(result.floor)} ou mais.`,
+              result.reason === 'buyout_rejected'
+                ? buyout?.chance != null
+                  ? `A chance era ~${Math.round(buyout.chance * 100)}%. Nenhuma mudança de elenco ou folha.`
+                  : 'Nenhuma mudança de elenco ou folha.'
+                : result.reason === 'division_gap'
+                  ? buyout?.minFee
+                    ? `Oferta mínima para tentar: ${formatMoney(buyout.minFee)}. Chance rara, sem garantia.`
+                    : 'Nenhuma mudança de elenco ou folha.'
+                  : `Nenhuma mudança de elenco ou folha. Tente perto de ${formatMoney(result.floor)} ou mais.`,
             tone: 'block',
           });
           return;
@@ -1430,6 +1619,16 @@ export function createTransfersFeature(deps) {
   const confirmBuy = playerId => {
     const api = engine();
     if (!api) return;
+    if (api.isBuyRestricted?.()) {
+      setStatus(reasonLabel('financial_restriction'));
+      showActionAlert({
+        title: 'Restrição financeira',
+        lead: reasonLabel('financial_restriction'),
+        body: 'Use a aba Vender, o adiantamento de TV ou o pagamento do banco no Escritório.',
+        tone: 'block',
+      });
+      return;
+    }
     const found = api.findPlayerInWorld(playerId);
     if (!found) {
       setStatus(reasonLabel('not_found'));
@@ -1525,6 +1724,16 @@ export function createTransfersFeature(deps) {
   const confirmLoanIn = playerId => {
     const api = engine();
     if (!api) return;
+    if (api.isBuyRestricted?.()) {
+      setStatus(reasonLabel('financial_restriction'));
+      showActionAlert({
+        title: 'Restrição financeira',
+        lead: reasonLabel('financial_restriction'),
+        body: 'Use a aba Vender, o adiantamento de TV ou o pagamento do banco no Escritório.',
+        tone: 'block',
+      });
+      return;
+    }
     const found = api.findPlayerInWorld(playerId);
     if (!found) {
       setStatus(reasonLabel('not_found'));
@@ -1532,6 +1741,7 @@ export function createTransfersFeature(deps) {
     }
     const slots = api.loanSlots?.(getUserClub?.()) || { incoming: 0, max: 3 };
     const p = found.player;
+    const payroll = previewExpandPayroll(p);
     openConfirmModal({
       title: 'Confirmar empréstimo',
       eyebrow: 'MERCADO · EMPRÉSTIMO',
@@ -1543,6 +1753,7 @@ export function createTransfersFeature(deps) {
       slotsLabel: `${slots.incoming}/${slots.max}`,
       wage: p.wage,
       submitLabel: 'CONFIRMAR EMPRÉSTIMO',
+      payroll,
       onConfirm: () => {
         const result = api.loanPlayer(playerId);
         if (!result.ok) {
@@ -1654,6 +1865,16 @@ export function createTransfersFeature(deps) {
   const confirmLoanBuy = playerId => {
     const api = engine();
     if (!api) return;
+    if (api.isBuyRestricted?.()) {
+      setStatus(reasonLabel('financial_restriction'));
+      showActionAlert({
+        title: 'Restrição financeira',
+        lead: reasonLabel('financial_restriction'),
+        body: 'A opção de compra também fica suspensa até o clube sair da crise.',
+        tone: 'block',
+      });
+      return;
+    }
     const row = api.listSellCandidates().find(item => item.playerId === playerId && item.onLoan);
     if (!row) {
       setStatus(reasonLabel('not_found'));

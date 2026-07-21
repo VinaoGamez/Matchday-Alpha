@@ -3,6 +3,9 @@
  */
 import {
   resolveClubBankruptcyRisk,
+  resolveFinancialRestriction,
+  applyFinancialRestriction,
+  isMarketBuyRestricted,
   BANKRUPTCY_OVERDRAFT_STREAK,
   BANKRUPTCY_DELINQUENCY_WITH_RED,
   BANKRUPTCY_DEPTH_ROUNDS,
@@ -10,6 +13,8 @@ import {
   BANKRUPTCY_RED_STREAK,
   INSOLVENCY_WARN_STREAK,
   INSOLVENCY_WARN_DELINQUENCY,
+  RESTRICTION_ENTER_DELINQUENCY,
+  RESTRICTION_ENTER_OVERDRAFT,
 } from '../js/engine/club-solvency.js';
 import { STATUS_MIN } from '../js/engine/club-status/constants.js';
 import { MANAGER_JOB_HONEYMOON_ROUNDS } from '../js/engine/manager-job.js';
@@ -159,6 +164,91 @@ check('aviso OD', () => {
     played: 20,
   });
   assert(r.status === 'warn_insolvent', r.status);
+});
+
+check('restrição: sem aviso não entra', () => {
+  const r = resolveFinancialRestriction({
+    warnedInsolvent: false,
+    cash: -100_000,
+    overdraftStreak: RESTRICTION_ENTER_OVERDRAFT,
+    delinquencyStreak: 0,
+    round: 10,
+  });
+  assert(!r.active, 'não deve ativar');
+  assert(!r.justEntered, 'não entra');
+});
+
+check('restrição: após aviso + OD≥3 entra', () => {
+  const r = resolveFinancialRestriction({
+    warnedInsolvent: true,
+    cash: -100_000,
+    overdraftStreak: RESTRICTION_ENTER_OVERDRAFT,
+    delinquencyStreak: 0,
+    round: 12,
+  });
+  assert(r.active && r.justEntered, 'deve entrar');
+  assert(r.sinceRound === 12, String(r.sinceRound));
+  assert(/Restrição financeira/i.test(r.message), r.message);
+});
+
+check('restrição: após aviso + atraso≥3 entra', () => {
+  const r = resolveFinancialRestriction({
+    warnedInsolvent: true,
+    cash: 500_000,
+    overdraftStreak: 0,
+    delinquencyStreak: RESTRICTION_ENTER_DELINQUENCY,
+    round: 8,
+  });
+  assert(r.active && r.justEntered, 'deve entrar por atraso');
+  assert(r.reason === 'delinquency', r.reason);
+});
+
+check('restrição: cura com caixa ≥0 e atraso 0', () => {
+  const r = resolveFinancialRestriction({
+    active: true,
+    sinceRound: 10,
+    warnedInsolvent: true,
+    cash: 200_000,
+    overdraftStreak: 0,
+    delinquencyStreak: 0,
+    round: 14,
+  });
+  assert(!r.active && r.justCleared, 'deve limpar');
+});
+
+check('restrição: persiste enquanto no vermelho', () => {
+  const r = resolveFinancialRestriction({
+    active: true,
+    sinceRound: 10,
+    warnedInsolvent: true,
+    cash: -50_000,
+    overdraftStreak: 4,
+    delinquencyStreak: 0,
+    round: 14,
+  });
+  assert(r.active && !r.justCleared, 'mantém');
+});
+
+check('isMarketBuyRestricted + apply', () => {
+  const club = {};
+  const entered = resolveFinancialRestriction({
+    warnedInsolvent: true,
+    cash: -1,
+    overdraftStreak: RESTRICTION_ENTER_OVERDRAFT,
+    round: 5,
+  });
+  applyFinancialRestriction(club, entered);
+  assert(isMarketBuyRestricted(club), 'gate on');
+  const cleared = resolveFinancialRestriction({
+    active: true,
+    sinceRound: 5,
+    cash: 1,
+    delinquencyStreak: 0,
+    overdraftStreak: 0,
+    round: 6,
+  });
+  applyFinancialRestriction(club, cleared);
+  assert(!isMarketBuyRestricted(club), 'gate off');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

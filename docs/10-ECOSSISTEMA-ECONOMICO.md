@@ -182,14 +182,12 @@ Essa ordem faz o banco competir com a folha pelo caixa restante — realismo del
 
 ## 7. O que já existe vs lacunas conscientes
 
-**Já amarra bem:** bilheteria, patrocínio, TV (parcela por mando + **adiantamento com deságio sob crise**), premiações, folha/comissão/estádio, upgrades, empréstimo bancário dinâmico, **saldo negativo com cheque especial dinâmico (streak ~5–6r)**, gate de folha no mercado, saúde financeira, pressão na diretoria, demissão, fluxo de caixa no Escritório, **Equilíbrio financeiro (Phase A)** — barra CUSTO ↔ ARRECADAÇÃO (ponteiro = cobertura da rodada), transferências como linha própria no DFC.
+**Já amarra bem:** bilheteria, patrocínio, TV (parcela por mando + **adiantamento com deságio sob crise**), premiações, folha/comissão/estádio, upgrades, empréstimo bancário dinâmico, **saldo negativo com cheque especial dinâmico (streak ~5–6r)**, gate de folha no mercado, saúde financeira, pressão na diretoria, demissão, fluxo de caixa no Escritório, **Equilíbrio financeiro (Phase A)** — barra CUSTO ↔ ARRECADAÇÃO (ponteiro = cobertura da rodada), transferências como linha própria no DFC, **envelope soft de transferências (Phase B)** — preview de folha/caixa antes de comprar ou emprestar (amarelo avisa, vermelho só espelha o gate duro), **restrição financeira (Phase C)** — bloqueio de compras/empréstimos entre aviso e falência.
 
 **Calibração v5 (jul/2026):** orçamento 9,5/6,2/4,2/2,7 mi; mínimo 5,5% do **principal**; em dia o juro também é sobre o principal; ao regularizar, compostos são renegociados + reabilitação (sem juro/parcela por algumas rodadas); forçada no atraso escala com saldo inchado; falência após **5r no vermelho**. Quem volta ao azul e paga em dia foge do espiral. Sims: `club-solvency-tests.mjs`, `loan-compound-fluid-sim.mjs`, `loan-sale-rescue-sim.mjs`, `bank-loan-tests.mjs`.
 
 **Ainda frouxo / futuro (não bloqueia a visão):**
 
-- envelope soft de transferências (Phase B);  
-- sanções / embargo além da falência já entregue;  
 - saldo negativo / atraso → Torcida / Ambiente;  
 - name rights como receita, não só gasto;  
 - base / vendas futuras / merchandising;  

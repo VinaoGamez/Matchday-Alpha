@@ -116,6 +116,24 @@ main > .view.active.transfers-view {
   flex: 0 0 auto;
 }
 
+.transfers-restriction-banner {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #6a3a42;
+  border-radius: 8px;
+  background: linear-gradient(165deg, #2a1418 0%, #1a0c10 100%);
+  color: #e8d0d4;
+  font: 500 13px/1.35 'DM Sans', sans-serif;
+  flex: 0 0 auto;
+}
+.transfers-restriction-banner.hidden {
+  display: none;
+}
+.transfers-market-state.is-restricted {
+  color: #ff8c94 !important;
+  border-color: #6a3a42 !important;
+}
+
 .transfers-panel {
   padding: 0 !important;
   overflow: hidden;
@@ -724,6 +742,62 @@ body.transfers-col-resizing * {
 
 .transfers-offer-quick button:hover {
   border-color: #63d9ff !important;
+}
+
+/* Phase B — envelope soft (preview de folha antes de ofertar) */
+.transfers-envelope {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #234650;
+  border-radius: 6px;
+  background: #0a1c24;
+}
+.transfers-envelope.hidden {
+  display: none;
+}
+.transfers-envelope[data-tone='warn'] {
+  border-color: #6a5a2a;
+  background: linear-gradient(165deg, #2a2414 0%, #1a160c 100%);
+}
+.transfers-envelope[data-tone='block'] {
+  border-color: #6a3a42;
+  background: linear-gradient(165deg, #2a1418 0%, #1a0c10 100%);
+}
+.transfers-envelope[data-tone='ok'],
+.transfers-envelope[data-tone='relief'] {
+  border-color: #2a5540;
+  background: linear-gradient(165deg, #142a1e 0%, #0c1a14 100%);
+}
+.transfers-envelope-msg {
+  margin: 0 0 8px;
+  font: 600 12px/1.35 'DM Sans', sans-serif;
+  color: #c8e0e4;
+}
+.transfers-envelope[data-tone='warn'] .transfers-envelope-msg {
+  color: #ffc94f;
+}
+.transfers-envelope[data-tone='block'] .transfers-envelope-msg {
+  color: #ff8c94;
+}
+.transfers-envelope[data-tone='ok'] .transfers-envelope-msg,
+.transfers-envelope[data-tone='relief'] .transfers-envelope-msg {
+  color: #b6ff38;
+}
+.transfers-envelope-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+.transfers-envelope-metrics small {
+  display: block;
+  color: #6f97a2;
+  font: 700 9px 'DM Sans', sans-serif;
+  letter-spacing: 0.45px;
+  margin-bottom: 2px;
+}
+.transfers-envelope-metrics strong {
+  color: #edf8f5;
+  font: 700 14px 'Barlow Condensed', sans-serif;
 }
 
 .transfers-offer-hint {

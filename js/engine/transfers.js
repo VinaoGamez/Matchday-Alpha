@@ -14,6 +14,8 @@ import {
   evaluateSellerDivisionFit,
   evaluateBuyerOfferDivisionFit,
   sellerAcceptRatioDeltaForDivision,
+  estimateSellDownBuyout,
+  resolveSellDownBuyout,
 } from './transfer-division-fit.js';
 import { evaluateCounterOffer } from './transfer-counter-offer.js';
 import {
@@ -22,6 +24,7 @@ import {
   canExerciseLoanBuyOption,
   applyLoanBuyExercise,
 } from './loan-buy-option.js';
+import { isMarketBuyRestricted } from './club-solvency.js';
 
 export const TRANSFER_LIMITS = {
   minRoster: 18,
@@ -1087,6 +1090,14 @@ export function createTransfersEngine(deps) {
     };
   };
 
+  const assertBuyNotRestricted = () => {
+    const { club } = userClubState();
+    if (isMarketBuyRestricted(club)) {
+      return { ok: false, reason: 'financial_restriction' };
+    }
+    return { ok: true };
+  };
+
   /**
    * Compra jogador de outro clube (fee à vista).
    */
@@ -1099,6 +1110,8 @@ export function createTransfersEngine(deps) {
         nextOpenRound: gate.nextOpenRound,
       };
     }
+    const restriction = assertBuyNotRestricted();
+    if (!restriction.ok) return restriction;
     const { name: buyerName, club: buyer } = userClubState();
     if (!buyer) return { ok: false, reason: 'no_club' };
 
@@ -1123,25 +1136,57 @@ export function createTransfersEngine(deps) {
           ? Math.round(Number(player.askingPrice))
           : value;
 
+    const season = getCareerSeason();
+    const sellerAvg =
+      Array.isArray(seller.roster) && seller.roster.length
+        ? seller.roster.reduce((sum, p) => sum + (Number(p.overall) || 0), 0) / seller.roster.length
+        : null;
     const verdict = evaluateSellerAccept(player, fee, seller, {
       clubName: sellerName,
-      season: getCareerSeason(),
+      season,
       buyerDivision: buyer.division,
       buyerClub: buyer,
       buyerManager: typeof deps.getUserManager === 'function' ? deps.getUserManager() : null,
       // Fase 1 estável por jogador/clube/temporada — na maioria D→A não abre janela.
-      divisionUnit: () =>
-        unitRoll(`sell-div-fit:${playerId}:${buyerName}:${sellerName}:${getCareerSeason()}`),
+      divisionUnit: () => unitRoll(`sell-div-fit:${playerId}:${buyerName}:${sellerName}:${season}`),
     });
+    let buyoutDeal = null;
     if (!verdict.accept) {
       const hardDiv = (verdict.reasons || []).includes('division_gap');
-      // Sem Fase 1 (division_gap): nem contra-proposta — não há negociação.
-      if (!hardDiv) {
-        const sellerAvg =
-          Array.isArray(seller.roster) && seller.roster.length
-            ? seller.roster.reduce((sum, p) => sum + (Number(p.overall) || 0), 0) /
-              seller.roster.length
-            : null;
+      if (hardDiv) {
+        // Atalho caro: oferta extrema pode abrir chance rara (sem contra-proposta).
+        const buyout = resolveSellDownBuyout({
+          player,
+          fee,
+          value,
+          buyerDivision: buyer.division,
+          sellerDivision: seller.division,
+          rosterAvgOvr: sellerAvg,
+          sellerPower: Number(seller.power) || null,
+          season,
+          unit: () =>
+            unitRoll(`sell-down-buyout:${playerId}:${buyerName}:${sellerName}:${season}:${fee}`),
+        });
+        if (buyout.accept) {
+          buyoutDeal = buyout;
+        } else {
+          return {
+            ok: false,
+            reason: buyout.attemptable ? 'buyout_rejected' : 'division_gap',
+            fee,
+            floor: buyout.minFee || verdict.floor,
+            value: verdict.value,
+            reasons: ['division_gap', buyout.reason].filter(Boolean),
+            ratio: verdict.ratio,
+            playerPull: false,
+            payroll,
+            from: sellerName,
+            playerName: player.name,
+            clubName: sellerName,
+            buyout,
+          };
+        }
+      } else {
         const counter = evaluateCounterOffer({
           offerFee: fee,
           floor: verdict.floor,
@@ -1152,7 +1197,7 @@ export function createTransfersEngine(deps) {
           player,
           power: Number(seller.power) || 60,
           rosterAvgOvr: sellerAvg,
-          random: () => unitRoll(`counter:${playerId}:${fee}:${getCareerSeason()}`),
+          random: () => unitRoll(`counter:${playerId}:${fee}:${season}`),
         });
         if (counter.counter) {
           return {
@@ -1173,21 +1218,21 @@ export function createTransfersEngine(deps) {
             drop: counter.drop,
           };
         }
+        return {
+          ok: false,
+          reason: 'rejected',
+          fee,
+          floor: verdict.floor,
+          value: verdict.value,
+          reasons: verdict.reasons,
+          ratio: verdict.ratio,
+          playerPull: verdict.playerPull,
+          payroll,
+          from: sellerName,
+          playerName: player.name,
+          clubName: sellerName,
+        };
       }
-      return {
-        ok: false,
-        reason: hardDiv ? 'division_gap' : 'rejected',
-        fee,
-        floor: verdict.floor,
-        value: verdict.value,
-        reasons: verdict.reasons,
-        ratio: verdict.ratio,
-        playerPull: verdict.playerPull,
-        payroll,
-        from: sellerName,
-        playerName: player.name,
-        clubName: sellerName,
-      };
     }
     if (!canAfford(buyer, fee)) return { ok: false, reason: 'cannot_afford', fee, payroll };
 
@@ -1221,8 +1266,9 @@ export function createTransfersEngine(deps) {
       from: sellerName,
       to: buyerName,
       value: verdict.value,
-      reasons: verdict.reasons,
-      playerPull: verdict.playerPull,
+      reasons: buyoutDeal ? ['sell_down_buyout'] : verdict.reasons,
+      playerPull: buyoutDeal ? false : verdict.playerPull,
+      buyout: buyoutDeal,
       payroll: evaluateRosterPayroll(buyer, { division: buyer.division || 'A' }),
     };
     recordSeasonDeal(result);
@@ -1386,6 +1432,8 @@ export function createTransfersEngine(deps) {
     if (!gate.ok) {
       return { ok: false, reason: gate.reason, nextOpenRound: gate.nextOpenRound };
     }
+    const restriction = assertBuyNotRestricted();
+    if (!restriction.ok) return restriction;
     const { name: borrowerName, club: borrower } = userClubState();
     if (!borrower) return { ok: false, reason: 'no_club' };
     if (countIncomingLoans(borrower) >= maxLoans) {
@@ -1665,6 +1713,8 @@ export function createTransfersEngine(deps) {
     if (!gate.ok) {
       return { ok: false, reason: gate.reason, nextOpenRound: gate.nextOpenRound };
     }
+    const restriction = assertBuyNotRestricted();
+    if (!restriction.ok) return restriction;
     const { name: hostName, club: host } = userClubState();
     if (!host) return { ok: false, reason: 'no_club' };
     const index = host.roster.findIndex(item => resolvePlayerId(item) === playerId);
@@ -2337,6 +2387,31 @@ export function createTransfersEngine(deps) {
     });
   };
 
+  /** Preview do atalho caro (Fase 1 fechada) — chance sobe com a oferta. */
+  const previewSellDownBuyout = (playerId, feeInput = 0) => {
+    const { name: buyerName, club: buyer } = userClubState();
+    if (!buyer) return null;
+    const found = findPlayerInWorld(getClubs(), playerId);
+    if (!found || found.clubName === buyerName) return null;
+    const roster = found.club.roster;
+    const rosterAvgOvr = roster?.length
+      ? roster.reduce((sum, p) => sum + (Number(p.overall) || 0), 0) / roster.length
+      : null;
+    const value =
+      Number(found.player.marketValue) ||
+      estimatePlayerValue(found.player, found.club.division);
+    return estimateSellDownBuyout({
+      player: found.player,
+      fee: feeInput,
+      value,
+      buyerDivision: buyer.division,
+      sellerDivision: found.club.division,
+      rosterAvgOvr,
+      sellerPower: Number(found.club.power) || null,
+      season: getCareerSeason(),
+    });
+  };
+
   return {
     TRANSFER_LIMITS: {
       minRoster,
@@ -2359,6 +2434,10 @@ export function createTransfersEngine(deps) {
     },
     marketOpen,
     marketStatus,
+    isBuyRestricted: () => {
+      const { club } = userClubState();
+      return isMarketBuyRestricted(club);
+    },
     seedAiListings,
     seedAiLoanListings,
     listBuyCandidates,
@@ -2377,6 +2456,7 @@ export function createTransfersEngine(deps) {
     loanSlots,
     evaluateSellerAccept,
     getBuyDivisionFit,
+    previewSellDownBuyout,
     findPlayerInWorld: playerId => findPlayerInWorld(getClubs(), playerId),
     estimatePlayerValue,
     hydratePendingOffers,

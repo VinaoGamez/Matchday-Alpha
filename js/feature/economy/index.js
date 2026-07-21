@@ -210,11 +210,19 @@ export function createEconomyFeature(deps) {
     setMeterBar('#officePreventionBar', (preventionLevel / 3) * 100);
     setMeterBar('#officeYouthBar', (youthLevel / youthMax) * 100);
     renderBoardBrief(club);
+    renderRestrictionBanner(club);
     renderInvestments();
     renderSponsors();
     renderBankLoan();
     renderRadar();
     renderCashflow();
+  };
+
+  const renderRestrictionBanner = club => {
+    const banner = $('#officeRestrictionBanner');
+    if (!banner) return;
+    const active = !!club?.financialRestriction?.active;
+    banner.classList.toggle('hidden', !active);
   };
 
   const renderBoardBrief = club => {

@@ -4,6 +4,8 @@
 
 const REASON_LINES = {
   division_gap: 'o salto entre as séries não fecha o negócio neste momento',
+  buyout_below_min: 'só uma oferta bem acima do valor de mercado abriria uma chance rara',
+  buyout_rejected: 'nem a oferta elevada convenceu a diretoria a liberar o jogador',
   contract_long: 'o vínculo contratual ainda é longo demais para o clube abrir mão',
   contract_short: 'mesmo com contrato curto, a proposta não convenceu a diretoria',
   pos_thin: 'a posição ficaria descoberta no elenco',

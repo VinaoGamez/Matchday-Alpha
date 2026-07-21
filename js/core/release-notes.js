@@ -5,6 +5,22 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.38',
+    date: '2026-07-21',
+    publishedAt: '2026-07-21T13:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Mercado',
+        items: [
+          'Antes de comprar ou emprestar, o jogo mostra se a folha vai ficar apertada — você ainda pode seguir, mas fica avisado.',
+          'Em crise grave, as contratações podem ser bloqueadas até as finanças melhorarem (vendas e adiantamento de TV continuam liberados).',
+          'Clubes de série menor agora podem tentar contratar de séries superiores com ofertas bem altas — a chance é baixa e não é garantia.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.33',
     date: '2026-07-20',
     publishedAt: '2026-07-21T00:45:00-03:00',

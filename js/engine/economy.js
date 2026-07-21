@@ -315,6 +315,77 @@ export function evaluateRosterPayroll(club, opts = {}) {
   };
 }
 
+/**
+ * Phase B — envelope soft a partir do preview de folha.
+ * `warn` não trava; `block` só espelha o gate duro já existente (`payroll_pressure`).
+ * @param {ReturnType<typeof evaluateRosterPayroll>|null|undefined} payroll
+ * @returns {{ level: 'none'|'ok'|'warn'|'block'|'relief', message: string, allow: boolean }}
+ */
+export function softEnvelopeFromPayroll(payroll) {
+  if (!payroll) {
+    return { level: 'none', message: '', allow: true };
+  }
+  if (!payroll.ok) {
+    return {
+      level: 'block',
+      allow: false,
+      message:
+        payroll.reason === 'roster_hard_full'
+          ? 'Elenco no limite antifail (40). Libere vaga antes de contratar.'
+          : 'Folha ficaria acima do seguro para suas Finanças. Venda, empreste ou escolha outro jogador.',
+    };
+  }
+  if (payroll.tone === 'warn') {
+    return {
+      level: 'warn',
+      allow: true,
+      message: 'Folha no limite — operação ainda permitida. Cuidado com novas contratações.',
+    };
+  }
+  if (payroll.tone === 'relief') {
+    return {
+      level: 'relief',
+      allow: true,
+      message: 'Folha mais leve após esta operação.',
+    };
+  }
+  return {
+    level: 'ok',
+    allow: true,
+    message: 'Folha confortável com esta operação.',
+  };
+}
+
+/**
+ * Aviso soft de caixa após taxa (compra) — não bloqueia; só pressiona.
+ * @param {{ balance?: number, fee?: number, roundCost?: number }} opts
+ */
+export function softCashEnvelope({ balance = 0, fee = 0, roundCost = 0 } = {}) {
+  const bal = Number(balance) || 0;
+  const cost = Math.max(0, Number(fee) || 0);
+  const round = Math.max(0, Number(roundCost) || 0);
+  if (!(cost > 0)) return { level: 'none', message: '', allow: true };
+  const after = bal - cost;
+  if (after < 0) {
+    return {
+      level: 'warn',
+      allow: true,
+      message: 'A taxa deixa o caixa no vermelho (cheque especial).',
+    };
+  }
+  if (round > 0) {
+    const runway = after / round;
+    if (runway < 1.5) {
+      return {
+        level: 'warn',
+        allow: true,
+        message: `Após a taxa, o caixa cobre ~${runway.toFixed(1).replace('.', ',')} rodadas.`,
+      };
+    }
+  }
+  return { level: 'none', message: '', allow: true };
+}
+
 const hashManagerKey = key => {
   const text = String(key || 'manager');
   let hash = 0x811c9dc5;
@@ -2700,6 +2771,8 @@ export function createEconomyEngine() {
     estimateRoundRecurringRevenue,
     financesPayrollFactor,
     evaluateRosterPayroll,
+    softEnvelopeFromPayroll,
+    softCashEnvelope,
     ROSTER_HARD_MAX,
     estimateStaffBill,
     estimateStadiumOpsBill,

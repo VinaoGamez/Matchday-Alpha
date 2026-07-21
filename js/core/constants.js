@@ -2,7 +2,7 @@
  * Build pública para testers.
  * Nomenclatura: Alpha V.X.YY — sobe +0.05 a cada publicação (1.00 → 1.05 → …).
  */
-export const BUILD_VERSION = 'Alpha V.1.33';
+export const BUILD_VERSION = 'Alpha V.1.38';
 
 export const SAVE_KEYS = {
   career: 'matchday-new-game',
@@ -33,7 +33,7 @@ export const MODULE_VERSIONS = {
   tactics: 3,
   seasonSummary: 2,
   discipline: 2,
-  economy: 26,
+  economy: 27,
   options: 3,
   sponsorPicker: 4,
   liveDayMatches: 1,
@@ -50,13 +50,14 @@ export const MODULE_VERSIONS = {
   seasonGoals: 2,
   managerJob: 2,
   managerSack: 1,
-  clubSolvency: 1,
+  clubSolvency: 2,
   clubBankruptcy: 1,
-  clubInsolvencyWarn: 2,
+  clubInsolvencyWarn: 3,
+  clubFinancialRestriction: 1,
   playerHistory: 1,
   playerMatchStats: 1,
   playerDevelopment: 1,
-  transfers: 2,
+  transfers: 5,
 };
 
 /** Vite injeta `__MATCHDAY_ENABLE_TRANSFERS__`; em Node/scripts fica off. */

@@ -23,9 +23,14 @@ import {
   getBankLoan,
   bankLoanBalance,
 } from '../engine/bank-loan.js';
-import { resolveClubBankruptcyRisk } from '../engine/club-solvency.js';
+import {
+  resolveClubBankruptcyRisk,
+  resolveFinancialRestriction,
+  applyFinancialRestriction,
+} from '../engine/club-solvency.js';
 import { createClubBankruptcyFeature } from '../feature/club-bankruptcy/index.js';
 import { createClubInsolvencyWarnFeature } from '../feature/club-insolvency-warn/index.js';
+import { createClubFinancialRestrictionFeature } from '../feature/club-financial-restriction/index.js';
 import {
   formatIncomingOfferLetter,
   formatUserRejectOfferLetter,
@@ -5877,6 +5882,29 @@ export async function bootEngine({ bus } = {}) {
       });
       persistSeason(true);
     }
+    if(solvency.status!=='bankrupt'){
+      const restriction=resolveFinancialRestriction({
+        active:!!club.financialRestriction?.active,
+        sinceRound:club.financialRestriction?.sinceRound,
+        warnedInsolvent:!!managerJobCrisis?.warnedInsolvent||solvency.status==='warn_insolvent',
+        cash:getBalance(club),
+        overdraftStreak:club.overdraftStreak||0,
+        delinquencyStreak:loan?.delinquencyStreak||0,
+        round:currentRound,
+      });
+      applyFinancialRestriction(club,restriction);
+      if(restriction.justEntered){
+        clubFinancialRestrictionUi.open({
+          clubName:userClub,
+          message:restriction.message,
+          cash:getBalance(club),
+          debt:bankLoanBalance(club),
+        });
+        persistSeason(true);
+      }else if(restriction.justCleared){
+        persistSeason(true);
+      }
+    }
     if(solvency.status==='bankrupt'){
       managerJobCrisis={
         status:'bankrupt',
@@ -5893,7 +5921,9 @@ export async function bootEngine({ bus } = {}) {
         warnedFinances:true,
         offers:[],
       };
+      applyFinancialRestriction(club,{active:false,sinceRound:null,reason:null});
       clubInsolvencyWarnUi.close();
+      clubFinancialRestrictionUi.close();
       pushMessage({
         category:'club',
         type:'club-bankrupt',
@@ -6127,6 +6157,7 @@ export async function bootEngine({ bus } = {}) {
     managerSackUi.close();
     clubBankruptcyUi.close();
     clubInsolvencyWarnUi.close();
+    clubFinancialRestrictionUi.close();
     location.replace('home.html');
   };
   const managerSackUi=createManagerSackFeature({
@@ -6144,9 +6175,14 @@ export async function bootEngine({ bus } = {}) {
     $,
     formatBudget,
   });
+  const clubFinancialRestrictionUi=createClubFinancialRestrictionFeature({
+    $,
+    formatBudget,
+  });
   managerSackUi.init();
   clubBankruptcyUi.init();
   clubInsolvencyWarnUi.init();
+  clubFinancialRestrictionUi.init();
   if(managerJobCrisis?.status==='bankrupt'){
     setTimeout(()=>openClubBankruptcyModal(),0);
   }else if(managerJobCrisis?.status==='sacked'){

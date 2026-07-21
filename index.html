@@ -171,6 +171,10 @@
             <small>DIRETORIA</small>
             <p id="officeBoardBriefBody">A diretoria acompanha a temporada com atenção profissional.</p>
           </aside>
+          <aside id="officeRestrictionBanner" class="office-restriction-banner hidden" role="status" aria-live="polite">
+            <small>RESTRIÇÃO FINANCEIRA</small>
+            <p>Compras e empréstimos de jogadores suspensos. Venda, adiante TV ou regularize o banco para liberar o mercado.</p>
+          </aside>
           <div class="office-status-strip" aria-label="Indicadores do clube">
             <div class="office-meter" data-meter="medical">
               <div class="office-meter-top"><small>DEP. MÉDICO</small><b id="officeMedicalLevel">0/5</b></div>
@@ -314,6 +318,7 @@
         </div>
       </div>
       <p id="transfersStatus" class="transfers-status" aria-live="polite"></p>
+      <aside id="transfersRestrictionBanner" class="transfers-restriction-banner hidden" role="status" aria-live="polite"></aside>
       <div id="transfersIncomingOffers" class="transfers-incoming-offers hidden" aria-live="polite"></div>
 
       <div id="transfersBuyPanel" class="card transfers-panel">
@@ -566,6 +571,15 @@
       <div><small>SALÁRIO</small><strong id="transfersConfirmWage">—</strong></div>
       <div><small>SEU CAIXA</small><strong id="transfersConfirmBalance">—</strong></div>
     </div>
+    <aside id="transfersConfirmEnvelope" class="transfers-envelope hidden" data-tone="ok" aria-live="polite">
+      <p id="transfersConfirmEnvelopeMsg" class="transfers-envelope-msg"></p>
+      <div class="transfers-envelope-metrics">
+        <div><small>FOLHA</small><strong id="transfersConfirmEnvelopePct">—</strong></div>
+        <div><small>GASTO / RODADA</small><strong id="transfersConfirmEnvelopeWage">—</strong></div>
+        <div><small>ARRECADAÇÃO / RODADA</small><strong id="transfersConfirmEnvelopeRev">—</strong></div>
+        <div><small>SAÚDE FINANCEIRA</small><strong id="transfersConfirmEnvelopeFin">—</strong></div>
+      </div>
+    </aside>
     <footer class="transfers-offer-actions">
       <button type="button" id="transfersConfirmCancel" class="transfers-offer-cancel">CANCELAR</button>
       <button type="button" id="transfersConfirmSubmit" class="transfers-offer-submit">CONFIRMAR</button>
@@ -584,6 +598,15 @@
       <div><small>SALÁRIO</small><strong id="transfersOfferWage">—</strong></div>
       <div><small>SEU CAIXA</small><strong id="transfersOfferBalance">—</strong></div>
     </div>
+    <aside id="transfersOfferEnvelope" class="transfers-envelope hidden" data-tone="ok" aria-live="polite">
+      <p id="transfersOfferEnvelopeMsg" class="transfers-envelope-msg"></p>
+      <div class="transfers-envelope-metrics">
+        <div><small>FOLHA</small><strong id="transfersOfferEnvelopePct">—</strong></div>
+        <div><small>GASTO / RODADA</small><strong id="transfersOfferEnvelopeWage">—</strong></div>
+        <div><small>ARRECADAÇÃO / RODADA</small><strong id="transfersOfferEnvelopeRev">—</strong></div>
+        <div><small>SAÚDE FINANCEIRA</small><strong id="transfersOfferEnvelopeFin">—</strong></div>
+      </div>
+    </aside>
     <label class="transfers-offer-field" for="transfersOfferInput">
       <span id="transfersOfferInputLabel">Sua oferta (R$)</span>
       <input id="transfersOfferInput" type="text" inputmode="numeric" autocomplete="off" />

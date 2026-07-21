@@ -126,6 +126,27 @@ a.office-sponsor-logo.is-link:hover,a.office-sponsor-logo.is-link:focus-visible{
 .office-board-brief[data-tone="warn"]>small{color:#ffc94f}
 .office-board-brief[data-tone="risk"]{border-color:#6a3a42;background:linear-gradient(165deg,#2a1418 0%,#1a0c10 100%)}
 .office-board-brief[data-tone="risk"]>small{color:#ff8c94}
+
+.office-restriction-banner{
+  margin-top:10px;
+  padding:10px 12px;
+  border:1px solid #6a3a42;
+  border-radius:8px;
+  background:linear-gradient(165deg,#2a1418 0%,#1a0c10 100%);
+}
+.office-restriction-banner.hidden{display:none}
+.office-restriction-banner>small{
+  display:block;
+  font:700 11px/1.2 'DM Sans',sans-serif;
+  letter-spacing:.06em;
+  color:#ff8c94;
+  margin-bottom:4px;
+}
+.office-restriction-banner>p{
+  margin:0;
+  font:500 13px/1.35 'DM Sans',sans-serif;
+  color:#e8d0d4;
+}
 .office-status-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:auto}
 .office-meter{display:grid;gap:8px;min-width:0;padding:12px 12px 11px;border:1px solid #28505b;border-radius:6px;background:linear-gradient(165deg,#14303a 0%,#0e222c 100%)}
 .office-meter-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}

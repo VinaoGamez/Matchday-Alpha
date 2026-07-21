@@ -32,6 +32,16 @@ export const INSOLVENCY_WARN_DELINQUENCY = 2;
 export const INSOLVENCY_WARN_STREAK = 2;
 export const INSOLVENCY_WARN_DEPTH = 2;
 
+/**
+ * Restrição de mercado (degrau entre aviso e falência).
+ * Entra ~1r após o aviso (atraso/OD ≥ 3), com warnedInsolvent já true.
+ */
+export const RESTRICTION_ENTER_DELINQUENCY = 3;
+export const RESTRICTION_ENTER_OVERDRAFT = 3;
+
+export const RESTRICTION_MESSAGE =
+  'Restrição financeira: compras e empréstimos de jogadores suspensos até o clube sair da crise.';
+
 /** @deprecated use INSOLVENCY_WARN_DELINQUENCY — mantido para sims antigos */
 export const BANKRUPTCY_DELINQUENCY_STREAK = BANKRUPTCY_DELINQUENCY_WITH_RED;
 
@@ -178,6 +188,105 @@ export function resolveClubBankruptcyRisk({
     depthRounds,
     finances: fin,
   };
+}
+
+/**
+ * Escada intermediária: após aviso de insolvência, bloqueia compras/empréstimos
+ * até o clube sair do vermelho e regularizar o empréstimo (atraso = 0).
+ *
+ * @returns {{
+ *   active: boolean,
+ *   justEntered: boolean,
+ *   justCleared: boolean,
+ *   sinceRound: number|null,
+ *   reason: string|null,
+ *   message: string,
+ * }}
+ */
+export function resolveFinancialRestriction({
+  active = false,
+  sinceRound = null,
+  warnedInsolvent = false,
+  cash = 0,
+  overdraftStreak = 0,
+  delinquencyStreak = 0,
+  round = 0,
+} = {}) {
+  const bal = Number(cash) || 0;
+  const odStreak = Math.max(0, Math.round(Number(overdraftStreak) || 0));
+  const delinq = Math.max(0, Math.round(Number(delinquencyStreak) || 0));
+  const roundN = Math.max(0, Math.round(Number(round) || 0));
+  const wasActive = !!active;
+  const cured = bal >= 0 && delinq === 0;
+
+  if (wasActive) {
+    if (cured) {
+      return {
+        active: false,
+        justEntered: false,
+        justCleared: true,
+        sinceRound: null,
+        reason: null,
+        message: 'Restrição financeira encerrada — mercado de compras liberado.',
+      };
+    }
+    return {
+      active: true,
+      justEntered: false,
+      justCleared: false,
+      sinceRound: sinceRound != null ? Math.round(Number(sinceRound) || 0) : roundN,
+      reason: delinq >= 1 ? 'delinquency' : 'overdraft',
+      message: RESTRICTION_MESSAGE,
+    };
+  }
+
+  const enterDelinq = delinq >= RESTRICTION_ENTER_DELINQUENCY;
+  const enterOd = odStreak >= RESTRICTION_ENTER_OVERDRAFT;
+  if (warnedInsolvent && (enterDelinq || enterOd) && !cured) {
+    return {
+      active: true,
+      justEntered: true,
+      justCleared: false,
+      sinceRound: roundN,
+      reason: enterDelinq ? 'delinquency' : 'overdraft',
+      message: RESTRICTION_MESSAGE,
+    };
+  }
+
+  return {
+    active: false,
+    justEntered: false,
+    justCleared: false,
+    sinceRound: null,
+    reason: null,
+    message: '',
+  };
+}
+
+/** Compra / empréstimo de entrada bloqueados sob restrição ativa. */
+export function isMarketBuyRestricted(club) {
+  return !!club?.financialRestriction?.active;
+}
+
+/** Aplica o resultado de resolveFinancialRestriction no clube (persistível no save). */
+export function applyFinancialRestriction(club, resolved) {
+  if (!club || !resolved) return club;
+  if (!resolved.active) {
+    if (club.financialRestriction) {
+      club.financialRestriction = {
+        active: false,
+        sinceRound: null,
+        reason: null,
+      };
+    }
+    return club;
+  }
+  club.financialRestriction = {
+    active: true,
+    sinceRound: resolved.sinceRound,
+    reason: resolved.reason || null,
+  };
+  return club;
 }
 
 export const clubSolvencyModuleVersion = MODULE_VERSIONS.clubSolvency ?? 1;
