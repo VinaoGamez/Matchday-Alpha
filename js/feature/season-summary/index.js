@@ -66,6 +66,10 @@ const MODAL_HTML = `
       </div>
       <div id="seasonGoalResult" class="season-goal-result"></div>
     </section>
+    <section class="season-summary-section hidden" id="seasonObjectivesSection">
+      <header><h3>Metas complementares</h3><small>Avaliação da diretoria sobre objetivos extras</small></header>
+      <div id="seasonObjectivesResult" class="season-objectives-result"></div>
+    </section>
     <section class="season-summary-section">
       <header><h3>Campeões</h3><small>Títulos conquistados em <span id="seasonSummaryYear"></span></small></header>
       <div id="seasonChampions" class="season-champions-grid"></div>
@@ -286,6 +290,7 @@ export function createSeasonSummaryFeature(deps) {
     seasonRewards = null,
     formatBudget = value => `R$ ${value}`,
     seasonGoalResult = null,
+    seasonObjectivesResult = null,
     preview = false,
   }) => {
     injectDom();
@@ -321,6 +326,32 @@ export function createSeasonSummaryFeature(deps) {
       } else {
         goalSection.classList.add('hidden');
         goalEl.innerHTML = '';
+      }
+    }
+    const objectivesSection = $('#seasonObjectivesSection');
+    const objectivesEl = $('#seasonObjectivesResult');
+    if (objectivesSection && objectivesEl) {
+      const items = Array.isArray(seasonObjectivesResult?.items) ? seasonObjectivesResult.items : [];
+      if (items.length) {
+        objectivesSection.classList.remove('hidden');
+        const mark = { met: '✓', near: '◐', missed: '✗' };
+        const delta = Number(seasonObjectivesResult.boardDelta) || 0;
+        const deltaText =
+          delta > 0 ? `Diretoria +${delta}` : delta < 0 ? `Diretoria ${delta}` : 'Diretoria sem alteração';
+        objectivesEl.innerHTML = `
+          <p class="season-objectives-feeling">${seasonObjectivesResult.feeling || ''}</p>
+          <ul class="season-objectives-list">
+            ${items
+              .map(
+                item =>
+                  `<li class="season-objectives-item is-${item.status || 'missed'}"><span class="season-objectives-mark">${mark[item.status] || '•'}</span><span>${item.label}</span></li>`,
+              )
+              .join('')}
+          </ul>
+          <em class="season-objectives-delta">${deltaText}</em>`;
+      } else {
+        objectivesSection.classList.add('hidden');
+        objectivesEl.innerHTML = '';
       }
     }
     $('#seasonChampions').innerHTML = LEAGUE_ORDER.map(league =>

@@ -13,6 +13,7 @@ import {
   STADIUM_SECTOR_DEFS,
   STRUCTURE_UPGRADE,
   PITCH_SECTOR_UPGRADE,
+  maxAchievableStadiumCapacity,
   ensureStadiumSectors,
   getSectorLevel,
   effectiveSectorMax,
@@ -45,12 +46,12 @@ export const INITIAL_BUDGET_BY_DIVISION = {
   D: 2_700_000,
 };
 
-/** Capacidade inicial e teto por divisão. */
+/** Capacidade inicial e teto por divisão (alinhado ao modelo por setores). */
 export const STADIUM_CAPACITY_BY_DIVISION = {
-  A: { base: 42_000, max: 75_000, step: 8_000 },
-  B: { base: 28_000, max: 55_000, step: 6_000 },
-  C: { base: 18_000, max: 40_000, step: 5_000 },
-  D: { base: 12_000, max: 28_000, step: 4_000 },
+  A: { base: 8_000, max: 46_000, step: 7_600 },
+  B: { base: 6_000, max: 35_440, step: 5_888 },
+  C: { base: 4_500, max: 27_900, step: 4_680 },
+  D: { base: 3_000, max: 17_300, step: 2_860 },
 };
 
 /** Faixas de preço de ingresso (R$). Calibrado v3 — bilheteria não pode dominar o caixa. */

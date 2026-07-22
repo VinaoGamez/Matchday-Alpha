@@ -2541,6 +2541,7 @@ export async function bootEngine({ bus } = {}) {
     getUserDivision:()=>userDivision,
     getCareerSeason:()=>careerSeason,
     getSeasonGoal:()=>ensureSeasonGoal(),
+    getSeasonGoalResult:()=>seasonGoalResult,
     getSeasonObjectives:()=>ensureSeasonObjectives(),
     getSeasonObjectivesResult:()=>seasonObjectivesResult,
     getSeasonGoalLiveContext:()=>buildSeasonObjectiveEvalContext(),
@@ -6574,6 +6575,7 @@ export async function bootEngine({ bus } = {}) {
       seasonRewards:{total:prize.total,lines:prize.lines,budgetAfter},
       formatBudget,
       seasonGoalResult,
+      seasonObjectivesResult,
       movements,
     });
     // Após Δ da meta: se diretoria+finanças no vermelho, demissão bloqueia a próxima temporada.

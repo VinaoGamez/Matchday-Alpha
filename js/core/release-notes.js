@@ -5,6 +5,28 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.55',
+    date: '2026-07-21',
+    publishedAt: '2026-07-21T21:25:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Estádio · capacidade',
+        items: [
+          'Teto de lotação alinhado ao modelo por setores — expansão máxima realista por série.',
+          'Painel do estádio mostra capacidade atual e teto (ex.: 32.000 / 46.000).',
+        ],
+      },
+      {
+        label: 'Metas de temporada',
+        items: [
+          'Balanço de fim de temporada lista as metas complementares com ✓/◐/✗.',
+          'No Escritório, a meta principal também exibe o resultado final após a avaliação.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.50',
     date: '2026-07-21',
     publishedAt: '2026-07-21T20:55:00-03:00',

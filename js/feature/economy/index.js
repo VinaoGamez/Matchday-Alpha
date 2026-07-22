@@ -9,6 +9,7 @@ import {
 } from '../../engine/bank-loan.js';
 import { seasonGoalLiveProgress } from '../../engine/season-goals.js';
 import { seasonObjectiveLiveProgress } from '../../engine/season-objectives.js';
+import { maxAchievableStadiumCapacity } from '../../engine/stadium-sectors.js';
 import { seasonGoalGauge } from '../season-summary/goal-gauge.js';
 import { mountStadiumVisual } from './stadium-visual.js';
 
@@ -97,6 +98,7 @@ export function createEconomyFeature(deps) {
     getUserDivision,
     getCareerSeason,
     getSeasonGoal,
+    getSeasonGoalResult,
     getSeasonObjectives,
     getSeasonObjectivesResult,
     getSeasonGoalLiveContext,
@@ -292,7 +294,7 @@ export function createEconomyFeature(deps) {
 
   const officeObjectiveCardHtml = (label, progress, finalStatus = null) => {
     const status = finalStatus || progress?.status;
-    const done = objectiveIsDone(progress) || status === 'met';
+    const done = objectiveIsDone(progress) || status === 'met' || status === 'exceeded';
     const failed = status === 'missed';
     const near = status === 'near';
     let marker;
@@ -334,13 +336,26 @@ export function createEconomyFeature(deps) {
     const ctx = getSeasonGoalLiveContext?.(club) || getSeasonGoalLiveContext?.() || {};
     const cards = [];
     if (goal?.label) {
-      let mainProgress = { score: 0, hint: '—', status: 'missed' };
-      try {
-        mainProgress = seasonGoalLiveProgress(goal, ctx);
-      } catch {
-        /* noop */
+      const goalResult = getSeasonGoalResult?.();
+      if (goalResult?.label) {
+        const finalStatus =
+          goalResult.status === 'exceeded' ? 'met' : goalResult.status || 'missed';
+        cards.push(
+          officeObjectiveCardHtml(
+            goalResult.label,
+            { hint: goalResult.feeling || '—', status: finalStatus },
+            finalStatus,
+          ),
+        );
+      } else {
+        let mainProgress = { score: 0, hint: '—', status: 'missed' };
+        try {
+          mainProgress = seasonGoalLiveProgress(goal, ctx);
+        } catch {
+          /* noop */
+        }
+        cards.push(officeObjectiveCardHtml(goal.label, mainProgress));
       }
-      cards.push(officeObjectiveCardHtml(goal.label, mainProgress));
     }
     objectives.forEach(item => {
       const final = resultById?.[item.id];
@@ -1133,7 +1148,14 @@ export function createEconomyFeature(deps) {
       structureEl.textContent = `${structureLevelLabel?.(structureLevel) || structureLevel} (${structureLevel}/5)`;
     }
     if (investmentsEl) investmentsEl.textContent = String(getStadiumInvestments?.(club) ?? 0);
-    if (capacityEl) capacityEl.textContent = formatCapacity(club.stadiumCapacity);
+    if (capacityEl) {
+      const maxCap = maxAchievableStadiumCapacity(division);
+      const cap = Number(club.stadiumCapacity) || 0;
+      capacityEl.textContent =
+        maxCap > 0 && cap >= maxCap * 0.98
+          ? `${formatCapacity(cap)} · teto`
+          : `${formatCapacity(cap)} / ${formatCapacity(maxCap)}`;
+    }
     if (pitchEl) pitchEl.textContent = pitchTierLabel?.(club) || 'Médio';
     if (compositionEl && computeSectorBreakdown) {
       const { rows, total } = computeSectorBreakdown(club, division);

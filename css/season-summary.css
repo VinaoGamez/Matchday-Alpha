@@ -103,6 +103,15 @@
 .season-goal-result.goal-near .season-goal-result-copy em{color:#ffc94f}
 .season-goal-result.goal-exceeded .season-goal-result-copy em,
 .season-goal-result.goal-met .season-goal-result-copy em{color:#b6ff38}
+.season-objectives-result{display:grid;gap:10px;padding:12px 14px;border:1px solid #28505b;border-radius:8px;background:linear-gradient(165deg,#14303a 0%,#0e222c 100%)}
+.season-objectives-feeling{margin:0;color:#9eb6b8;font-size:12px;line-height:1.45}
+.season-objectives-list{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.season-objectives-item{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;color:#edf8f5;font:600 12px/1.35 DM Sans,sans-serif}
+.season-objectives-mark{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;font:800 12px Barlow Condensed,sans-serif}
+.season-objectives-item.is-met .season-objectives-mark{background:#b6ff38;color:#0a1820}
+.season-objectives-item.is-near .season-objectives-mark{background:#ffc94f;color:#0a1820}
+.season-objectives-item.is-missed .season-objectives-mark{background:#ff8c94;color:#0a1820}
+.season-objectives-delta{margin:0;color:#7fa8b0;font:700 11px DM Sans,sans-serif;font-style:normal}
 .season-goal-gauge{
   display:grid;
   justify-items:center;

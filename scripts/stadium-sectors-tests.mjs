@@ -9,6 +9,8 @@ import {
   effectiveSectorMax,
   canOfferStadiumNaming,
   migrateLegacyStadium,
+  maxAchievableStadiumCapacity,
+  DIVISION_CAPACITY_CAP,
   STADIUM_SECTOR_MODEL,
 } from '../js/engine/stadium-sectors.js';
 
@@ -87,6 +89,16 @@ check('composição: soma setores = capacidade', () => {
   assert(total === club.stadiumCapacity, `${total} vs ${club.stadiumCapacity}`);
   assert(sum === total, `${sum} vs ${total}`);
   assert(sectorSeats('popular', 2, 'A') > sectorSeats('popular', 1, 'A'), 'popular grow');
+});
+
+check('teto por divisão = capacidade máxima alcançável', () => {
+  for (const division of ['A', 'B', 'C', 'D']) {
+    const max = maxAchievableStadiumCapacity(division);
+    assert(max > 0, `${division} max`);
+    assert(max === DIVISION_CAPACITY_CAP[division], `${division} cap ${max}`);
+  }
+  assert(maxAchievableStadiumCapacity('A') === 46_000, 'A ~46k');
+  assert(maxAchievableStadiumCapacity('B') === 35_440, 'B ~35k');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

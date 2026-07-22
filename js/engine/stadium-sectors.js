@@ -7,7 +7,7 @@ export const STADIUM_SECTOR_MODEL = 2;
 export const DIVISION_STADIUM_SCALE = { A: 1, B: 0.8, C: 0.65, D: 0.55 };
 /** Custo de investimento no estádio — divisões menores pagam menos (payback alinhado). */
 export const DIVISION_STADIUM_COST_SCALE = { A: 1, B: 0.9, C: 0.75, D: 0.42 };
-export const DIVISION_CAPACITY_CAP = { A: 75_000, B: 45_000, C: 28_000, D: 18_000 };
+export let DIVISION_CAPACITY_CAP = { A: 75_000, B: 45_000, C: 28_000, D: 18_000 };
 
 export const DIVISION_SECTOR_ALLOW = {
   A: ['popular', 'stands', 'seats', 'boxes', 'vip'],
@@ -419,3 +419,24 @@ export function estimateGateReceiptSectors(
     sectors: sectorDetails,
   };
 }
+
+/** Teto realista = soma dos setores no máximo (estrutura 5 + níveis máx. por série). */
+export function maxAchievableStadiumCapacity(division = 'A') {
+  const div = ['A', 'B', 'C', 'D'].includes(division) ? division : 'A';
+  const club = {
+    stadiumStructure: 5,
+    stadiumSectors: {},
+    stadiumSectorModel: STADIUM_SECTOR_MODEL,
+  };
+  for (const sectorId of Object.keys(STADIUM_SECTOR_DEFS)) {
+    club.stadiumSectors[sectorId] = effectiveSectorMax(club, div, sectorId);
+  }
+  return computeSectorBreakdown(club, div).total;
+}
+
+DIVISION_CAPACITY_CAP = {
+  A: maxAchievableStadiumCapacity('A'),
+  B: maxAchievableStadiumCapacity('B'),
+  C: maxAchievableStadiumCapacity('C'),
+  D: maxAchievableStadiumCapacity('D'),
+};
