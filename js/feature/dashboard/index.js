@@ -695,7 +695,7 @@ export function createDashboardFeature(deps) {
       entries.push({ ...game, result, points: result === 'V' ? 3 : result === 'E' ? 1 : 0, ...meta });
     };
     seasonRoundHistory.forEach(round =>
-      (round.games || []).forEach(game => register(game, { competition: 'league', label: `Rodada ${round.round}`, sortDate: deps.fixtureDate(round.round) }))
+      (round.games || []).forEach(game => register(game, { competition: 'league', label: `Rodada ${round.round}`, sortDate: fixtureDetails(game).date }))
     );
     copaDoBrasilFixtures.filter(game => game.completed).forEach(game =>
       register(game, { competition: 'cup', label: `Copa · ${game.phase}${game.leg ? ` · ${game.leg}` : ''}`, sortDate: new Date(game.date) })
@@ -705,7 +705,7 @@ export function createDashboardFeature(deps) {
       .flat()
       .filter(game => game.completed && isKnockoutShootoutCompetition(game))
       .forEach(game =>
-        register(game, { competition: 'knockout', label: `Série D · ${game.leg || 'Eliminatórias'}`, sortDate: deps.fixtureDate(game.round) })
+        register(game, { competition: 'knockout', label: `Série D · ${game.leg || 'Eliminatórias'}`, sortDate: fixtureDetails(game).date })
       );
     return entries.sort((a, b) => a.sortDate - b.sortDate);
   };
@@ -725,7 +725,7 @@ export function createDashboardFeature(deps) {
     };
     seasonRoundHistory.forEach(round =>
       (round.games || []).forEach(game =>
-        register(game, { competition: 'league', round: round.round, label: `Rodada ${round.round}`, sortDate: deps.fixtureDate(round.round) })
+        register(game, { competition: 'league', round: round.round, label: `Rodada ${round.round}`, sortDate: fixtureDetails(game).date })
       )
     );
     copaDoBrasilFixtures.forEach(game =>
@@ -736,7 +736,7 @@ export function createDashboardFeature(deps) {
       .flat()
       .filter(game => isKnockoutShootoutCompetition(game))
       .forEach(game =>
-        register(game, { competition: 'knockout', label: `Série D · ${game.leg || 'Eliminatórias'}`, sortDate: deps.fixtureDate(game.round) })
+        register(game, { competition: 'knockout', label: `Série D · ${game.leg || 'Eliminatórias'}`, sortDate: fixtureDetails(game).date })
       );
     return entries.sort((a, b) => a.sortDate - b.sortDate);
   };

@@ -5,6 +5,29 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.65',
+    date: '2026-07-22',
+    publishedAt: '2026-07-22T12:05:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Calendário · datas fixas',
+        items: [
+          'Cada jogo de liga agora tem data e horário definidos — não mudam no meio da temporada.',
+          'Copa e campeonato respeitam intervalo mínimo de 3 dias entre partidas do mesmo clube.',
+          'Saves antigos recebem datas na primeira carga; Calendário, AO VIVO e Painel ficam alinhados.',
+        ],
+      },
+      {
+        label: 'Calendário · estabilidade',
+        items: [
+          'Fixtures nacionais persistem entre rodadas — evita repetir o mesmo adversário por bug de agenda.',
+          'Confrontos reconhecidos pelo par de clubes, mesmo com mando invertido no histórico.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.60',
     date: '2026-07-22',
     publishedAt: '2026-07-22T01:30:00-03:00',

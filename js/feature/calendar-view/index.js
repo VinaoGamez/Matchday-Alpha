@@ -743,7 +743,12 @@ export function createCalendarViewFeature(deps) {
     const firstDay = new Date(year, month, 1);
     const gridStart = new Date(year, month, 1 - firstDay.getDay());
     const trainingMap = calendarTrainingMap();
-    const currentRoundKey = calendarKey(fixtureDate(Math.min(Math.max(currentRound, 1), Math.max(championshipFixtures.length, 1))));
+    const roundNumber = Math.min(Math.max(currentRound, 1), Math.max(championshipFixtures.length, 1));
+    const roundGames = championshipFixtures[roundNumber - 1] || [];
+    const anchorGame = roundGames.find(isUserFixture) || roundGames[0];
+    const currentRoundKey = calendarKey(
+      anchorGame ? fixtureDetails(anchorGame).date : fixtureDate(roundNumber),
+    );
     const careerDayKey = calendarKey(careerCalendarDate);
     const { start: planWeekStart, end: planWeekEnd } = weekBounds(careerCalendarDate);
     $('#calendarMonthLabel').textContent = calendarCursor.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });

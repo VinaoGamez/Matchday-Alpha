@@ -1,6 +1,7 @@
 /**
  * Calendário pontos corridos (turno + returno) com balanceamento casa/fora.
  * Limita sequências consecutivas de mando de campo (padrão: máx. 2).
+ * Returno espelha o turno balanceado (preserva 1 casa + 1 fora por par).
  */
 
 export const DEFAULT_MAX_HOME_AWAY_STREAK = 2;
@@ -67,9 +68,9 @@ export function balanceHomeAwayStreaks(fixtures, maxStreak = DEFAULT_MAX_HOME_AW
 }
 
 /**
- * Round-robin clássico (Berger) + returno invertido + balanceamento casa/fora.
+ * Round-robin clássico (Berger) + returno espelhado + balanceamento opcional.
  * @param {string[]} clubList
- * @param {{ maxHomeAwayStreak?: number }} [options]
+ * @param {{ maxHomeAwayStreak?: number, balanceHomeAway?: boolean, balanceScope?: 'first-leg-only'|'full' }} [options]
  */
 export function buildBrazilianLeagueFixtures(clubList, options = {}) {
   const clubs = [...clubList];
@@ -77,6 +78,9 @@ export function buildBrazilianLeagueFixtures(clubList, options = {}) {
   if (n < 2 || n % 2 !== 0) return [];
 
   const maxStreak = options.maxHomeAwayStreak ?? DEFAULT_MAX_HOME_AWAY_STREAK;
+  const shouldBalance = options.balanceHomeAway !== false;
+  const firstLegOnly = (options.balanceScope || 'first-leg-only') === 'first-leg-only';
+
   let rotation = [...clubs];
   const firstLeg = [];
 
@@ -92,7 +96,18 @@ export function buildBrazilianLeagueFixtures(clubList, options = {}) {
     rotation = [rotation[0], rotation[rotation.length - 1], ...rotation.slice(1, -1)];
   }
 
-  const secondLeg = firstLeg.map((games, index) =>
+  let balancedFirstLeg = firstLeg;
+  if (shouldBalance) {
+    balancedFirstLeg = firstLegOnly
+      ? refineFirstLegPairAtomic(
+        balanceHomeAwayStreaks(firstLeg, maxStreak),
+        clubs,
+        maxStreak,
+      )
+      : balanceHomeAwayStreaks(firstLeg, maxStreak);
+  }
+
+  const secondLeg = balancedFirstLeg.map((games, index) =>
     games.map(game => ({
       home: game.away,
       away: game.home,
@@ -100,7 +115,99 @@ export function buildBrazilianLeagueFixtures(clubList, options = {}) {
     })),
   );
 
-  return balanceHomeAwayStreaks([...firstLeg, ...secondLeg], maxStreak);
+  if (shouldBalance && !firstLegOnly) {
+    return balanceHomeAwayStreaks([...firstLeg, ...secondLeg], maxStreak);
+  }
+
+  return [...balancedFirstLeg, ...secondLeg];
+}
+
+/** Sequência cronológica de mandos (turno + returno espelhado por índice). */
+function chronologicalVenuesForTeam(firstLeg, team) {
+  const n = firstLeg.length;
+  const first = [];
+  for (let r = 0; r < n; r += 1) {
+    const game = firstLeg[r]?.find(entry => entry.home === team || entry.away === team);
+    if (!game) continue;
+    first.push(game.home === team ? 'H' : 'A');
+  }
+  return [...first, ...first.map(v => (v === 'H' ? 'A' : 'H'))];
+}
+
+function maxRunInVenueSequence(seq) {
+  let max = 0;
+  let run = 0;
+  let prev = null;
+  for (const v of seq) {
+    if (v === prev) run += 1;
+    else {
+      prev = v;
+      run = 1;
+    }
+    max = Math.max(max, run);
+  }
+  return max;
+}
+
+function worstTeamStreak(firstLeg, teams) {
+  let max = 0;
+  for (const team of teams) {
+    max = Math.max(max, maxRunInVenueSequence(chronologicalVenuesForTeam(firstLeg, team)));
+  }
+  return max;
+}
+
+/** Refina o 1º turno com flips atômicos (turno + returno) para reduzir sequências longas. */
+function refineFirstLegPairAtomic(firstLeg, teams, maxStreak) {
+  const leg = firstLeg.map(round => round.map(game => ({ ...game })));
+  const clubSet = teams?.length ? teams : [...new Set(leg.flatMap(r => r.flatMap(g => [g.home, g.away])))];
+  let best = worstTeamStreak(leg, clubSet);
+  if (best <= maxStreak) return leg;
+
+  for (let pass = 0; pass < leg.length * leg[0]?.length * 2 && best > maxStreak; pass += 1) {
+    let improved = false;
+    for (let r = 0; r < leg.length; r += 1) {
+      for (let gi = 0; gi < (leg[r]?.length || 0); gi += 1) {
+        const game = leg[r][gi];
+        const flipped = { ...game, home: game.away, away: game.home };
+        leg[r][gi] = flipped;
+        const score = worstTeamStreak(leg, clubSet);
+        if (score < best) {
+          best = score;
+          improved = true;
+          if (best <= maxStreak) return leg;
+        } else {
+          leg[r][gi] = game;
+        }
+      }
+    }
+    if (!improved) break;
+  }
+  return leg;
+}
+
+/** Cada par joga exatamente 1 casa + 1 fora no turno+returno. */
+export function eachPairHasHomeAndAway(fixtures, clubList) {
+  for (let i = 0; i < clubList.length; i += 1) {
+    for (let j = i + 1; j < clubList.length; j += 1) {
+      const a = clubList[i];
+      const b = clubList[j];
+      let aHome = 0;
+      let bHome = 0;
+      for (const round of fixtures) {
+        if (!Array.isArray(round)) continue;
+        for (const game of round) {
+          if (!game?.home || !game?.away) continue;
+          const isPair = (game.home === a && game.away === b) || (game.home === b && game.away === a);
+          if (!isPair) continue;
+          if (game.home === a) aHome += 1;
+          if (game.home === b) bHome += 1;
+        }
+      }
+      if (aHome !== 1 || bHome !== 1) return false;
+    }
+  }
+  return true;
 }
 
 /** Maior sequência casa ou fora de um clube no calendário. */

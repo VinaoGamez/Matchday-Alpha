@@ -101,7 +101,10 @@ export function createLiveDayMatchesFeature(deps) {
     return (game.round || 0) > divisionRoundPlayed(division);
   };
 
-  const leagueFixtureDate = (division, game) => fixtureDateFor(division, game.round || getCurrentRound());
+  const leagueFixtureDate = (division, game) => {
+    if (game?.date) return new Date(game.date);
+    return fixtureDateFor(division, game.round || getCurrentRound());
+  };
 
   const allNationalFixturesOnDay = dayKey => {
     if (!dayKey) return [];
