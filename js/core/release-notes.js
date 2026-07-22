@@ -5,6 +5,22 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.85',
+    date: '2026-07-22',
+    publishedAt: '2026-07-22T14:00:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Calendário · temporada única',
+        items: [
+          'Todos os campeonatos (Brasileirão, Copa etc.) ficam dentro do mesmo ano — nada de jogo “vazando” para janeiro do ano seguinte.',
+          'Se o calendário atrasa no fim do ano, as partidas pendentes da Copa são remarcadas dentro de dezembro.',
+          'Correção do travamento ao avançar semana com Copa pendente após o encerramento do Brasileirão.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.80',
     date: '2026-07-22',
     publishedAt: '2026-07-22T13:40:00-03:00',

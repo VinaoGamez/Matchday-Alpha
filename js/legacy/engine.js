@@ -133,6 +133,10 @@ import {
   gameScheduledDate,
   leagueFixturesNeedScheduling,
 } from '../engine/season-scheduler.js';
+import {
+  buildCupPhaseNominalDates,
+  seasonEndDate as planSeasonEndDate,
+} from '../engine/season-calendar-plan.js';
 import { competitionRulesHtml } from '../engine/competition-rules.js';
 import {
   resolveBoardJobRisk,
@@ -1619,18 +1623,31 @@ export async function bootEngine({ bus } = {}) {
     onCareerCalendarAdvanced();
   };
   const sameCalendarDay=(left,right)=>left.getFullYear()===right.getFullYear()&&left.getMonth()===right.getMonth()&&left.getDate()===right.getDate();
-  const cupDate=(month,day)=>new Date(careerSeason,month-1,day,12);
-  const cupPhaseDefinitions=[
-    {index:1,name:'1ª FASE',teams:28,twoLegged:false,dates:[cupDate(2,18)]},
-    {index:2,name:'2ª FASE',teams:88,twoLegged:false,dates:[cupDate(2,26)]},
-    {index:3,name:'3ª FASE',teams:48,twoLegged:false,dates:[cupDate(3,11)]},
-    {index:4,name:'4ª FASE',teams:24,twoLegged:false,dates:[cupDate(3,18)]},
-    {index:5,name:'5ª FASE',teams:32,twoLegged:true,dates:[cupDate(4,22),cupDate(5,13)]},
-    {index:6,name:'OITAVAS DE FINAL',teams:16,twoLegged:true,dates:[cupDate(8,2),cupDate(8,9)]},
-    {index:7,name:'QUARTAS DE FINAL',teams:8,twoLegged:true,dates:[cupDate(8,26),cupDate(9,4)]},
-    {index:8,name:'SEMIFINAL',teams:4,twoLegged:true,dates:[cupDate(11,4),cupDate(11,11)]},
-    {index:9,name:'FINAL',teams:2,twoLegged:false,dates:[cupDate(12,6)]}
+  const cupPhaseMeta=[
+    {index:1,name:'1ª FASE',teams:28,twoLegged:false},
+    {index:2,name:'2ª FASE',teams:88,twoLegged:false},
+    {index:3,name:'3ª FASE',teams:48,twoLegged:false},
+    {index:4,name:'4ª FASE',teams:24,twoLegged:false},
+    {index:5,name:'5ª FASE',teams:32,twoLegged:true},
+    {index:6,name:'OITAVAS DE FINAL',teams:16,twoLegged:true},
+    {index:7,name:'QUARTAS DE FINAL',teams:8,twoLegged:true},
+    {index:8,name:'SEMIFINAL',teams:4,twoLegged:true},
+    {index:9,name:'FINAL',teams:2,twoLegged:false},
   ];
+  const buildCupPhaseDefinitions=()=>{
+    const nominals=buildCupPhaseNominalDates(careerSeason,{twoLegGapDays:DEFAULT_TWO_LEG_GAP_DAYS});
+    return cupPhaseMeta.map(meta=>({
+      ...meta,
+      dates:(nominals[meta.index]||[]).map(date=>new Date(date)),
+    }));
+  };
+  let cupPhaseDefinitions=buildCupPhaseDefinitions();
+  const refreshCupPhaseNominalDates=()=>{
+    const nominals=buildCupPhaseNominalDates(careerSeason,{twoLegGapDays:DEFAULT_TWO_LEG_GAP_DAYS});
+    cupPhaseDefinitions.forEach(def=>{
+      if(nominals[def.index])def.dates=nominals[def.index].map(date=>new Date(date));
+    });
+  };
   // Critérios técnicos de 2026: 102 vagas estaduais, quatro entradas especiais
   // na 3ª fase e os 20 clubes da Série A apenas na 5ª fase.
   const cupNonSerieA=Object.values(clubs).filter(club=>club.division!=='A').sort((a,b)=>b.power-a.power||a.name.localeCompare(b.name,'pt-BR'));
@@ -1674,17 +1691,20 @@ export async function bootEngine({ bus } = {}) {
   const scheduleCupFixture=(game,{minDate=null}={})=>scheduleGameOnOccupancy(game,clubMatchDates,{
     nominalDate:game.date||minDate||careerCalendarDate,
     minDate,
+    maxDate:planSeasonEndDate(careerSeason),
     minRestDays:MIN_REST_DAYS,
     time:game.time,
   });
   const allCupFixtures=()=>(cupCompetition.stages||[]).flatMap(stage=>Array.isArray(stage?.fixtures)?stage.fixtures:[]);
   const refreshCopaDoBrasilFixtures=()=>{copaDoBrasilFixtures.length=0;copaDoBrasilFixtures.push(...allCupFixtures());};
   const rescheduleAllCupFixtures=()=>{
+    refreshCupPhaseNominalDates();
     rebuildLeagueClubDates();
     rescheduleCupFixtures(allCupFixtures(),clubMatchDates,{
       minRestDays:MIN_REST_DAYS,
       twoLegGapDays:DEFAULT_TWO_LEG_GAP_DAYS,
       careerFloor:careerCalendarDate,
+      seasonYear:careerSeason,
     });
   };
   const calendarIntervalLabel=conflicts=>conflicts===0?'intervalo mínimo de 3 dias validado':`${conflicts} conflito(s) aguardando ajuste`;
@@ -1703,7 +1723,7 @@ export async function bootEngine({ bus } = {}) {
     pairs.forEach(([home,away],tieIndex)=>{
       if(!home||!away)return;
       const tieId=`F${phaseIndex}-G${tieIndex+1}`;
-      const idaDate=definition.dates[0]||cupDate(6,1);
+      const idaDate=definition.dates[0]||buildCupPhaseNominalDates(careerSeason)[phaseIndex]?.[0]||seasonStartDate();
       fixtures.push({home,away,competition:'COPA DO BRASIL',phase:definition.name,phaseIndex,leg:definition.twoLegged?'IDA':'JOGO ÚNICO',date:new Date(idaDate),time:fixtureTimes[tieIndex%fixtureTimes.length],gameNumber:cupGameNumber++,tieId,completed:false});
       if(definition.twoLegged){
         const voltaDate=definition.dates[1]||definition.dates[0]||idaDate;
@@ -1952,6 +1972,15 @@ export async function bootEngine({ bus } = {}) {
   const seasonMaxRound=()=>userDivision==='D'?22:38;
   const seasonComplete=()=>currentRound>seasonMaxRound();
   const hasPendingUserFixtures=()=>pendingUserSchedule().length>0;
+  const dashboardLeagueRoundLabel=()=>{
+    const max=seasonMaxRound();
+    if(currentRound>max&&hasPendingUserFixtures()){
+      const cupEntry=pendingUserSchedule().find(entry=>entry.game.competition==='COPA DO BRASIL');
+      if(cupEntry)return `COPA · ${cupEntry.game.phase||'DO BRASIL'}`;
+      return 'PÓS-TEMPORADA';
+    }
+    return `RODADA ${Math.min(currentRound,max)}`;
+  };
   /** Nacional encerrado e sem partidas do usuário (inclui Copa) — UI de temporada fechada. */
   const seasonFullyComplete=()=>seasonComplete()&&!hasPendingUserFixtures();
   const isUserSeasonIdle=()=>!!savedNewGame&&!pendingUserSchedule().length&&!seasonComplete();
@@ -2165,7 +2194,7 @@ export async function bootEngine({ bus } = {}) {
   renderRoster();
   const leagueRow=(row,index)=>`<div class="league-row ${row.club === userClub ? 'highlight' : ''}" data-club="${row.club}" role="button" tabindex="0"><span>${userDivision==='D'?index+1:clubs[row.club].position}</span><span class="club-link">${row.club}</span><span>${row.played}</span><span>${row.wins}</span><span>${row.draws}</span><span>${row.losses}</span><span>${row.goalDiff>=0?'+':''}${row.goalDiff}</span><span>${row.points}</span></div>`;
   // leagueTable preenchido por renderChampionshipPage após helpers de fase.
-  $('.upcoming-dashboard label em').textContent=`RODADA ${currentRound}`;
+  $('.upcoming-dashboard label em').textContent=dashboardLeagueRoundLabel();
   const resolveNationalRankingEntry=entry=>{
     const club=clubs[entry.club];if(!club)return null;
     const base=computeNationalRankingBase(club),competition=nationalCompetitions[club.division],seasonFinalized=nationalRankingFinalizedSeasons.has(careerSeason);
@@ -2376,7 +2405,7 @@ export async function bootEngine({ bus } = {}) {
     applyPreMatchTraining,
     applyMinuteWearToLineup,
   }=fatigueEngine;
-  const seasonEndDate=()=>new Date(careerSeason,11,31,12);
+  const seasonEndDate=()=>planSeasonEndDate(careerSeason);
   const weekBounds=date=>{const start=new Date(date);start.setDate(start.getDate()-start.getDay());start.setHours(12,0,0,0);const end=new Date(start);end.setDate(end.getDate()+6);end.setHours(12,0,0,0);return{start,end};};
   const formatWeekDay=date=>`${String(date.getDate()).padStart(2,'0')} ${date.toLocaleDateString('pt-BR',{month:'short'}).replace('.','').toUpperCase()}`;
   const userMatchOnDate=date=>{
@@ -3204,7 +3233,7 @@ export async function bootEngine({ bus } = {}) {
     }
     renderDashboardMiniTable();
     renderDashboardUpcoming();
-    $('.upcoming-dashboard label em').textContent=`RODADA ${currentRound}`;
+    $('.upcoming-dashboard label em').textContent=dashboardLeagueRoundLabel();
     renderUserMatchPresentation();
     renderClubBudget();
     renderHeaderGuide();
@@ -7474,7 +7503,9 @@ export async function bootEngine({ bus } = {}) {
     const expected=expectedCupEntryPhase(),seasonEnd=new Date(careerSeason,11,31,12),mayCheck=new Date(careerSeason,4,1,12);
     const fixturesAtStart=userCupFixtures().length,pendingAtStart=pendingUserSchedule().filter(entry=>entry.game.competition==='COPA DO BRASIL').length;
     // Marcos do calendário da Copa — evita avançar dia a dia (pesado em benchmarks em massa).
-    [seasonStartDate(),cupDate(2,18),cupDate(2,26),cupDate(3,11),cupDate(3,18),cupDate(4,22),cupDate(5,13),cupDate(8,2),seasonEnd].forEach(date=>{
+    const cupMilestones=buildCupPhaseNominalDates(careerSeason);
+    const auditDates=[seasonStartDate(),...(cupMilestones[1]||[]),...(cupMilestones[4]||[]),...(cupMilestones[6]||[]),seasonEnd];
+    auditDates.forEach(date=>{
       advanceCareerCalendarTo(date);
       advanceCupThroughDate(date);
     });

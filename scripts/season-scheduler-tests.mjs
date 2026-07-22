@@ -11,6 +11,7 @@ import {
   nominalRoundDate,
   findAvailableDate,
   createClubOccupancy,
+  calendarAdvanceLimitDate,
 } from '../js/engine/season-scheduler.js';
 import {
   buildCompetitionRoundRobinFixtures,
@@ -87,8 +88,11 @@ check('Copa re-agenda respeitando ocupação da liga', () => {
     { home: 'A1', away: 'A2', date: nominalRoundDate(2026, 1, 6, LEAGUE_CALENDAR_WINDOWS.A), leg: 'IDA', tieId: 'T1' },
     { home: 'A2', away: 'A1', date: nominalRoundDate(2026, 2, 6, LEAGUE_CALENDAR_WINDOWS.A), leg: 'VOLTA', tieId: 'T1' },
   ];
-  rescheduleCupFixtures(cupGames, occupancy, { minRestDays: DEFAULT_MIN_REST_DAYS, twoLegGapDays: 7 });
-  cupGames.forEach(game => assert(game.date instanceof Date, 'cup dated'));
+  rescheduleCupFixtures(cupGames, occupancy, { minRestDays: DEFAULT_MIN_REST_DAYS, twoLegGapDays: 7, seasonYear: 2026 });
+  cupGames.forEach(game => {
+    assert(game.date instanceof Date, 'cup dated');
+    assert(game.date.getFullYear() === 2026, String(game.date));
+  });
   assert(cupGames[1].date.getTime() >= cupGames[0].date.getTime() + 7 * 86400000, 'volta gap');
   assert(countRestConflicts(occupancy, DEFAULT_MIN_REST_DAYS) === 0, 'cup + league rest');
 });
@@ -105,10 +109,18 @@ check('findAvailableDate evita conflito no mesmo clube', () => {
   occupancy.set('Clube X', [base.getTime()]);
   const next = findAvailableDate(occupancy, 'Clube X', 'Clube Y', {
     nominalDate: base,
+    maxDate: new Date(2026, 11, 31, 12),
     minRestDays: DEFAULT_MIN_REST_DAYS,
   });
   const gap = (DEFAULT_MIN_REST_DAYS + 1) * 86400000;
   assert(Math.abs(next.getTime() - base.getTime()) >= gap, `gap=${Math.abs(next - base)}`);
+  assert(next.getFullYear() === 2026, String(next));
+});
+
+check('calendarAdvanceLimitDate = 31/dez (sem ano seguinte)', () => {
+  const limit = calendarAdvanceLimitDate(2027);
+  assert(limit.getFullYear() === 2027, String(limit));
+  assert(limit.getMonth() === 11 && limit.getDate() === 31, String(limit));
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
