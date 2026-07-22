@@ -5,6 +5,28 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.75',
+    date: '2026-07-22',
+    publishedAt: '2026-07-22T12:40:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Calendário · Série D',
+        items: [
+          'Datas e horários da Série D passam a ser preservados no save — mata-mata não perde agenda após recarregar.',
+          'Carregamento de save antigo faz merge inteligente em vez de sobrescrever rodadas já agendadas.',
+        ],
+      },
+      {
+        label: 'Calendário · estabilidade',
+        items: [
+          'Removido ajuste legado de espaçamento que conflitava com o motor unificado de agenda.',
+          'Constante de rodadas da fase de grupos da Série D centralizada — menos risco de inconsistência.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.70',
     date: '2026-07-22',
     publishedAt: '2026-07-22T12:12:00-03:00',

@@ -8,7 +8,7 @@ import { createCalendarViewFeature } from '../feature/calendar-view/index.js';
 import { createTacticsFeature } from '../feature/tactics/index.js';
 import { createSeasonSummaryFeature } from '../feature/season-summary/index.js';
 import { createPlayerCells, outfield, fatigueCell } from '../feature/shared/player-cells.js';
-import { SAVE_KEYS, FEATURES } from '../core/constants.js';
+import { SAVE_KEYS, FEATURES, SERIE_D_GROUP_ROUNDS } from '../core/constants.js';
 import { collectWorldRosters, applyWorldRosters, stampWorldPlayers } from '../engine/world-rosters.js';
 import { createTransfersEngine } from '../engine/transfers.js';
 import {
@@ -112,6 +112,7 @@ import {
   slimNationalFixturesForSave,
   findRecordedGame,
   gameMatchesRecorded,
+  applySavedSerieDFixtures,
 } from '../engine/competition-calendar.js';
 import {
   LEAGUE_CALENDAR_WINDOWS,
@@ -919,12 +920,15 @@ export async function bootEngine({ bus } = {}) {
     return Object.keys(clubs).find(name=>name!==userClub&&clubs[name]?.roster)||Object.keys(clubs).find(name=>name!==userClub)||userClub;
   };
   const matchClub=()=>clubs[resolveOpponentClubName()];
-  const SERIE_D_GROUP_ROUNDS=10;
   // Calendário nacional: gerado por campeonato (política em competition-calendar.js).
   // Fixtures persistidos no save — não regenerar temporada em andamento.
   let restoredNationalFixtures=validSavedSeason&&savedSeason.nationalFixtures?{...savedSeason.nationalFixtures}:null;
   if(validSavedSeason&&!restoredNationalFixtures?.D&&Array.isArray(savedSeason.dFixtures)&&savedSeason.dFixtures.length>=SERIE_D_GROUP_ROUNDS){
-    restoredNationalFixtures={...(restoredNationalFixtures||{}),D:savedSeason.dFixtures.slice(0,SERIE_D_GROUP_ROUNDS)};
+    restoredNationalFixtures={
+      ...(restoredNationalFixtures||{}),
+      D:hydrateNationalFixtures(savedSeason.dFixtures.slice(0,SERIE_D_GROUP_ROUNDS),SERIE_D_GROUP_ROUNDS)
+        ||savedSeason.dFixtures.slice(0,SERIE_D_GROUP_ROUNDS),
+    };
   }
   const resolveDivisionFixtures=(divisionKey,clubList,competitionKey,expectedRounds)=>{
     const saved=hydrateNationalFixtures(restoredNationalFixtures?.[divisionKey],expectedRounds);
@@ -1010,7 +1014,7 @@ export async function bootEngine({ bus } = {}) {
   if(validSavedSeason){
     Object.entries(savedSeason.standings||{}).forEach(([division,rows])=>{const competition=nationalCompetitions[division];if(!competition)return;rows.forEach(saved=>{const row=competition.standings.find(item=>item.club===saved.club);if(row)Object.assign(row,saved);});competition.standings.sort((a,b)=>b.points-a.points||b.goalDiff-a.goalDiff||b.wins-a.wins);competition.standings.forEach((row,index)=>clubs[row.club].position=index+1);});
     Object.entries(savedSeason.fatigue||{}).forEach(([clubName,players])=>Object.entries(players).forEach(([playerName,value])=>{const player=clubs[clubName]?.roster.find(item=>item.name===playerName);if(player)player.fatigue=clamp(value,0,100);}));
-    (savedSeason.dFixtures||[]).forEach((round,index)=>{if(index>=10&&Array.isArray(round))nationalCompetitions.D.fixtures[index]=round;});
+    applySavedSerieDFixtures(nationalCompetitions.D.fixtures,savedSeason.dFixtures,SERIE_D_GROUP_ROUNDS);
     if(savedSeason.dKnockout)Object.assign(nationalCompetitions.D.knockout,savedSeason.dKnockout);
     // Remove entradas de histórico sem jogo do usuário concluído (anti-loop pós-migração de mandos).
     for(let index=seasonRoundHistory.length-1;index>=0;index--){
@@ -1647,8 +1651,6 @@ export async function bootEngine({ bus } = {}) {
   // anteriores da própria Copa. Intervalo mínimo de quatro datas = três dias
   // completos de descanso entre um compromisso e outro.
   const MIN_REST_DAYS=DEFAULT_MIN_REST_DAYS;
-  const minimumMatchGap=(MIN_REST_DAYS+1)*24*60*60*1000;
-  const minimumTwoLegGap=DEFAULT_TWO_LEG_GAP_DAYS*24*60*60*1000;
   const clubMatchDates=new Map();
   const reserveClubDateLocal=(club,date)=>reserveClubDate(clubMatchDates,club,date);
   const unreserveClubDateLocal=(club,timestamp)=>unreserveClubDate(clubMatchDates,club,timestamp);
@@ -1706,7 +1708,7 @@ export async function bootEngine({ bus } = {}) {
         fixtures.push({home:away,away:home,competition:'COPA DO BRASIL',phase:definition.name,phaseIndex,leg:'VOLTA',date:new Date(voltaDate),time:fixtureTimes[(tieIndex+1)%fixtureTimes.length],gameNumber:cupGameNumber++,tieId,completed:false});
       }
     });
-    const stage={index:phaseIndex,name:definition.name,twoLegged:definition.twoLegged,entrants:safeEntrants,fixtures,completed:false,winners:[]};cupCompetition.stages.push(stage);refreshCopaDoBrasilFixtures();rescheduleAllCupFixtures();syncUserCalendarSpacing();cupCompetition.currentPhase=phaseIndex;onCupScheduleChanged();return stage;
+    const stage={index:phaseIndex,name:definition.name,twoLegged:definition.twoLegged,entrants:safeEntrants,fixtures,completed:false,winners:[]};cupCompetition.stages.push(stage);refreshCopaDoBrasilFixtures();rescheduleAllCupFixtures();cupCompetition.currentPhase=phaseIndex;onCupScheduleChanged();return stage;
   };
   cupCompetition.stages.forEach(stage=>{
     if(!Array.isArray(stage.fixtures))stage.fixtures=[];
@@ -1715,7 +1717,6 @@ export async function bootEngine({ bus } = {}) {
   refreshCopaDoBrasilFixtures();
   rescheduleAllCupFixtures();
   const knockoutShootoutSanitized=sanitizeKnockoutShootoutSave({cupCompetition,serieDFixtures:nationalCompetitions.D.fixtures});
-  let syncUserCalendarSpacing=()=>{rescheduleAllCupFixtures();};
   const calculateRestConflicts=()=>countRestConflicts(clubMatchDates,MIN_REST_DAYS);
   let restConflictCount=0;
   const fixtureDetails=game=>{
@@ -1920,30 +1921,8 @@ export async function bootEngine({ bus } = {}) {
       .filter(Array.isArray).flat().filter(isKnockoutShootoutCompetition)
     :[];
   const pendingUserSchedule=()=>userSchedule().filter(entry=>!isFixtureCompleted(entry.game));
-  syncUserCalendarSpacing=()=>{
-    for(let pass=0;pass<30;pass++){
-      const pending=pendingUserSchedule();
-      let adjusted=false;
-      for(let index=0;index<pending.length-1;index++){
-        const gap=pending[index+1].details.date.getTime()-pending[index].details.date.getTime();
-        if(gap>=minimumMatchGap)continue;
-        const cupEntry=[pending[index],pending[index+1]].find(entry=>entry.game.competition==='COPA DO BRASIL');
-        const leagueEntry=[pending[index],pending[index+1]].find(entry=>entry.game.competition!=='COPA DO BRASIL');
-        if(!cupEntry||!leagueEntry)continue;
-        const target=new Date(leagueEntry.details.date);
-        target.setHours(12,0,0,0);
-        target.setDate(target.getDate()+(cupEntry.details.date>=leagueEntry.details.date?MIN_REST_DAYS+1:-(MIN_REST_DAYS+1)));
-        if(cupEntry.game.date.getTime()===target.getTime())continue;
-        cupEntry.game.date=target;
-        adjusted=true;
-        break;
-      }
-      if(!adjusted)break;
-      rescheduleAllCupFixtures();
-    }
-  };
   if(!cupCompetition.stages.length&&cupFirstRanked.length===28)createCupStage(1,cupFirstRanked);
-  else syncUserCalendarSpacing();
+  else rescheduleAllCupFixtures();
   restConflictCount=calculateRestConflicts();
   if(restConflictCount)console.warn(`Calendário gerado com ${restConflictCount} conflito(s) de descanso.`);
   const seasonMaxRound=()=>userDivision==='D'?22:38;

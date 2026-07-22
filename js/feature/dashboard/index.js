@@ -1,4 +1,4 @@
-import { MODULE_VERSIONS } from '../../core/constants.js';
+import { MODULE_VERSIONS, SERIE_D_GROUP_ROUNDS } from '../../core/constants.js';
 import { formatKnockoutFixtureScore, isKnockoutShootoutCompetition as isKnockoutGame } from '../../engine/knockout-shootout.js';
 import { applyCompetitionBadge, competitionBadgeMarkup, resolveCompetitionBadge } from '../../ui/competition-badge.js';
 import { setHumanBadgeOnCrest } from '../../ui/human-badge.js';
@@ -54,7 +54,7 @@ export function createDashboardFeature(deps) {
     isCompletedDashboardGame,
     getUserSerieDGroupIndex,
     getSerieDGroups,
-    SERIE_D_GROUP_ROUNDS = 10,
+    SERIE_D_GROUP_ROUNDS,
     isSponsorChoicePending,
     onRequestSponsorPicker,
     canReopenLivePostMatch,

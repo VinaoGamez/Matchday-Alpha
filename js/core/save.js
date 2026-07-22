@@ -336,6 +336,10 @@ export function slimSerieDFixturesForSave(fixtures) {
       if (game.shootoutWinner) slim.shootoutWinner = game.shootoutWinner;
       if (game.shootoutPenalties) slim.shootoutPenalties = game.shootoutPenalties;
       if (game.winner) slim.winner = game.winner;
+      if (game.date) {
+        slim.date = game.date instanceof Date ? game.date.toISOString() : game.date;
+      }
+      if (game.time) slim.time = game.time;
       return slim;
     });
   });

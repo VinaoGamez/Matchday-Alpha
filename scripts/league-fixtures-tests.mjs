@@ -12,7 +12,10 @@ import {
   slimNationalFixturesForSave,
   hydrateNationalFixtures,
   getCalendarPolicy,
+  applySavedSerieDFixtures,
+  mergeSerieDFixtureRound,
 } from '../js/engine/competition-calendar.js';
+import { slimSerieDFixturesForSave } from '../js/core/save.js';
 
 let passed = 0;
 let failed = 0;
@@ -132,6 +135,33 @@ check('Balanceamento 1º turno reduz sequências longas', () => {
   assert(before >= 3, `before=${before}`);
   assert(after <= 3, `after=${after}`);
   assert(eachPairHasHomeAndAway(full, teams20), 'simetria');
+});
+
+check('Série D: slimSerieDFixturesForSave preserva date/time', () => {
+  const date = new Date(2026, 6, 12, 12);
+  const fixtures = [[{ home: 'A', away: 'B', round: 11, tieId: 't1', leg: 'IDA', date, time: '20:00' }]];
+  const slim = slimSerieDFixturesForSave(fixtures);
+  assert(slim[0][0].date, 'slim date');
+  assert(slim[0][0].time === '20:00', 'slim time');
+});
+
+check('Série D: applySavedSerieDFixtures merge preserva agenda', () => {
+  const existing = [[], [], [], [], [], [], [], [], [], [], [{ home: 'A', away: 'B', round: 11, tieId: 't1', leg: 'IDA', date: new Date(2026, 6, 10, 12), time: '16:00' }]];
+  const saved = [[], [], [], [], [], [], [], [], [], [], [{ home: 'A', away: 'B', round: 11, tieId: 't1', leg: 'IDA', completed: true, homeGoals: 2, awayGoals: 1 }]];
+  applySavedSerieDFixtures(existing, saved, 10);
+  const game = existing[10][0];
+  assert(game.completed, 'completed merged');
+  assert(game.homeGoals === 2, 'score merged');
+  assert(game.date instanceof Date, 'date kept');
+  assert(game.time === '16:00', 'time kept');
+});
+
+check('mergeSerieDFixtureRound: par invertido ainda casa', () => {
+  const existing = [{ home: 'X', away: 'Y', round: 12, tieId: 't2', leg: 'IDA', date: new Date(2026, 7, 1, 12) }];
+  const saved = [{ home: 'Y', away: 'X', round: 12, tieId: 't2', leg: 'IDA', completed: true }];
+  const merged = mergeSerieDFixtureRound(existing, saved);
+  assert(merged[0].completed, 'matched by pair');
+  assert(merged[0].date instanceof Date, 'date preserved');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -113,3 +113,43 @@ export function hydrateNationalFixtures(saved, expectedRounds = null) {
   if (!hydrated.some(round => round.length > 0)) return null;
   return hydrated;
 }
+
+/** Mescla rodada salva (mata-mata) preservando date/time materializados. */
+export function mergeSerieDFixtureRound(existing, saved) {
+  if (!Array.isArray(saved)) return existing;
+  const hydrated = saved
+    .filter(game => game?.home && game?.away)
+    .map(game => ({
+      ...game,
+      date: game.date ? new Date(game.date) : null,
+      time: game.time || null,
+    }));
+  if (!Array.isArray(existing)) return hydrated;
+  return hydrated.map(savedGame => {
+    const match =
+      existing.find(entry => gameMatchesRecorded(entry, savedGame))
+      || existing.find(
+        entry =>
+          savedGame.tieId
+          && entry.tieId === savedGame.tieId
+          && (entry.leg || '') === (savedGame.leg || ''),
+      );
+    if (!match) return savedGame;
+    return {
+      ...match,
+      ...savedGame,
+      date: savedGame.date || match.date,
+      time: savedGame.time || match.time,
+    };
+  });
+}
+
+/** Aplica dFixtures do save nas rodadas ≥ fase de grupos (preserva agenda materializada). */
+export function applySavedSerieDFixtures(fixtures, savedRounds, groupRounds = 10) {
+  if (!Array.isArray(fixtures) || !Array.isArray(savedRounds)) return fixtures;
+  savedRounds.forEach((round, index) => {
+    if (index < groupRounds || !Array.isArray(round)) return;
+    fixtures[index] = mergeSerieDFixtureRound(fixtures[index], round);
+  });
+  return fixtures;
+}
