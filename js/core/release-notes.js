@@ -5,6 +5,34 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.80',
+    date: '2026-07-22',
+    publishedAt: '2026-07-22T13:40:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Finanças · contratações',
+        items: [
+          'Receita recorrente no gate de folha ficou mais estável ao longo da temporada.',
+          'Séries B, C e D começam com elenco menor (22) e patrocínio/TV um pouco mais generosos — contratar na janela de inverno fica mais viável.',
+        ],
+      },
+      {
+        label: 'Estádio · lotação',
+        items: [
+          'Finais e jogos decisivos (título ou rebaixamento) lotam mais o estádio.',
+          'Capacidade inicial varia por clube dentro de faixas por divisão; teto máximo de expansão dobrou (fantasy).',
+        ],
+      },
+      {
+        label: 'Escritório · Fluxo de Caixa',
+        items: [
+          'Novo card de folha salarial no Fluxo de Caixa — % da receita e limite em destaque.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.75',
     date: '2026-07-22',
     publishedAt: '2026-07-22T12:40:00-03:00',

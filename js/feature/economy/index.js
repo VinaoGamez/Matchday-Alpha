@@ -57,6 +57,8 @@ export function createEconomyFeature(deps) {
     formatTicketPrice,
     getBalance,
     estimateWageBill,
+    estimateRoundRecurringRevenue,
+    evaluateRosterPayroll,
     estimateStaffBill,
     estimateStadiumOpsBill,
     estimateRoundCostBill,
@@ -1450,6 +1452,12 @@ export function createEconomyFeature(deps) {
         : buildCashflowStatementFromLedger(ledger);
     const staffOpts = { managerReputation: club?.managerReputation };
     const wageBill = estimateWageBill?.(club, division) || 0;
+    const payrollPreview = evaluateRosterPayroll?.(club, { division }) || null;
+    const recurringRevenue =
+      payrollPreview?.revenue || estimateRoundRecurringRevenue?.(club, division) || 0;
+    const payrollPct = payrollPreview?.pctBefore ?? (recurringRevenue > 0 ? Math.round((wageBill / recurringRevenue) * 100) : 0);
+    const payrollTone =
+      payrollPct > 100 ? 'risk' : payrollPct >= 85 ? 'warn' : 'ok';
     const staffBill = estimateStaffBill?.(club, division, staffOpts) || 0;
     const stadiumBill = estimateStadiumOpsBill?.(club, division) || 0;
     const roundCost =
@@ -1543,6 +1551,19 @@ export function createEconomyFeature(deps) {
     }
 
     const projectionHtml = `
+      <div class="office-cashflow-payroll" data-tone="${payrollTone}">
+        <div class="office-cashflow-payroll-main">
+          <small>FOLHA SALARIAL</small>
+          <b>${formatBudget(wageBill)}<span>/rodada</span></b>
+          <span>${payrollPct}% da receita recorrente${
+            payrollPreview?.limit ? ` · limite ${formatBudget(payrollPreview.limit)}` : ''
+          }</span>
+        </div>
+        <div class="office-cashflow-payroll-side">
+          <span>Comissão ${formatBudget(staffBill)}</span>
+          <span>Estádio ${formatBudget(stadiumBill)}</span>
+        </div>
+      </div>
       <div class="office-cashflow-projection">
         <div>
           <small>CUSTO / RODADA</small>

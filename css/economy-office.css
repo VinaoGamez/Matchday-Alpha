@@ -216,6 +216,16 @@ a.office-sponsor-logo.is-link:hover,a.office-sponsor-logo.is-link:focus-visible{
 .office-meter[data-tone="risk"] .office-meter-track>i{background:linear-gradient(90deg,#ff8c94,#ffc94f)}
 .office-cashflow-meta{margin:-6px 0 14px;color:#7fa8b0;font-size:10px;line-height:1.4}
 .office-cashflow{display:flex;flex-direction:column;gap:14px;min-height:0}
+.office-cashflow-payroll{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;padding:12px 14px;border:1px solid #234650;border-radius:6px;background:linear-gradient(165deg,#102833 0%,#0b1d25 100%)}
+.office-cashflow-payroll[data-tone="ok"]{border-color:#3a6a48}
+.office-cashflow-payroll[data-tone="warn"]{border-color:#8a7030;background:linear-gradient(165deg,#2a2418 0%,#0b1d25 100%)}
+.office-cashflow-payroll[data-tone="risk"]{border-color:#8a4040;background:linear-gradient(165deg,#2a1818 0%,#0b1d25 100%)}
+.office-cashflow-payroll-main{display:grid;gap:3px;min-width:0}
+.office-cashflow-payroll-main small{color:#7fa8b0;font:700 8px DM Sans,sans-serif;letter-spacing:.35px}
+.office-cashflow-payroll-main b{color:#edf8f5;font:700 22px Barlow Condensed,sans-serif;line-height:1}
+.office-cashflow-payroll-main b span{font-size:12px;color:#9eb6b8;font-weight:700}
+.office-cashflow-payroll-main>span{color:#9eb6b8;font-size:10px;line-height:1.35}
+.office-cashflow-payroll-side{display:grid;gap:4px;justify-items:end;color:#9eb6b8;font-size:10px;line-height:1.3}
 .office-cashflow-projection{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media(min-width:1100px){.office-cashflow-projection{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .office-cashflow-projection>div{display:grid;gap:3px;padding:10px 12px;border:1px solid #234650;border-radius:6px;background:#0b1d25}

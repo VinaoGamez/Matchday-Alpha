@@ -583,8 +583,11 @@ export function pickStarterFlags(size, random = Math.random) {
   return flags;
 }
 
+/** Tamanho do elenco gerado por divisão. */
+export const SQUAD_SIZE_BY_DIVISION = { A: 25, B: 22, C: 22, D: 22 };
+
 /**
- * Gera elenco genérico de 25 para uma divisão.
+ * Gera elenco genérico para uma divisão.
  */
 export function generateSquad({
   division = 'A',
@@ -595,7 +598,8 @@ export function generateSquad({
 } = {}) {
   const [pLo, pHi] = DIVISION_CLUB_POWER[division] || DIVISION_CLUB_POWER.D;
   const power = clubPower != null ? clubPower : int(random, pLo, pHi);
-  const roles = [...GENERIC_SQUAD_ROLES];
+  const squadSize = SQUAD_SIZE_BY_DIVISION[division] ?? SQUAD_SIZE_BY_DIVISION.A;
+  const roles = [...GENERIC_SQUAD_ROLES].slice(0, squadSize);
   const starterFlags = pickStarterFlags(roles.length, random);
   const roster = roles.map((role, playerIndex) =>
     generatePlayer({

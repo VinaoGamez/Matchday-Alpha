@@ -328,6 +328,8 @@ export async function bootEngine({ bus } = {}) {
     canAfford,
     getBalance,
     estimateWageBill,
+    estimateRoundRecurringRevenue,
+    evaluateRosterPayroll,
     estimateStaffBill,
     estimateStadiumOpsBill,
     estimateRoundCostBill,
@@ -1741,15 +1743,32 @@ export async function bootEngine({ bus } = {}) {
     return {name:`Estádio ${lastWord}`,capacity};
   };
   /** Lotação do dia — Ambiente, preço, fase e ruído do fixture (AO VIVO e bilheteria). */
+  const buildAttendanceContext=(game,homeDivision)=>{
+    const div=homeDivision||userDivision;
+    const competition=nationalCompetitions[div];
+    const relegation=Number(divisionRules?.[div]?.relegation)||4;
+    return {
+      standings:competition?.standings||[],
+      seasonRounds:div==='D'?SERIE_D_GROUP_ROUNDS:38,
+      currentRound:game?.round??currentRound,
+      relegationZone:Math.max(0,relegation),
+      division:div,
+    };
+  };
   const resolveMatchAttendance=game=>{
     if(!game?.home||!clubs[game.home])return null;
     const homeClub=clubs[game.home];
+    const homeDivision=homeClub.division||userDivision;
     const venue=matchVenueFor(game.home);
     if(game.home!==userClub){
-      ensureStadium(homeClub,homeClub.division||'A');
+      ensureStadium(homeClub,homeDivision);
       homeClub.stadiumCapacity=venue.capacity;
     }
-    return attachMatchAttendance(homeClub,game,{division:homeClub.division||userDivision,capacity:venue.capacity});
+    return attachMatchAttendance(homeClub,game,{
+      division:homeDivision,
+      capacity:game.home===userClub?(homeClub.stadiumCapacity||venue.capacity):venue.capacity,
+      attendanceContext:buildAttendanceContext(game,homeDivision),
+    });
   };
   const formatVenueCrowdLine=game=>{
     const venue=matchVenueFor(game.home);
@@ -1822,7 +1841,12 @@ export async function bootEngine({ bus } = {}) {
     // Só mando de campo — visitante nunca recebe bilheteria.
     if(!isUserHomeMatch(game)||!clubs[userClub])return null;
     const venue=matchVenueFor(userClub);
-    const result=creditHomeGate(clubs[userClub],game,{division:userDivision,capacity:venue.capacity});
+    const userStadium=ensureStadium(clubs[userClub],userDivision);
+    const result=creditHomeGate(clubs[userClub],game,{
+      division:userDivision,
+      capacity:userStadium?.capacity||clubs[userClub].stadiumCapacity||venue.capacity,
+      attendanceContext:buildAttendanceContext(game,userDivision),
+    });
     // TV do pool da série: só mando nacional (Copa é ignorada em creditHomeTv).
     creditHomeTv(clubs[userClub],game,{division:userDivision,season:careerSeason});
     if(result?.ok){
@@ -2547,6 +2571,8 @@ export async function bootEngine({ bus } = {}) {
     formatTicketPrice,
     getBalance,
     estimateWageBill,
+    estimateRoundRecurringRevenue,
+    evaluateRosterPayroll,
     estimateStaffBill,
     estimateStadiumOpsBill,
     estimateRoundCostBill,

@@ -48,10 +48,10 @@ export const INITIAL_BUDGET_BY_DIVISION = {
 
 /** Capacidade inicial e teto por divisão (alinhado ao modelo por setores). */
 export const STADIUM_CAPACITY_BY_DIVISION = {
-  A: { base: 8_000, max: 46_000, step: 7_600 },
-  B: { base: 6_000, max: 35_440, step: 5_888 },
-  C: { base: 4_500, max: 27_900, step: 4_680 },
-  D: { base: 3_000, max: 17_300, step: 2_860 },
+  A: { base: 26_000, max: 128_000, step: 7_600 },
+  B: { base: 10_000, max: 79_000, step: 5_888 },
+  C: { base: 6_500, max: 60_000, step: 4_680 },
+  D: { base: 4_500, max: 38_000, step: 2_860 },
 };
 
 /** Faixas de preço de ingresso (R$). Calibrado v3 — bilheteria não pode dominar o caixa. */
@@ -301,11 +301,17 @@ export function financesPayrollFactor(finances) {
 
 /**
  * Receita recorrente estimada por rodada (patrocínio + TV em mando + ~½ bilheteria casa).
- * TV só cai em jogos como mandante (~metade das rodadas) — usa 50% da próxima parcela.
+ * Usa média por rodada/mando — estável ao longo da temporada (não cai quando parcelas acabam).
  */
 export function estimateRoundRecurringRevenue(club, division = club?.division || 'A') {
-  const sponsor = estimateSponsorInstallment(club) || 0;
-  const tv = Math.round((estimateTvInstallment(club) || 0) * 0.5);
+  const sponsorSlots = Math.max(1, Number(club?.sponsors?.installments) || (division === 'D' ? 22 : 38));
+  const sponsorTotal = Math.max(0, Number(club?.sponsors?.total) || 0);
+  const sponsor = sponsorTotal > 0 ? Math.round(sponsorTotal / sponsorSlots) : 0;
+
+  const tvSlots = Math.max(1, Number(club?.tvRights?.installments) || tvHomeSlots(division));
+  const tvTotal = Math.max(0, Number(club?.tvRights?.total) || 0);
+  const tv = tvTotal > 0 ? Math.round((tvTotal / tvSlots) * 0.5) : 0;
+
   let gateShare = 0;
   try {
     gateShare = Math.round((estimateGateReceipt(club, { division }).revenue || 0) * 0.45);
@@ -1766,6 +1772,79 @@ export function competitionAttraction(game) {
   return { boost: 0, label: 'Nacional' };
 }
 
+/** Jogo de alta tensão (finais / mata-mata agudo / reta de título ou rebaixamento). */
+export function isHighStakesHomeMatch(game, context = {}) {
+  if (!game) return false;
+  const homeClub = game.home;
+  if (!homeClub) return false;
+  const comp = String(game.competition || '').toUpperCase();
+  const phaseName = String(game.phase || game.leg || '').toUpperCase();
+  const phaseIndex = Number(game.phaseIndex) || 0;
+
+  if (comp.includes('COPA')) {
+    if (phaseIndex >= 8 || /SEMI|FINAL/.test(phaseName)) return true;
+    return false;
+  }
+  if (isSerieDKnockoutGame(game)) {
+    const round = Number(game.round || game.knockoutRound) || 0;
+    return round >= 20;
+  }
+
+  if (comp.includes('COPA')) return false;
+
+  const { standings = [], seasonRounds = 38, relegationZone = 4 } = context;
+  if (!standings.length) return false;
+  const round = Number(game.round) || Number(context.currentRound) || 0;
+  const remaining = Math.max(0, seasonRounds - round);
+  if (remaining > 3) return false;
+
+  const sorted = [...standings].sort(
+    (a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.wins - a.wins,
+  );
+  const position = sorted.findIndex(row => row.club === homeClub) + 1;
+  if (position <= 0) return false;
+  const inTitleRace = position <= 3;
+  const inRelegationBattle = position > sorted.length - relegationZone;
+  return inTitleRace || inRelegationBattle;
+}
+
+/**
+ * Boost aditivo de lotação por briga de título / rebaixamento (mandante).
+ * @param {object|null} game
+ * @param {{ standings?: object[], seasonRounds?: number, currentRound?: number, relegationZone?: number, division?: string }} context
+ */
+export function titleRaceAttendanceBoost(game, context = {}) {
+  if (!game || !context.standings?.length) return 0;
+  const homeClub = game.home;
+  if (!homeClub) return 0;
+  const comp = String(game.competition || '').toUpperCase();
+  if (comp.includes('COPA') || isSerieDKnockoutGame(game)) return 0;
+  const seasonRounds = Number(context.seasonRounds) || 38;
+  const round = Number(game.round) || Number(context.currentRound) || 0;
+  const remaining = Math.max(0, seasonRounds - round);
+  if (remaining > 5) return 0;
+
+  const sorted = [...context.standings].sort(
+    (a, b) => b.points - a.points || b.goalDiff - a.goalDiff || b.wins - a.wins,
+  );
+  const position = sorted.findIndex(row => row.club === homeClub) + 1;
+  if (position <= 0) return 0;
+
+  const relegationZone = Number(context.relegationZone) || 4;
+  let boost = 0;
+  if (position <= 3 && remaining <= 5) boost = 0.1;
+  if (position <= 2 && remaining <= 3) boost = Math.max(boost, 0.15);
+  if (position > sorted.length - relegationZone && remaining <= 5) boost = Math.max(boost, 0.08);
+  return boost;
+}
+
+/** Aplica piso de lotação em finais / jogos decisivos. */
+export function applyHighStakesFillFloor(fillRate, game, club, context = {}) {
+  const environment = Math.max(0, Math.min(100, Number(club?.environment) || 60));
+  if (environment < 55 || !isHighStakesHomeMatch(game, context)) return fillRate;
+  return Math.max(fillRate, 0.85);
+}
+
 /**
  * Taxa de ocupação: preço, Ambiente do elenco, torcida, fase do campeonato e ruído do jogo.
  * Canal: 'national' | 'cups'. Passe `game` no dia do jogo para fase + variação.
@@ -1782,22 +1861,34 @@ export function estimateFillRate(club, channel = 'national', options = {}) {
   const envBoost = (environment - 55) / 160;
   const supportBoost = (support - 50) / 200;
   const attraction = competitionAttraction(options.game);
+  const titleBoost = titleRaceAttendanceBoost(options.game, options.attendanceContext || {});
   const noise = options.deterministic === false ? (Math.random() - 0.5) * 0.07 : fixtureAttendanceNoise(options.game);
   // Sem jogo específico (painel do Estádio), Copas têm leve atrativo médio.
   const channelBias = !options.game && channel === 'cups' ? 0.05 : 0;
-  // Base 0.48 (era 0.60): lotação média mais realista vs folha.
-  const fill = 0.48 * priceFactor + envBoost + supportBoost + attraction.boost + noise + channelBias;
-  return Math.max(0.28, Math.min(0.96, fill));
+  const fill = 0.55 * priceFactor + envBoost + supportBoost + attraction.boost + titleBoost + noise + channelBias;
+  const floored = applyHighStakesFillFloor(fill, options.game, club, options.attendanceContext || {});
+  return Math.max(0.28, Math.min(0.96, floored));
 }
 
 /** Estimativa de bilheteria — com ou sem jogo concreto. */
-export function estimateGateReceipt(club, { channel = 'national', division = 'A', game = null, capacity = null } = {}) {
+export function estimateGateReceipt(
+  club,
+  {
+    channel = 'national',
+    division = 'A',
+    game = null,
+    capacity = null,
+    attendanceContext = null,
+  } = {},
+) {
   ensureStadium(club, division);
   const resolvedChannel = game ? ticketChannelFromGame(game) : channel;
   const attraction = competitionAttraction(game);
+  const ctx = attendanceContext || {};
 
   if (Number(club.stadiumSectorModel) === STADIUM_SECTOR_MODEL) {
     const noise = game ? fixtureAttendanceNoise(game) : resolvedChannel === 'cups' ? 0.02 : 0;
+    const titleBoost = titleRaceAttendanceBoost(game, ctx);
     const base = estimateGateReceiptSectors(club, {
       channel: resolvedChannel,
       division,
@@ -1807,11 +1898,17 @@ export function estimateGateReceipt(club, { channel = 'national', division = 'A'
       ticketRanges: TICKET_PRICE_RANGE,
       environment: club.environment,
       support: club.support,
+      attendanceContext: ctx,
     });
-    const boost = attraction.boost + noise;
-    const attendance = Math.round(base.attendance * (1 + boost * 0.45));
+    const boost = attraction.boost + titleBoost + noise;
+    const attendance = Math.round(base.attendance * (1 + boost));
     const cap = base.capacity || Math.max(1000, Number(capacity) || Number(club.stadiumCapacity) || 1000);
-    const clampedAttendance = Math.min(cap, Math.max(0, attendance));
+    let clampedAttendance = Math.min(cap, Math.max(0, attendance));
+    let fillRate = cap > 0 ? clampedAttendance / cap : base.fillRate;
+    fillRate = applyHighStakesFillFloor(fillRate, game, club, ctx);
+    if (fillRate > (cap > 0 ? clampedAttendance / cap : 0)) {
+      clampedAttendance = Math.min(cap, Math.round(cap * fillRate));
+    }
     const revenue =
       base.attendance > 0
         ? Math.round(base.revenue * (clampedAttendance / base.attendance))
@@ -1820,14 +1917,14 @@ export function estimateGateReceipt(club, { channel = 'national', division = 'A'
       ...base,
       channel: resolvedChannel,
       attendance: clampedAttendance,
-      fillRate: cap > 0 ? clampedAttendance / cap : base.fillRate,
+      fillRate: cap > 0 ? clampedAttendance / cap : fillRate,
       revenue,
       capacity: cap,
       attraction,
     };
   }
 
-  const fill = estimateFillRate(club, resolvedChannel, { game });
+  const fill = estimateFillRate(club, resolvedChannel, { game, attendanceContext: ctx });
   const cap = Math.max(1000, Number(capacity) || Number(club.stadiumCapacity) || 12_000);
   const attendance = Math.round(cap * fill);
   const price = club.ticketPrices[resolvedChannel] ?? TICKET_PRICE_RANGE[resolvedChannel].default;
@@ -1849,7 +1946,7 @@ export function estimateGateReceipt(club, { channel = 'national', division = 'A'
  * Lotação do dia do jogo (AO VIVO ou simulado).
  * Se o jogo já tem attendance gravada, reutiliza — mesma partida, mesmo público.
  */
-export function computeMatchAttendance(club, game, { division = 'A', capacity = null } = {}) {
+export function computeMatchAttendance(club, game, { division = 'A', capacity = null, attendanceContext = null } = {}) {
   if (!club || !game) return null;
   ensureStadium(club, division || club.division || 'A');
   const channel = ticketChannelFromGame(game);
@@ -1871,7 +1968,10 @@ export function computeMatchAttendance(club, game, { division = 'A', capacity = 
       cached: true,
     };
   }
-  return { ...estimateGateReceipt(club, { channel, division, game, capacity: cap }), cached: false };
+  return {
+    ...estimateGateReceipt(club, { channel, division, game, capacity: cap, attendanceContext }),
+    cached: false,
+  };
 }
 
 /** Grava lotação no fixture para UI ao vivo e bilheteria usarem o mesmo valor. */
@@ -1889,7 +1989,7 @@ export function attachMatchAttendance(club, game, options = {}) {
  * Credita bilheteria no caixa do clube mandante (fluxo de caixa + ledger).
  * Só jogos em casa; visitante nunca recebe; evita crédito duplicado no mesmo fixture.
  */
-export function creditHomeGate(club, game, { division = 'A', capacity = null } = {}) {
+export function creditHomeGate(club, game, { division = 'A', capacity = null, attendanceContext = null } = {}) {
   const clubName = club?.name;
   if (!club || !game || !clubName || game.home !== clubName || game.away === clubName) {
     return { ok: false, error: 'not_home' };
@@ -1897,7 +1997,7 @@ export function creditHomeGate(club, game, { division = 'A', capacity = null } =
   if (game.gateCredited) {
     return { ok: false, error: 'already_credited', balance: getBalance(club) };
   }
-  const estimate = attachMatchAttendance(club, game, { division, capacity });
+  const estimate = attachMatchAttendance(club, game, { division, capacity, attendanceContext });
   const phaseNote = estimate.attraction?.boost > 0.1 ? ` · ${estimate.attraction.label}` : '';
   const label =
     estimate.channel === 'cups'
@@ -1998,8 +2098,8 @@ export function sponsorExternalUrl(name) {
 /** Valor do contrato por temporada (R$), conforme divisão. Calibrado v4 (ops ~0,95–1,10×). */
 export const SPONSOR_VALUE_BY_DIVISION = {
   A: { master: [3_750_000, 5_300_000], secondary: [735_000, 1_065_000] },
-  B: { master: [1_985_000, 3_015_000], secondary: [345_000, 530_000] },
-  C: { master: [1_100_000, 1_640_000], secondary: [200_000, 310_000] },
+  B: { master: [2_223_000, 3_377_000], secondary: [386_000, 594_000] },
+  C: { master: [1_232_000, 1_837_000], secondary: [224_000, 347_000] },
   D: { master: [440_000, 760_000], secondary: [80_000, 152_000] },
 };
 
@@ -2556,8 +2656,8 @@ export function getSponsors(club) {
 /** Pool de TV por temporada. Calibrado v4 (ops ~0,95–1,10×). */
 export const TV_VALUE_BY_DIVISION = {
   A: [3_680_000, 5_005_000],
-  B: [1_840_000, 2_795_000],
-  C: [1_020_000, 1_600_000],
+  B: [2_061_000, 3_130_000],
+  C: [1_142_000, 1_792_000],
   D: [400_000, 680_000],
 };
 

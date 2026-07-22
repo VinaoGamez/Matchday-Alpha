@@ -7,7 +7,15 @@ export const STADIUM_SECTOR_MODEL = 2;
 export const DIVISION_STADIUM_SCALE = { A: 1, B: 0.8, C: 0.65, D: 0.55 };
 /** Custo de investimento no estádio — divisões menores pagam menos (payback alinhado). */
 export const DIVISION_STADIUM_COST_SCALE = { A: 1, B: 0.9, C: 0.75, D: 0.42 };
-export let DIVISION_CAPACITY_CAP = { A: 75_000, B: 45_000, C: 28_000, D: 18_000 };
+export let DIVISION_CAPACITY_CAP = { A: 128_000, B: 79_000, C: 60_000, D: 38_000 };
+
+/** Faixa de capacidade inicial por divisão (estrutura 0, só Popular nível 1). */
+export const INITIAL_STADIUM_CAPACITY_RANGE = {
+  A: { min: 25_000, max: 27_000 },
+  B: { min: 8_000, max: 12_000 },
+  C: { min: 5_000, max: 8_000 },
+  D: { min: 3_000, max: 6_000 },
+};
 
 export const DIVISION_SECTOR_ALLOW = {
   A: ['popular', 'stands', 'seats', 'boxes', 'vip'],
@@ -29,9 +37,9 @@ export const STRUCTURE_SECTOR_CAPS = [
   { popular: 1, stands: 0, seats: 0, boxes: 0, vip: 0 },
   { popular: 2, stands: 0, seats: 0, boxes: 0, vip: 0 },
   { popular: 3, stands: 3, seats: 0, boxes: 0, vip: 0 },
-  { popular: 3, stands: 3, seats: 2, boxes: 0, vip: 0 },
-  { popular: 3, stands: 3, seats: 2, boxes: 2, vip: 0 },
-  { popular: 3, stands: 3, seats: 2, boxes: 2, vip: 1 },
+  { popular: 4, stands: 3, seats: 2, boxes: 0, vip: 0 },
+  { popular: 4, stands: 4, seats: 3, boxes: 2, vip: 0 },
+  { popular: 4, stands: 4, seats: 3, boxes: 2, vip: 1 },
 ];
 
 export const STADIUM_SECTOR_DEFS = {
@@ -40,11 +48,11 @@ export const STADIUM_SECTOR_DEFS = {
     label: 'Popular',
     shortLabel: 'POPULAR',
     description: 'Geral — alta densidade, ticket mais baixo.',
-    maxLevel: 3,
+    maxLevel: 4,
     unlockStructure: 0,
     baselineLevel: 1,
-    seatsPerLevel: 4000,
-    baselineSeats: { A: 8000, B: 6000, C: 4500, D: 3000 },
+    seatsPerLevel: 8000,
+    baselineSeats: { A: 26_000, B: 10_000, C: 6_500, D: 4_500 },
     priceMultiplier: 1,
     opsPerThousand: 180,
     fillBias: 1.05,
@@ -56,10 +64,10 @@ export const STADIUM_SECTOR_DEFS = {
     label: 'Arquibancada',
     shortLabel: 'ARQUIB.',
     description: 'Norte/Sul sentados — exige estrutura intermediária.',
-    maxLevel: 3,
+    maxLevel: 4,
     unlockStructure: 2,
     baselineLevel: 0,
-    seatsPerLevel: 6000,
+    seatsPerLevel: 12_000,
     priceMultiplier: 1.15,
     opsPerThousand: 220,
     fillBias: 1,
@@ -71,10 +79,10 @@ export const STADIUM_SECTOR_DEFS = {
     label: 'Cadeiras numeradas',
     shortLabel: 'CADEIRAS',
     description: 'Laterais numeradas — exige estrutura moderna.',
-    maxLevel: 2,
+    maxLevel: 3,
     unlockStructure: 3,
     baselineLevel: 0,
-    seatsPerLevel: 5000,
+    seatsPerLevel: 10_000,
     priceMultiplier: 1.4,
     opsPerThousand: 280,
     fillBias: 0.95,
@@ -89,7 +97,7 @@ export const STADIUM_SECTOR_DEFS = {
     maxLevel: 2,
     unlockStructure: 4,
     baselineLevel: 0,
-    seatsPerLevel: 800,
+    seatsPerLevel: 1600,
     priceMultiplier: 2.8,
     opsPerThousand: 420,
     fillBias: 0.82,
@@ -104,7 +112,7 @@ export const STADIUM_SECTOR_DEFS = {
     maxLevel: 1,
     unlockStructure: 5,
     baselineLevel: 0,
-    seatsPerLevel: 400,
+    seatsPerLevel: 800,
     priceMultiplier: 4.5,
     opsPerThousand: 650,
     fillBias: 0.68,
@@ -184,12 +192,16 @@ export function getSectorLevel(club, sectorId) {
   return Math.max(0, Math.min(def.maxLevel, raw));
 }
 
-export function sectorSeats(sectorId, level, division = 'A') {
+export function sectorSeats(sectorId, level, division = 'A', club = null) {
   const def = STADIUM_SECTOR_DEFS[sectorId];
   if (!def || level <= 0) return 0;
   const scale = DIVISION_STADIUM_SCALE[division] ?? DIVISION_STADIUM_SCALE.A;
   if (def.baselineSeats && level >= def.baselineLevel) {
-    const base = def.baselineSeats[division] ?? def.baselineSeats.A;
+    const baseDefault = def.baselineSeats[division] ?? def.baselineSeats.A;
+    const base =
+      sectorId === 'popular' && club?.stadiumPopularBaseline > 0
+        ? club.stadiumPopularBaseline
+        : baseDefault;
     const extra = Math.max(0, level - def.baselineLevel);
     return Math.round(base + extra * def.seatsPerLevel * scale);
   }
@@ -202,7 +214,7 @@ export function computeSectorBreakdown(club, division = 'A') {
   for (const sectorId of Object.keys(STADIUM_SECTOR_DEFS)) {
     if (!divisionAllowsSector(division, sectorId)) continue;
     const level = getSectorLevel(club, sectorId);
-    const seats = sectorSeats(sectorId, level, division);
+    const seats = sectorSeats(sectorId, level, division, club);
     if (seats <= 0) continue;
     total += seats;
     rows.push({
@@ -292,6 +304,18 @@ export function migrateLegacyStadium(club, division = 'A') {
   syncStadiumCapacity(club, division);
 }
 
+/** Capacidade inicial determinística por clube (jitter dentro da faixa da divisão). */
+export function resolveInitialPopularCapacity(clubName, division = 'A') {
+  const range = INITIAL_STADIUM_CAPACITY_RANGE[division] || INITIAL_STADIUM_CAPACITY_RANGE.A;
+  const label = String(clubName || 'Clube').trim() || 'Clube';
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
+  const span = Math.max(0, range.max - range.min);
+  const step = span > 0 ? Math.max(1, Math.round(span / 4)) : 0;
+  const offset = step > 0 ? (hash % (Math.floor(span / step) + 1)) * step : 0;
+  return Math.round(range.min + Math.min(span, offset));
+}
+
 export function ensureStadiumSectors(club, division = 'A', { newGame = false } = {}) {
   if (!club || typeof club !== 'object') return null;
 
@@ -302,6 +326,7 @@ export function ensureStadiumSectors(club, division = 'A', { newGame = false } =
     club.stadiumSectorModel = STADIUM_SECTOR_MODEL;
     club.pitchLevel = division === 'A' || division === 'B' ? 2 : 1;
     club.pitchCondition = division === 'A' || division === 'B' ? 'average' : 'rough';
+    club.stadiumPopularBaseline = resolveInitialPopularCapacity(club.name || club.clubName, division);
   } else if (Number(club.stadiumSectorModel) !== STADIUM_SECTOR_MODEL) {
     migrateLegacyStadium(club, division);
   }
@@ -349,7 +374,7 @@ export function estimateStadiumOpsFromSectors(club, division = 'A') {
   let seatOps = 0;
   for (const sectorId of Object.keys(STADIUM_SECTOR_DEFS)) {
     const level = getSectorLevel(club, sectorId);
-    const seats = sectorSeats(sectorId, level, division);
+    const seats = sectorSeats(sectorId, level, division, club);
     seatOps += (seats / 1000) * (STADIUM_SECTOR_DEFS[sectorId].opsPerThousand || 200);
   }
   const raw = Math.round(base + seatOps + structure * OPS_STRUCTURE + pitch * OPS_PITCH);
@@ -379,7 +404,7 @@ export function estimateGateReceiptSectors(
   const sup = Math.max(0, Math.min(100, Number(support ?? club?.support) || 60));
   const envBoost = (env - 55) / 160;
   const supportBoost = (sup - 50) / 200;
-  const baseFill = Math.max(0.28, Math.min(0.96, 0.48 * priceFactor + envBoost + supportBoost));
+  const baseFill = Math.max(0.28, Math.min(0.96, 0.55 * priceFactor + envBoost + supportBoost));
 
   const { total, rows } = computeSectorBreakdown(club, division);
   const cap = Math.max(1000, total || 1000);
@@ -435,8 +460,8 @@ export function maxAchievableStadiumCapacity(division = 'A') {
 }
 
 DIVISION_CAPACITY_CAP = {
-  A: maxAchievableStadiumCapacity('A'),
-  B: maxAchievableStadiumCapacity('B'),
-  C: maxAchievableStadiumCapacity('C'),
-  D: maxAchievableStadiumCapacity('D'),
+  A: Math.min(maxAchievableStadiumCapacity('A'), 128_000),
+  B: Math.min(maxAchievableStadiumCapacity('B'), 79_000),
+  C: Math.min(maxAchievableStadiumCapacity('C'), 60_000),
+  D: Math.min(maxAchievableStadiumCapacity('D'), 38_000),
 };

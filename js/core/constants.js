@@ -2,7 +2,7 @@
  * Build pública para testers.
  * Nomenclatura: Alpha V.X.YY — sobe +0.05 a cada publicação (1.00 → 1.05 → …).
  */
-export const BUILD_VERSION = 'Alpha V.1.75';
+export const BUILD_VERSION = 'Alpha V.1.80';
 
 /** Rodadas da fase de grupos da Série D (1ª fase). */
 export const SERIE_D_GROUP_ROUNDS = 10;

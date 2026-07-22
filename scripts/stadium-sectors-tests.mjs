@@ -11,6 +11,7 @@ import {
   migrateLegacyStadium,
   maxAchievableStadiumCapacity,
   DIVISION_CAPACITY_CAP,
+  INITIAL_STADIUM_CAPACITY_RANGE,
   STADIUM_SECTOR_MODEL,
 } from '../js/engine/stadium-sectors.js';
 
@@ -31,12 +32,13 @@ const assert = (c, m) => {
   if (!c) throw new Error(m || 'fail');
 };
 
-check('novo jogo: estrutura 0, popular 1, capacidade pequena A', () => {
-  const club = { budget: 5_000_000, environment: 70, support: 70, ticketPrices: { national: 22, cups: 36 } };
+check('novo jogo: estrutura 0, popular 1, capacidade inicial A na faixa', () => {
+  const club = { name: 'Teste FC', budget: 5_000_000, environment: 70, support: 70, ticketPrices: { national: 22, cups: 36 } };
   ensureStadiumSectors(club, 'A', { newGame: true });
   assert(club.stadiumStructure === 0, String(club.stadiumStructure));
   assert(club.stadiumSectors.popular === 1, JSON.stringify(club.stadiumSectors));
-  assert(club.stadiumCapacity === 8000, String(club.stadiumCapacity));
+  const range = INITIAL_STADIUM_CAPACITY_RANGE.A;
+  assert(club.stadiumCapacity >= range.min && club.stadiumCapacity <= range.max, String(club.stadiumCapacity));
   assert(club.stadiumInvestments === 0, String(club.stadiumInvestments));
 });
 
@@ -53,7 +55,7 @@ check('estrutura 2 libera arquibancada', () => {
 check('Série D: sem cadeiras', () => {
   const club = { stadiumStructure: 5, stadiumSectors: { popular: 2, stands: 1 }, stadiumSectorModel: STADIUM_SECTOR_MODEL };
   assert(effectiveSectorMax(club, 'D', 'seats') === 0, 'seats D');
-  assert(effectiveSectorMax(club, 'D', 'stands') === 3, 'stands D');
+  assert(effectiveSectorMax(club, 'D', 'stands') === 4, 'stands D');
 });
 
 check('migração legado capacityLevel → setores', () => {
@@ -91,14 +93,16 @@ check('composição: soma setores = capacidade', () => {
   assert(sectorSeats('popular', 2, 'A') > sectorSeats('popular', 1, 'A'), 'popular grow');
 });
 
-check('teto por divisão = capacidade máxima alcançável', () => {
+check('teto por divisão = capacidade máxima alcançável (limitado)', () => {
+  const expectedMax = { A: 128_000, B: 79_000, C: 60_000, D: 38_000 };
   for (const division of ['A', 'B', 'C', 'D']) {
-    const max = maxAchievableStadiumCapacity(division);
-    assert(max > 0, `${division} max`);
-    assert(max === DIVISION_CAPACITY_CAP[division], `${division} cap ${max}`);
+    const achievable = maxAchievableStadiumCapacity(division);
+    assert(achievable > 0, `${division} max`);
+    assert(achievable <= expectedMax[division], `${division} cap ${achievable}`);
+    assert(achievable === DIVISION_CAPACITY_CAP[division], `${division} sync ${achievable}`);
   }
-  assert(maxAchievableStadiumCapacity('A') === 46_000, 'A ~46k');
-  assert(maxAchievableStadiumCapacity('B') === 35_440, 'B ~35k');
+  assert(maxAchievableStadiumCapacity('A') >= 120_000, 'A max ~2× fantasy');
+  assert(maxAchievableStadiumCapacity('B') >= 75_000, 'B max ~2× fantasy');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);
