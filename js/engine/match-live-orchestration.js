@@ -25,10 +25,8 @@ const SPONSOR_LOGO_URLS = Object.fromEntries(
 /**
  * Orquestração da partida ao vivo — desgaste por minuto, ciclo tick/advance,
  * faltas/cartões, lesões em jogo (evento + play-through + rehab) e o fluxo
- * completo de pênaltis/shootout. Cálculos de rating (profile/opponentForMatch/
- * playerFor/actorData/tacticalDiscipline/liveOverall) permanecem no engine —
- * estão fortemente acoplados ao restante do painel tático e são passados aqui
- * como callbacks. Sem DOM direto: interações usam `$`/callbacks fornecidos.
+ * completo de pênaltis/shootout. Ratings ao vivo em `engine/match-ratings.js`.
+ * Sem DOM direto: interações usam `$`/callbacks fornecidos.
  * @param {object} deps
  * @param {Function} deps.injuryInAcutePhase
  * @param {Function} deps.getNextUserGame — () => nextUserGame (fixture calendário)

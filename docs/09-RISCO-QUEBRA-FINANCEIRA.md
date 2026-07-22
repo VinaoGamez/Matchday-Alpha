@@ -1,7 +1,7 @@
 # Matchday Football — Risco e “quebra” financeira
 
 **Escopo:** empréstimo bancário + folha + saúde financeira + demissão + **falência formal**.  
-**Status:** calibração **v5** — quebra do clube existe e encerra a carreira.
+**Status:** calibração **v6** — demissão v2 (Projeto Protegido + Crise Real) + pop-ups de aviso.
 
 ---
 
@@ -11,23 +11,41 @@ Existem **dois fins de ciclo**:
 
 | Fim | O que acontece |
 |-----|----------------|
-| **Demissão** | Diretoria + finanças em crise → propostas de emprego ou encerrar |
+| **Demissão** | Crise institucional → modal + propostas de emprego ou encerrar |
 | **Quebra / falência** | Insolvência objetiva → **sem propostas**, save limpo → home |
 
-O caixa pode ficar negativo (overdraft). Juros de cheque e atraso de empréstimo são **compostos no fluxo da rodada nacional** (debitam caixa e/ou incham dívida).
+O caixa pode ficar negativo (overdraft). Juros de cheque e atraso de empréstimo são **compostos no fluxo da rodada nacional**.
 
 ```mermaid
 flowchart TD
   bill[Folha + banco + overdraft]
   compound[Juros compostos no fluxo]
   meters[Financas e board]
+  shield[Escudo de campanha]
+  warn[Pop-ups + inbox]
   sack[Demissao + propostas]
   broke[Falencia sem propostas]
 
   bill --> compound --> meters
-  meters --> sack
+  meters --> shield
+  shield --> warn
+  warn --> sack
   meters --> broke
 ```
+
+---
+
+## Alertas ao jogador (pop-ups)
+
+| Evento | Modal | Inbox |
+|--------|-------|-------|
+| Insolvência (2º atraso, OD, rombo) | `clubInsolvencyWarnModal` | Não |
+| Restrição de mercado | `clubFinancialRestrictionModal` | Não |
+| Risco de demissão | `managerJobWarnModal` | Sim |
+| Demissão | `managerSackModal` | Sim |
+| Falência | `clubBankruptcyModal` | Sim |
+
+Arquivos: [`js/feature/club-insolvency-warn`](../js/feature/club-insolvency-warn/index.js), [`js/feature/manager-job-warn`](../js/feature/manager-job-warn/index.js), [`js/feature/manager-sack`](../js/feature/manager-sack/index.js), [`js/feature/club-bankruptcy`](../js/feature/club-bankruptcy/index.js).
 
 ---
 
@@ -35,21 +53,49 @@ flowchart TD
 
 Arquivo: [`js/engine/club-solvency.js`](../js/engine/club-solvency.js)
 
-**Modelo fluido (compostos no atraso):**
+1. 1º atraso → taxa efetiva **reaplicada 3×** no saldo + multa.  
+2. Cada atraso seguinte reaplica mais vezes (4× / 5× / 6×).  
+3. **2º atraso** → **modal em tela** (one-shot).  
+4. Regularizar → compostos renegociados + janela de reabilitação.  
+5. Falência após ~4–5r no cheque especial (atraso ≥ 3 + caixa vermelho 5r, rombo ≥ 4× custo/rodada, ou OD streak ≥ 5 + finanças no piso).
 
-1. 1º atraso → taxa efetiva **reaplicada 3×** no saldo + multa; caixa sofre cobrança emergencial (não quita a dívida).  
-2. Cada atraso seguinte reaplica mais vezes (4× / 5× / 6×) → dívida **salta**; o espiral não deve se arrastar dezenas de rodadas.  
-3. **2º atraso** → **modal em tela** (one-shot; fechar descarta — **não** vai para a inbox).  
-4. **Regularizar (voltar a pagar em dia):** compostos são renegociados (saldo volta ao principal) + janela de reabilitação (sem juro/parcela) — quem fica no azul e paga consegue escapar da quebra.  
-5. Falência **não** é na 1ª rodada no vermelho. Quebra quando a dívida fica insustentável após ~4–5r no cheque especial:
-   - atraso ≥ 3 **e** caixa vermelho por **5 rodadas** seguidas, ou  
-   - rombo ≥ 4× custo/rodada com as mesmas 5r no vermelho, ou  
-   - overdraft streak ≥ 5 e finanças no piso.
-
-UI aviso: [`js/feature/club-insolvency-warn/index.js`](../js/feature/club-insolvency-warn/index.js).  
-UI falência: [`js/feature/club-bankruptcy/index.js`](../js/feature/club-bankruptcy/index.js) — modal sem ofertas.  
-Resgate no Escritório: pagar mínimo do empréstimo, vender elenco, **adiantar direitos de TV** (deságio 20–28%, 1×/temporada, só sob crise).  
 Prioridade: se sack e bankrupt na mesma rodada → **bankrupt**.
+
+---
+
+## Demissão v2 (`resolveBoardJobRisk`)
+
+Arquivo: [`js/engine/manager-job.js`](../js/engine/manager-job.js)
+
+### Limiares
+
+| Limiar | Valor | Uso |
+|--------|-------|-----|
+| Colapso duplo | **≤ 28%** | Diretoria **e** finanças no piso → demissão imediata |
+| Crise | **< 40%** | Avisos, streak de diretoria, zona quente |
+| Severo | **≤ 32%** | Par crítico |
+| Zona quente | **< 45%** | Par sustentado (3 rodadas) |
+
+### Gatilhos de demissão
+
+1. **Colapso duplo** — ambos ≤ 28% (escudo **não** protege)  
+2. **Par crítico** — um ≤ 32 + outro < 40  
+3. **Zona quente** — um < 40 + outro < 45 por **3 rodadas**  
+4. **Board streak** — diretoria < 40 por **8 rodadas**
+
+### Escudo de campanha (`resolveCampaignShield`)
+
+| Nível | Condição | Efeito |
+|-------|----------|--------|
+| **Fortaleza** | Meta ≥ 80% **ou** posição dentro da meta | Bloqueia par crítico, zona quente e board streak |
+| **Amortecedor** | Meta ≥ 55% **ou** status near/met/exceeded | 1 rodada de graça no par crítico |
+| **Nenhum** | Abaixo disso | Regras completas |
+
+Pressão financeira sobre a diretoria é reduzida com campanha boa (35% / 65% / 100%) — [`js/engine/club-status/rules/board.js`](../js/engine/club-status/rules/board.js).
+
+### Recuperação
+
+Com diretoria **e** finanças ≥ 45%, flags de aviso e streaks são **zerados** no save.
 
 ---
 
@@ -59,32 +105,21 @@ Prioridade: se sack e bankrupt na mesma rodada → **bankrupt**.
 |------|-------|
 | Orçamento inicial A/B/C/D | 9,5 / 6,2 / 4,2 / 2,7 mi |
 | Taxa empréstimo A–D | 1,3% / 1,5% / 1,7% / 1,9% por rodada |
-| Amort mínima | **5,5%** do principal (Escritório) |
+| Amort mínima | **5,5%** do principal |
 | Multa atraso | 28% (capitaliza) |
 | Compostos (apps) | 3× / 4× / 5× / 6× por streak de atraso |
-| Forçada | desde a **1ª** rodada; agrava ×1,25 / ×1,5 / ×1,9 / ×2,4 |
-| OD premium com loan | **2,4×** |
-| OD streakMult | 1 → 1,25 → 1,55 → 1,8 |
-| OD → dívida | streak ≥ 3: 50% do juro de OD capitaliza no empréstimo |
-
----
-
-## Demissão (inalterada na lógica de emprego)
-
-- Crise &lt; 40; severa &lt; 32; soft pair; board streak 8  
-- Dinheiro sozinho não demite — precisa board/finanças  
-- Ofertas em [`js/feature/manager-sack`](../js/feature/manager-sack/index.js)
 
 ---
 
 ## Sims
 
 ```bash
+node scripts/manager-job-sim.mjs
+node scripts/finances-impact-tests.mjs
 node scripts/club-solvency-tests.mjs
 node scripts/bank-loan-tests.mjs
 node scripts/v4-risk-matrix-sim.mjs
 node scripts/overdraft-streak-sim.mjs
-node scripts/economy-red-ink-diag.mjs
 ```
 
-Alvo: gestão ok sem vermelho/quebra; **ignorar o Escritório ≥4 rodadas → quebra**; queima + ignora → vermelho r2 e quebra ~r5; overdraft estressado → demissão ou quebra.
+Alvo: campanha boa + finanças ~31% → **aviso**, não demissão surpresa; colapso 28/28 → demissão; ignorar Escritório → quebra ou demissão após avisos visíveis.

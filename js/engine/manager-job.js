@@ -4,6 +4,35 @@ import { STATUS_MAX, STATUS_MIN } from './club-status/constants.js';
 /** Rodadas sem demissão (avisos ok). */
 export const MANAGER_JOB_HONEYMOON_ROUNDS = 6;
 
+/** Colapso duplo: ambos no piso → demissão (sem escudo). */
+export const MANAGER_JOB_COLLAPSE_THRESHOLD = STATUS_MIN;
+
+/** Crise padrão: avisos, streak e par quente. */
+export const MANAGER_JOB_CRISIS_THRESHOLD = 40;
+
+/** Crise severa: par crítico (1 severo + outro abaixo da crise). */
+export const MANAGER_JOB_SEVERE_THRESHOLD = 32;
+
+/** Zona quente: um abaixo da crise e outro abaixo deste valor. */
+export const MANAGER_JOB_WARM_PAIR_THRESHOLD = 45;
+
+/** Rodadas consecutivas na zona quente → demissão. */
+export const MANAGER_JOB_WARM_STREAK_ROUNDS = 3;
+
+/** @deprecated v1 — substituído por par crítico (<40) + zona quente. */
+export const MANAGER_JOB_SOFT_PAIR_THRESHOLD = 50;
+
+/** Rodadas consecutivas com diretoria em crise → demissão. */
+export const MANAGER_JOB_BOARD_STREAK_SACK = 8;
+
+/** Escudo Fortaleza: progresso mínimo da meta ao vivo. */
+export const CAMPAIGN_SHIELD_FORTRESS_PROGRESS = 80;
+
+/** Escudo Amortecedor: progresso mínimo da meta ao vivo. */
+export const CAMPAIGN_SHIELD_BUFFER_PROGRESS = 55;
+
+export const CAMPAIGN_PRESSURE_FACTORS = { fortress: 0.35, buffer: 0.65, none: 1.0 };
+
 /** Faixas de Ambiente por divisão (alinhadas ao engine). */
 export const HIRE_ENVIRONMENT_RANGES = {
   A: [58, 92],
@@ -12,44 +41,56 @@ export const HIRE_ENVIRONMENT_RANGES = {
   D: [50, 80],
 };
 
-/** Viés de diretoria na chegada (séries menores = mais paciência inicial). */
 const HIRE_BOARD_DIVISION_BIAS = { A: 2, B: 4, C: 5, D: 6 };
-
-/** Crise padrão: medidor abaixo deste limiar. */
-export const MANAGER_JOB_CRISIS_THRESHOLD = 40;
-
-/** Crise severa: abre caminho para demissão com o outro medidor só “fraco”. */
-export const MANAGER_JOB_SEVERE_THRESHOLD = 32;
-
-/** Par suave: um medidor severo + o outro abaixo deste valor → demissão. */
-export const MANAGER_JOB_SOFT_PAIR_THRESHOLD = 50;
-
-/**
- * Rodadas consecutivas com diretoria em crise (após a lua de mel) → demissão
- * mesmo com finanças ok. Evita emprego eterno com board no vermelho.
- */
-export const MANAGER_JOB_BOARD_STREAK_SACK = 8;
-
 const DIVISION_RANK = { A: 4, B: 3, C: 2, D: 1 };
 
 const clampNum = (value, min, max) => Math.min(max, Math.max(min, value));
 
-/** Ruído determinístico 0–1 a partir do seed. */
 const hireNoise = (seed, salt) => {
   const x = Math.sin((Number(seed) || 1) * 12.9898 + salt * 78.233) * 43758.5453;
   return x - Math.floor(x);
 };
 
+const isAtOrBelow = (value, threshold) => Number.isFinite(Number(value)) && Number(value) <= threshold;
+const isBelow = (value, threshold) => Number.isFinite(Number(value)) && Number(value) < threshold;
+
 /**
- * Status institucional ao assumir um novo clube (não herda o clube anterior).
- *
- * Fórmula:
- * - Ambiente  = 55% vestiário do novo elenco + 45% meio da faixa da divisão + lua de mel (+3) ± ruído
- * - Torcida   = 50% apoio do clube + 50% âncora 62 ± ruído (torcida ainda “conhece” o clube)
- * - Diretoria = 66 + viés da divisão + ruído → faixa ~60–78 (projeto novo)
- * - Orçamento = caixa inicial da divisão (initialBudget)
- * - Finanças  = calculada depois via syncFinancesFromBudget
+ * Escudo de campanha — protege demissão por desequilíbrio quando a meta vai bem.
+ * @returns {{ level: 'fortress'|'buffer'|'none', campaignFactor: number, label: string }}
  */
+export function resolveCampaignShield({
+  goalProgress = 0,
+  goalStatus = 'missed',
+  position = null,
+  goalMax = null,
+} = {}) {
+  const progress = Number(goalProgress) || 0;
+  const pos = Number(position);
+  const max = Number(goalMax);
+  const inGoalPosition = Number.isFinite(pos) && Number.isFinite(max) && pos > 0 && pos <= max;
+  const statusOk = ['near', 'met', 'exceeded'].includes(String(goalStatus || ''));
+
+  if (progress >= CAMPAIGN_SHIELD_FORTRESS_PROGRESS || inGoalPosition) {
+    return {
+      level: 'fortress',
+      campaignFactor: CAMPAIGN_PRESSURE_FACTORS.fortress,
+      label: 'Meta protegida',
+    };
+  }
+  if (progress >= CAMPAIGN_SHIELD_BUFFER_PROGRESS || statusOk) {
+    return {
+      level: 'buffer',
+      campaignFactor: CAMPAIGN_PRESSURE_FACTORS.buffer,
+      label: 'Campanha no ritmo',
+    };
+  }
+  return {
+    level: 'none',
+    campaignFactor: CAMPAIGN_PRESSURE_FACTORS.none,
+    label: '',
+  };
+};
+
 export function buildManagerHireStatus({
   club,
   division,
@@ -103,130 +144,287 @@ export function buildManagerHireStatus({
   };
 }
 
+const collapseDual = (board, finances, collapseThreshold) =>
+  isAtOrBelow(board, collapseThreshold) && isAtOrBelow(finances, collapseThreshold);
+
+const criticalPair = (board, finances, severeThreshold, crisisThreshold) =>
+  (isAtOrBelow(board, severeThreshold) && isBelow(finances, crisisThreshold)) ||
+  (isAtOrBelow(finances, severeThreshold) && isBelow(board, crisisThreshold));
+
+const warmPair = (board, finances, crisisThreshold, warmThreshold) =>
+  (isBelow(board, crisisThreshold) && isBelow(finances, warmThreshold)) ||
+  (isBelow(finances, crisisThreshold) && isBelow(board, warmThreshold));
+
+const imminentCritical = (board, finances, severeThreshold, crisisThreshold) => {
+  const b = Number(board);
+  const f = Number(finances);
+  if (!Number.isFinite(b) || !Number.isFinite(f)) return false;
+  if (criticalPair(b, f, severeThreshold, crisisThreshold)) return false;
+  if (isAtOrBelow(f, severeThreshold) && b >= crisisThreshold && b <= crisisThreshold + 3) return true;
+  if (isAtOrBelow(b, severeThreshold) && f >= crisisThreshold && f <= crisisThreshold + 3) return true;
+  return false;
+};
+
 /**
- * Avalia risco de emprego.
- * Demissão por:
- * 1) Diretoria e Finanças em crise (< limiar)
- * 2) Um severo + o outro fraco (par suave)
- * 3) Diretoria em crise por N rodadas seguidas após a lua de mel
+ * Avalia risco de emprego (v2 — Projeto Protegido + Crise Real).
+ *
+ * Demissão:
+ * 1) Colapso duplo (ambos ≤ piso)
+ * 2) Par crítico (severo + outro < crise) — escudo pode bloquear/atrasar
+ * 3) Zona quente sustentada (N rodadas)
+ * 4) Diretoria < crise por streak — escudo Fortaleza congela
  */
 export function resolveBoardJobRisk({
   board,
   finances,
   played = 0,
   honeymoonRounds = MANAGER_JOB_HONEYMOON_ROUNDS,
+  collapseThreshold = MANAGER_JOB_COLLAPSE_THRESHOLD,
   threshold = MANAGER_JOB_CRISIS_THRESHOLD,
   severeThreshold = MANAGER_JOB_SEVERE_THRESHOLD,
-  softPairThreshold = MANAGER_JOB_SOFT_PAIR_THRESHOLD,
+  warmThreshold = MANAGER_JOB_WARM_PAIR_THRESHOLD,
+  warmStreakLimit = MANAGER_JOB_WARM_STREAK_ROUNDS,
   boardCrisisStreak = 0,
+  warmCrisisStreak = 0,
   boardStreakLimit = MANAGER_JOB_BOARD_STREAK_SACK,
   alreadySacked = false,
+  campaignShield = { level: 'none' },
+  bufferGraceActive = false,
 } = {}) {
+  const base = {
+    board: Number(board),
+    finances: Number(finances),
+    boardCrisisStreak: Math.max(0, Number(boardCrisisStreak) || 0),
+    warmCrisisStreak: Math.max(0, Number(warmCrisisStreak) || 0),
+    campaignShield: campaignShield?.level || 'none',
+    popupKind: null,
+  };
+
   if (alreadySacked) {
-    return {
-      status: 'sacked',
-      reason: 'pending',
-      board: Number(board),
-      finances: Number(finances),
-      boardCrisisStreak: Number(boardCrisisStreak) || 0,
-    };
+    return { ...base, status: 'sacked', reason: 'pending', message: null };
   }
 
   const boardValue = Number(board);
   const financeValue = Number(finances);
   const gamesPlayed = Math.max(0, Number(played) || 0);
-  const prevStreak = Math.max(0, Number(boardCrisisStreak) || 0);
-  const boardCrisis = Number.isFinite(boardValue) && boardValue < threshold;
-  const financeCrisis = Number.isFinite(financeValue) && financeValue < threshold;
-  const boardSevere = Number.isFinite(boardValue) && boardValue < severeThreshold;
-  const financeSevere = Number.isFinite(financeValue) && financeValue < severeThreshold;
-  const softCombined =
-    (boardSevere && Number.isFinite(financeValue) && financeValue < softPairThreshold) ||
-    (financeSevere && Number.isFinite(boardValue) && boardValue < softPairThreshold);
+  const prevBoardStreak = Math.max(0, Number(boardCrisisStreak) || 0);
+  const prevWarmStreak = Math.max(0, Number(warmCrisisStreak) || 0);
+  const shield = campaignShield?.level || 'none';
   const inHoneymoon = gamesPlayed < honeymoonRounds;
-  const nextBoardStreak = boardCrisis ? (inHoneymoon ? prevStreak : prevStreak + 1) : 0;
 
-  if ((boardCrisis && financeCrisis) || softCombined) {
+  const boardCrisis = isBelow(boardValue, threshold);
+  const financeCrisis = isBelow(financeValue, threshold);
+  const dualCollapse = collapseDual(boardValue, financeValue, collapseThreshold);
+  const critical = criticalPair(boardValue, financeValue, severeThreshold, threshold);
+  const warm = warmPair(boardValue, financeValue, threshold, warmThreshold);
+
+  const freezeBoardStreak = shield === 'fortress' && boardCrisis;
+  const nextBoardStreak = boardCrisis
+    ? inHoneymoon || freezeBoardStreak
+      ? prevBoardStreak
+      : prevBoardStreak + 1
+    : 0;
+  const nextWarmStreak = warm ? prevWarmStreak + 1 : 0;
+
+  const warmLimit =
+    shield === 'buffer' ? Math.max(2, warmStreakLimit - 1) : warmStreakLimit;
+
+  const sackPayload = (reason, message, popupKind = 'sacked') => ({
+    ...base,
+    status: 'sacked',
+    reason,
+    message,
+    boardCrisisStreak: nextBoardStreak,
+    warmCrisisStreak: nextWarmStreak,
+    popupKind,
+  });
+
+  if (dualCollapse) {
     if (inHoneymoon) {
       return {
+        ...base,
         status: 'critical',
         reason: 'honeymoon',
-        board: boardValue,
-        finances: financeValue,
         boardCrisisStreak: nextBoardStreak,
+        warmCrisisStreak: 0,
+        popupKind: 'critical',
         message:
           'Diretoria e finanças estão no vermelho, mas o projeto ainda tem paciência no início da temporada.',
       };
     }
+    return sackPayload(
+      'collapse_dual',
+      'Colapso institucional: diretoria e finanças no limite. O ciclo foi encerrado.',
+    );
+  }
+
+  if (critical) {
+    if (inHoneymoon) {
+      return {
+        ...base,
+        status: 'critical',
+        reason: 'honeymoon',
+        boardCrisisStreak: nextBoardStreak,
+        warmCrisisStreak: 0,
+        popupKind: 'critical',
+        message:
+          'Diretoria e finanças estão no vermelho, mas o projeto ainda tem paciência no início da temporada.',
+      };
+    }
+    if (shield === 'fortress') {
+      return {
+        ...base,
+        status: 'warn_shield',
+        reason: 'shield_fortress',
+        boardCrisisStreak: nextBoardStreak,
+        warmCrisisStreak: 0,
+        popupKind: 'shield_fortress',
+        message:
+          'Finanças e diretoria estão desalinhadas, mas a campanha acima da meta mantém o cargo por enquanto. Regularize o caixa no Escritório.',
+      };
+    }
+    if (shield === 'buffer' && !bufferGraceActive) {
+      return {
+        ...base,
+        status: 'critical_grace',
+        reason: 'buffer_grace',
+        boardCrisisStreak: nextBoardStreak,
+        warmCrisisStreak: 0,
+        popupKind: 'critical_grace',
+        bufferGraceActive: true,
+        message:
+          'A meta da temporada deu uma rodada de trégua. Sem reação financeira e institucional, a demissão vem na próxima rodada.',
+      };
+    }
+    return sackPayload(
+      'critical_pair',
+      'A diretoria encerrou o ciclo: a pressão no projeto e o desequilíbrio do clube tornaram a continuidade inviável.',
+    );
+  }
+
+  if (!inHoneymoon && warm && nextWarmStreak >= warmLimit) {
+    if (shield === 'fortress') {
+      return {
+        ...base,
+        status: 'warn_shield',
+        reason: 'shield_fortress_warm',
+        boardCrisisStreak: nextBoardStreak,
+        warmCrisisStreak: prevWarmStreak,
+        popupKind: 'shield_fortress',
+        message:
+          'Instabilidade financeira se arrasta, mas a campanha protege o cargo. Ainda assim, normalize o caixa.',
+      };
+    }
+    if (shield === 'buffer' && nextWarmStreak < warmLimit + 1) {
+      return {
+        ...base,
+        status: 'warn_warm',
+        reason: 'warm_buffer',
+        boardCrisisStreak: nextBoardStreak,
+        warmCrisisStreak: nextWarmStreak,
+        popupKind: 'warn_warm',
+        message: `Desequilíbrio institucional por ${nextWarmStreak} rodada(s). A campanha segura o cargo, mas a crise persiste.`,
+      };
+    }
+    return sackPayload(
+      'warm_sustained',
+      'A diretoria encerrou o ciclo: resultados e saúde financeira abaixo do aceitável por tempo demais.',
+    );
+  }
+
+  if (!inHoneymoon && boardCrisis && nextBoardStreak >= boardStreakLimit && shield !== 'fortress') {
+    return sackPayload(
+      'board_sustained',
+      'A diretoria perdeu a paciência: a cobrança por resultados se arrastou por tempo demais sem reação.',
+    );
+  }
+
+  if (imminentCritical(boardValue, financeValue, severeThreshold, threshold)) {
     return {
-      status: 'sacked',
-      reason: softCombined && !(boardCrisis && financeCrisis) ? 'soft_combined' : 'combined',
-      board: boardValue,
-      finances: financeValue,
+      ...base,
+      status: 'warn_imminent',
+      reason: 'imminent_critical',
       boardCrisisStreak: nextBoardStreak,
-      message: softCombined && !(boardCrisis && financeCrisis)
-        ? 'A diretoria encerrou o ciclo: a pressão no projeto e o desequilíbrio do clube tornaram a continuidade inviável.'
-        : 'A diretoria encerrou o ciclo: resultados e saúde financeira abaixo do aceitável.',
+      warmCrisisStreak: nextWarmStreak,
+      popupKind: 'warn_imminent',
+      message:
+        'Um passo a mais na crise e o cargo cai. Trate caixa e resultados antes da próxima rodada nacional.',
     };
   }
 
-  if (!inHoneymoon && boardCrisis && nextBoardStreak >= boardStreakLimit) {
+  if (warm && nextWarmStreak >= warmLimit - 1 && shield !== 'fortress') {
     return {
-      status: 'sacked',
-      reason: 'board_sustained',
-      board: boardValue,
-      finances: financeValue,
+      ...base,
+      status: 'warn_imminent',
+      reason: 'imminent_warm',
       boardCrisisStreak: nextBoardStreak,
-      message:
-        'A diretoria perdeu a paciência: a cobrança por resultados se arrastou por tempo demais sem reação.',
+      warmCrisisStreak: nextWarmStreak,
+      popupKind: 'warn_imminent',
+      message: `Instabilidade por ${nextWarmStreak} rodada(s): mais ${warmLimit - nextWarmStreak} nesta faixa e a diretoria encerra o ciclo.`,
+    };
+  }
+
+  if (warm) {
+    return {
+      ...base,
+      status: 'warn_warm',
+      reason: 'warm',
+      boardCrisisStreak: nextBoardStreak,
+      warmCrisisStreak: nextWarmStreak,
+      popupKind: 'warn_warm',
+      message: `Desequilíbrio entre diretoria e finanças (${nextWarmStreak}/${warmLimit} rodadas). Regularize caixa e resultados.`,
     };
   }
 
   if (boardCrisis) {
     const remaining = Math.max(0, boardStreakLimit - nextBoardStreak);
+    const nearSack = remaining <= 3 && shield !== 'fortress';
     return {
-      status: 'warn_board',
+      ...base,
+      status: nearSack ? 'warn_board_final' : 'warn_board',
       reason: 'board',
-      board: boardValue,
-      finances: financeValue,
       boardCrisisStreak: nextBoardStreak,
+      warmCrisisStreak: 0,
+      popupKind: nearSack ? 'warn_board_final' : 'warn_board',
       message: inHoneymoon
         ? 'A diretoria cobra resultados. Melhore a campanha antes que a paciência acabe.'
-        : remaining <= 3
+        : nearSack
           ? `A diretoria está no limite: sem reação em breve o cargo cai (${remaining} rodada${remaining === 1 ? '' : 's'} de paciência).`
-          : 'A diretoria cobra resultados. Melhore a campanha antes que a paciência acabe.',
+          : shield === 'fortress'
+            ? 'A diretoria cobra, mas a campanha acima da meta segura o projeto por enquanto.'
+            : 'A diretoria cobra resultados. Melhore a campanha antes que a paciência acabe.',
     };
   }
 
   if (financeCrisis) {
     return {
+      ...base,
       status: 'warn_finances',
       reason: 'finances',
-      board: boardValue,
-      finances: financeValue,
       boardCrisisStreak: 0,
+      warmCrisisStreak: 0,
+      popupKind: 'warn_finances',
       message:
-        'A diretoria cobra o caixa. A saúde financeira do clube está no vermelho.',
+        shield === 'fortress'
+          ? 'A diretoria cobra o caixa, mas a campanha protege o cargo. Regularize as finanças no Escritório.'
+          : 'A diretoria cobra o caixa. A saúde financeira do clube está no vermelho.',
     };
   }
 
   return {
+    ...base,
     status: 'ok',
     reason: null,
-    board: boardValue,
-    finances: financeValue,
-    boardCrisisStreak: 0,
     message: null,
+    boardCrisisStreak: 0,
+    warmCrisisStreak: 0,
+    popupKind: null,
   };
 }
 
 const divisionDistance = (a, b) =>
   Math.abs((DIVISION_RANK[a] || 0) - (DIVISION_RANK[b] || 0));
 
-/**
- * Gera 2–4 propostas de clubes para o técnico demitido.
- * Prefere mesma série ou uma abaixo; clubes com diretoria/finanças frágeis.
- */
 export function generateJobOffers({
   clubs = {},
   userClub,
@@ -313,4 +511,49 @@ export function generateJobOffers({
   return picked.slice(0, Math.max(2, Math.min(4, count)));
 }
 
-export const managerJobModuleVersion = MODULE_VERSIONS.managerJob ?? 1;
+/**
+ * Limpa flags de aviso quando diretoria e finanças saem da zona quente.
+ */
+export function shouldResetJobWarningState(
+  board,
+  finances,
+  { recoveryThreshold = MANAGER_JOB_WARM_PAIR_THRESHOLD } = {},
+) {
+  const b = Number(board);
+  const f = Number(finances);
+  return Number.isFinite(b) && Number.isFinite(f) && b >= recoveryThreshold && f >= recoveryThreshold;
+}
+
+/**
+ * Normaliza blob de crise persistido no save da temporada.
+ */
+export function hydrateManagerJobCrisis(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    ...raw,
+    status: raw.status || null,
+    reason: raw.reason || null,
+    message: raw.message || null,
+    board: Number.isFinite(Number(raw.board)) ? Number(raw.board) : null,
+    finances: Number.isFinite(Number(raw.finances)) ? Number(raw.finances) : null,
+    boardCrisisStreak: Math.max(0, Number(raw.boardCrisisStreak) || 0),
+    warmCrisisStreak: Math.max(0, Number(raw.warmCrisisStreak) || 0),
+    bufferGraceActive: !!raw.bufferGraceActive,
+    campaignShield: raw.campaignShield || null,
+    warnedBoard: !!raw.warnedBoard,
+    warnedFinances: !!raw.warnedFinances,
+    warnedBoardStreak: !!raw.warnedBoardStreak,
+    warnedCritical: !!raw.warnedCritical,
+    warnedGrace: !!raw.warnedGrace,
+    warnedShield: !!raw.warnedShield,
+    warnedInsolvent: !!raw.warnedInsolvent,
+    warnedPopups:
+      raw.warnedPopups && typeof raw.warnedPopups === 'object' ? { ...raw.warnedPopups } : {},
+    lastWarnPopupKey: raw.lastWarnPopupKey || null,
+    offers: Array.isArray(raw.offers) ? raw.offers.map(item => ({ ...item })) : [],
+    cash: Number.isFinite(Number(raw.cash)) ? Number(raw.cash) : undefined,
+    debt: Number.isFinite(Number(raw.debt)) ? Number(raw.debt) : undefined,
+  };
+}
+
+export const managerJobModuleVersion = MODULE_VERSIONS.managerJob ?? 3;

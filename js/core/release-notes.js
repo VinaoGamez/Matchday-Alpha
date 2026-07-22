@@ -5,6 +5,41 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.60',
+    date: '2026-07-22',
+    publishedAt: '2026-07-22T01:30:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Calendário · mandos',
+        items: [
+          'Novas carreiras alternam casa e fora — no máximo 2 jogos seguidos no mesmo mando.',
+          'Próximos Jogos e Calendário refletem a rotina mais equilibrada.',
+        ],
+      },
+      {
+        label: 'Diretoria · risco de emprego',
+        items: [
+          'Avisos de demissão aparecem em popup na tela, além da caixa de Mensagens.',
+          'Campanha acima da meta protege o cargo quando finanças ou diretoria estão no vermelho.',
+          'Colapso total (diretoria + finanças no piso) ou falência ainda encerram o ciclo.',
+        ],
+      },
+      {
+        label: 'Partida ao vivo',
+        items: [
+          'Cabeçalho reorganizado: AO VIVO no topo; fase do campeonato e estádio abaixo do badge.',
+        ],
+      },
+      {
+        label: 'Painel · próxima partida',
+        items: [
+          'Fase da competição e contexto na tabela (ex.: posição no grupo) ao lado dos clubes.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.55',
     date: '2026-07-21',
     publishedAt: '2026-07-21T21:25:00-03:00',

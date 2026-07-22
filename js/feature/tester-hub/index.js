@@ -119,26 +119,9 @@ function buildReport({ category, severity, area, title, description, steps }) {
  */
 export function createTesterHubFeature(deps = {}) {
   const { root = document.body, onOpenGuide, onOpenFeedback } = deps;
-  let cssReady = false;
-
-  const ensureCss = () => {
-    if (cssReady || typeof document === 'undefined') return;
-    if (document.querySelector('link[data-tester-hub], style[data-tester-hub]')) {
-      cssReady = true;
-      return;
-    }
-    // CSS principal vem de css/tester-hub.css no HTML; fallback mínimo se faltar link.
-    const style = document.createElement('style');
-    style.setAttribute('data-tester-hub', '1');
-    style.textContent =
-      '.tester-hub-modal{width:min(640px,calc(100vw - 28px));max-height:min(88vh,820px);overflow:auto;text-align:left}.tester-hub-modal h2{margin:4px 0 12px;font:700 30px Barlow Condensed,sans-serif}';
-    document.head.append(style);
-    cssReady = true;
-  };
 
   const inject = () => {
     if (document.getElementById('testerGuideModal')) return;
-    ensureCss();
     const guideHtml = GUIDE_SECTIONS.map(
       section =>
         `<article class="tester-guide-section"><h3>${escapeHtml(section.title)}</h3><ul>${section.body

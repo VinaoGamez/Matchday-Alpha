@@ -47,7 +47,7 @@ js/
 1. **Motores não tocam DOM** — só regras e estado
 2. **Features não alteram simulação** — só UI + handlers
 3. **Save versionado** — ver `MODULE_VERSIONS` em `constants.js`
-4. **CSS por módulo** — engine sem injeção JS (Fase E passo 2); features (tactics, tactical-confrontation, calendar-view, economy, season-summary, player-cells) também sem `createElement('style')` (Fase E passo 4) — CSS extraído para `css/*.css` linkados em `index.html`. Leftovers conhecidos: `tester-hub` (fallback mínimo só se faltar o link `css/tester-hub.css`) e `ui/update-alert.js`/`ui/release-notes-viewer.js` (chrome de UI, fora do escopo de features)
+4. **CSS por módulo** — engine sem injeção JS (Fase E passo 2); features (tactics, tactical-confrontation, calendar-view, economy, season-summary, player-cells) também sem `createElement('style')` (Fase E passo 4) — CSS extraído para `css/*.css` linkados em `index.html`. UI chrome (`update-alert`, `release-notes-viewer`, `tester-hub`) também em arquivos estáticos. Leftover conhecido: `security/tester-hardening.js` (hardening inline).
 
 ## Fases
 
@@ -87,8 +87,7 @@ js/
   `economy/index.js` (economyOfficeCss) → `css/economy-office.css`, `season-summary/index.js`
   → `css/season-summary.css`, `shared/player-cells.js` (injectPlayerStatusCss) →
   `css/player-status.css`. Todos os injetores e call sites (inclusive em `legacy/engine.js`)
-  foram removidos. Leftovers: `tester-hub` (fallback mínimo condicional) e `ui/update-alert.js`
-  / `ui/release-notes-viewer.js` (UI chrome, não features).
+  foram removidos. Leftover: `security/tester-hardening.js` (hardening inline).
 
 ### Fase F — nota (concluída)
 
@@ -107,9 +106,8 @@ todos factory `create...(deps)` sem DOM direto no motor (callbacks para render/l
   `showFinalActions`, `exitLiveMatch`, `reopenMatchWindow`, `openPreparation`.
 
 `MODULE_VERSIONS.matchAvailability`, `.matchLiveAwaySubs`, `.matchLiveOrchestration`,
-`.matchLiveSession` em `constants.js`. Ratings (`profile`/`opponentForMatch`/`playerFor`/
-`actorData`/`tacticalDiscipline`/`liveOverall`) permanecem em `legacy/engine.js` — fortemente
-acoplados ao painel tático — e são passados às novas engines como callbacks.
+`.matchLiveSession` em `constants.js`. Ratings ao vivo (`profile`, `playerFor`,
+`liveOverall`, etc.) em `engine/match-ratings.js` (`MODULE_VERSIONS.matchRatings`).
 
 ## Comandos
 

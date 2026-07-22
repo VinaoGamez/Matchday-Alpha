@@ -179,7 +179,7 @@ check('Finanças ruins sozinhas NÃO demitem; com board em crise demitem', () =>
   assert(onlyFin.status !== 'sacked', onlyFin.status);
   const both = resolveBoardJobRisk({ board: 35, finances: 30, played: 12 });
   assert(both.status === 'sacked', both.status);
-  assert(both.reason === 'combined' || both.reason === 'soft_combined', both.reason);
+  assert(both.reason === 'critical_pair' || both.reason === 'collapse_dual', both.reason);
 });
 
 check('Saúde baixa corta crédito e payroll factor; fillRate segue Ambiente', () => {

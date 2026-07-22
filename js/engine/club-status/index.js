@@ -79,6 +79,7 @@ export function createClubStatusEngine(deps) {
     const args = {
       ...matchCtx(ctx),
       finances: Number.isFinite(Number(club.finances)) ? Number(club.finances) : null,
+      campaignFactor: ctx.campaignFactor ?? 1,
     };
     applyDeltas(club, {
       environment: environmentRules.matchDelta(args),
@@ -87,12 +88,13 @@ export function createClubStatusEngine(deps) {
     });
   };
 
-  const applyTablePressure = (club, standing = {}) => {
+  const applyTablePressure = (club, standing = {}, campaignFactor = 1) => {
     if (!club || !standing.played || standing.played < 1 || !standing.position || !standing.clubsCount) return;
     const args = {
       ...standing,
       clamp,
       finances: Number.isFinite(Number(club.finances)) ? Number(club.finances) : null,
+      campaignFactor,
     };
     applyDeltas(club, {
       environment: environmentRules.tableDelta(args),
@@ -127,7 +129,7 @@ export function createClubStatusEngine(deps) {
     onStatusChanged?.();
   };
 
-  const applyRoundImpacts = (games = [], { userStanding, fillRateByUserMatch } = {}) => {
+  const applyRoundImpacts = (games = [], { userStanding, fillRateByUserMatch, campaignFactor = 1 } = {}) => {
     const clubs = getClubs();
     const userClub = getUserClub();
     games.forEach(game => {
@@ -150,6 +152,7 @@ export function createClubStatusEngine(deps) {
           goalDiff: gd,
           fillRate: game.home === userClub ? fill : null,
           positionGap: homeGap,
+          campaignFactor: game.home === userClub ? campaignFactor : 1,
         });
       }
       if (away) {
@@ -159,13 +162,14 @@ export function createClubStatusEngine(deps) {
           goalDiff: -gd,
           fillRate: game.away === userClub ? fill : null,
           positionGap: awayGap,
+          campaignFactor: game.away === userClub ? campaignFactor : 1,
         });
       }
     });
 
     const user = clubs[userClub];
     if (user) {
-      if (userStanding) applyTablePressure(user, userStanding);
+      if (userStanding) applyTablePressure(user, userStanding, campaignFactor);
       applyUserDrift(user);
       const division = getUserDivision?.() || user.division;
       syncFinancesFromBudget(user, division);
@@ -194,11 +198,13 @@ export function createClubStatusEngine(deps) {
             runwayRounds,
             shortfall: !!user.wageShortfall || overdrawn || !!user.overdraftActive,
             overdraftStreak,
+            campaignFactor,
             clamp,
           }) +
           boardRules.financeGapCeilingDelta({
             board: user.board,
             finances: user.finances,
+            campaignFactor,
             clamp,
           }),
         support: mood.support,

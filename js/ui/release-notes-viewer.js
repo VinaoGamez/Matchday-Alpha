@@ -1,3 +1,4 @@
+import '../../css/release-notes-viewer.css';
 import { BUILD_VERSION } from '../core/constants.js';
 import { RELEASE_NOTES } from '../core/release-notes.js';
 
@@ -38,27 +39,6 @@ function renderTopicsHtml(topics = []) {
   `,
     )
     .join('');
-}
-
-function ensureStyles() {
-  if (document.getElementById('release-notes-viewer-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'release-notes-viewer-styles';
-  style.textContent = `
-    .updates-info-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px;border:1px solid #28505b;border-radius:6px;background:#0b1d25}
-    .updates-info-summary{display:grid;gap:4px;min-width:0}
-    .updates-info-summary strong{color:#edf8f5;font:700 16px 'Barlow Condensed',sans-serif}
-    .updates-info-summary span{color:#9eb6b8;font:600 12px 'DM Sans',sans-serif}
-    .updates-info-row button{flex:none;background:#24667c!important;color:#fff!important;border:1px solid #63d9ff!important;padding:10px 16px;font:700 10px 'DM Sans',sans-serif;letter-spacing:.35px;cursor:pointer;border-radius:5px}
-    .updates-info-row button:hover{background:#2f7890!important;border-color:#8ae6ff!important}
-    .release-notes-topic{padding:12px;border:1px solid #28505b;border-radius:6px;background:#091820}
-    .release-notes-topic+ .release-notes-topic{margin-top:10px}
-    .release-notes-topic>label{display:block;margin:0 0 8px;color:#63d9ff;font:700 10px 'DM Sans',sans-serif;letter-spacing:.55px}
-    .release-notes-topic ul{margin:0;padding-left:18px;color:#d7ece8;font:500 12px/1.45 'DM Sans',sans-serif}
-    .release-notes-topic li+li{margin-top:6px}
-    @media(max-width:560px){.updates-info-row{align-items:flex-start;flex-direction:column}}
-  `;
-  document.head.append(style);
 }
 
 function ensureModal() {
@@ -129,13 +109,11 @@ export function renderOptionsUpdateSummary() {
 }
 
 export function openReleaseNotesReader(startIndex = 0) {
-  ensureStyles();
   ensureModal();
   renderReaderAt(Math.max(0, Math.min(startIndex, RELEASE_NOTES.length - 1)));
 }
 
 export function initReleaseNotesViewer({ $, onClick }) {
-  ensureStyles();
   ensureModal();
   if (wired) return;
   wired = true;

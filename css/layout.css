@@ -244,6 +244,26 @@ main > .view.active {
   color: #9fcfd8 !important;
   letter-spacing: 0.2px;
 }
+.view#dashboard .match .teams > div > small.match-team-context {
+  font: 500 11px 'DM Sans', sans-serif !important;
+  color: #6a929e !important;
+  letter-spacing: 0.25px;
+}
+.view#dashboard .match .teams > div > small.match-team-context.hidden {
+  display: none;
+}
+.view#dashboard .match .teams > strong.match-vs-block .match-competition-phase {
+  font: 600 11px 'DM Sans', sans-serif;
+  color: #7aabbb;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+  text-align: center;
+  max-width: 100%;
+  line-height: 1.2;
+}
+.view#dashboard .match .teams > strong.match-vs-block .match-competition-phase.hidden {
+  display: none;
+}
 .view#dashboard .match .teams > strong.match-vs-block {
   width: 100%;
   max-width: 260px;

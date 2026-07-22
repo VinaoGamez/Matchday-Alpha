@@ -877,6 +877,7 @@ export function createTransfersEngine(deps) {
       return {
         playerId: resolvePlayerId(player),
         player,
+        isStarter: club.roster.indexOf(player) < 11,
         value: Number(player.marketValue) || estimatePlayerValue(player, club.division),
         listed: !!player.listed,
         loanListed: !!player.loanListed,
@@ -909,6 +910,7 @@ export function createTransfersEngine(deps) {
         rows.push({
           playerId: resolvePlayerId(player),
           player,
+          isStarter: false,
           value: Number(player.marketValue) || estimatePlayerValue(player, club.division),
           listed: false,
           loanListed: false,

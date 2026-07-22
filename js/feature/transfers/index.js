@@ -1011,9 +1011,14 @@ export function createTransfersFeature(deps) {
             loanBits.push(
               `<small class="transfers-loan-tag transfers-loan-tag--in" title="Emprestado no elenco">EMPR.</small>${clubTag(row.loanFrom, 'in')}`,
             );
-          } else if (row.loanListed) {
+          } else           if (row.loanListed) {
             loanBits.push(
               '<small class="transfers-loan-tag transfers-loan-tag--offer" title="Disponível para empréstimo">EMPR.</small>',
+            );
+          }
+          if (row.isStarter && !row.loanOut && !row.onLoan) {
+            loanBits.push(
+              '<small class="transfers-loan-tag transfers-loan-tag--starter" title="Titular da equipe">TITULAR</small>',
             );
           }
           if (onLoan && row.loanBuyFee > 0) {

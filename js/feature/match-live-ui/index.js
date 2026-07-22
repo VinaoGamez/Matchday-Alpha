@@ -2,6 +2,10 @@ import { MEMORY_LIMITS } from '../../core/save.js';
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { applyCompetitionBadge } from '../../ui/competition-badge.js';
 import { setHumanBadgeOnCrest } from '../../ui/human-badge.js';
+import {
+  clubStandingContext,
+  matchCompetitionPhaseLabel,
+} from '../shared/match-presentation.js';
 import { bindBoardRosterHover } from '../../ui/board-roster-hover.js';
 import {
   formatLiveClockParts,
@@ -31,7 +35,13 @@ import subArrowsUrl from '../../../assets/ui/sub-arrows.png?url';
  * @param {Function} deps.getScores — () => ({ home, away }) já orientado ao calendário
  * @param {Function} deps.getUserClub
  * @param {Function} [deps.getUserAtHome] — () => boolean (mando do calendário)
- * @param {Function} [deps.getUserDivision]
+ * @param {Function} deps.getUserDivision
+ * @param {Function} [deps.getCurrentRound]
+ * @param {Function} [deps.getClubs]
+ * @param {Function} [deps.getSerieDGroups]
+ * @param {Function} [deps.getUserSerieDGroupIndex]
+ * @param {Function} [deps.displayedClubPosition]
+ * @param {number} [deps.serieDGroupRounds]
  * @param {Function} deps.fixtureDetails
  * @param {Function} deps.formatVenueCrowdLine
  * @param {Function} deps.clubCrestInitials
@@ -71,6 +81,12 @@ export function createMatchLiveUiFeature(deps) {
     getUserClub,
     getUserAtHome,
     getUserDivision,
+    getCurrentRound,
+    getClubs,
+    getSerieDGroups,
+    getUserSerieDGroupIndex,
+    displayedClubPosition,
+    serieDGroupRounds = 10,
     getClubManagerName,
     fixtureDetails,
     formatVenueCrowdLine,
@@ -238,15 +254,36 @@ export function createMatchLiveUiFeature(deps) {
 
   const renderHeader = game => {
     if (!game) return;
-    const details = fixtureDetails(game);
-    const homeClub = game.home,
-      awayClub = game.away,
-      userHome = homeClub === getUserClub();
-    $('#liveMatchDateTime').textContent = `${details.display} · ${details.time}`;
-    $('#liveMatchVenue').textContent = formatVenueCrowdLine(game);
-    applyCompetitionBadge('#liveMatchCompetition', game, {
-      userDivision: typeof getUserDivision === 'function' ? getUserDivision() : 'A',
+    const userDivision = typeof getUserDivision === 'function' ? getUserDivision() : 'A';
+    const currentRound = typeof getCurrentRound === 'function' ? getCurrentRound() || 1 : 1;
+    const serieDGroups = typeof getSerieDGroups === 'function' ? getSerieDGroups() || [] : [];
+    const userSerieDGroupIndex = typeof getUserSerieDGroupIndex === 'function' ? getUserSerieDGroupIndex() ?? 0 : 0;
+    const clubs = typeof getClubs === 'function' ? getClubs() || {} : {};
+    const homeClub = game.home;
+    const awayClub = game.away;
+    const userHome = homeClub === getUserClub();
+    applyCompetitionBadge('#liveMatchCompetition', game, { userDivision });
+    const phaseEl = $('#liveMatchCompetitionPhase');
+    const venueEl = $('#liveMatchVenue');
+    const phase = matchCompetitionPhaseLabel(game, userDivision, serieDGroups, {
+      currentRound,
+      userSerieDGroupIndex,
+      serieDGroupRounds,
     });
+    if (phaseEl) {
+      if (phase) {
+        phaseEl.textContent = phase;
+        phaseEl.classList.remove('hidden');
+      } else {
+        phaseEl.textContent = '';
+        phaseEl.classList.add('hidden');
+      }
+    }
+    if (venueEl) {
+      const venue = formatVenueCrowdLine(game);
+      venueEl.textContent = venue;
+      venueEl.classList.toggle('hidden', !venue);
+    }
     const homeCrest = $('#liveHomeCrest'),
       awayCrest = $('#liveAwayCrest');
     if (homeCrest) {
@@ -276,6 +313,26 @@ export function createMatchLiveUiFeature(deps) {
       awayNameEl.setAttribute('role', 'button');
       awayNameEl.tabIndex = 0;
       awayNameEl.classList.toggle('user-club-live', !userHome);
+    }
+    const positionOf = clubName =>
+      typeof displayedClubPosition === 'function' ? displayedClubPosition(clubName) : '—';
+    const homePositionEl = $('#liveHomePosition');
+    const awayPositionEl = $('#liveAwayPosition');
+    if (homePositionEl) homePositionEl.textContent = `${positionOf(homeClub)}º colocado`;
+    if (awayPositionEl) awayPositionEl.textContent = `${positionOf(awayClub)}º colocado`;
+    const homeContextEl = $('#liveHomeContext');
+    const awayContextEl = $('#liveAwayContext');
+    const standingContext = (clubName) =>
+      clubStandingContext(clubName, clubs, serieDGroups, game, userDivision, currentRound, serieDGroupRounds);
+    if (homeContextEl) {
+      const text = standingContext(homeClub);
+      homeContextEl.textContent = text;
+      homeContextEl.classList.toggle('hidden', !text);
+    }
+    if (awayContextEl) {
+      const text = standingContext(awayClub);
+      awayContextEl.textContent = text;
+      awayContextEl.classList.toggle('hidden', !text);
     }
     const volHome = $('#liveVolumeHomeCrest');
     const volAway = $('#liveVolumeAwayCrest');

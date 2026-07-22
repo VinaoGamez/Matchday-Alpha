@@ -10,10 +10,17 @@ import {
   STATUS_MIN,
 } from '../constants.js';
 
-const dampPositiveIfBroke = (delta, finances) => {
+const dampPositiveIfBroke = (delta, finances, campaignFactor = 1) => {
   const fin = Number(finances);
   if (!(delta > 0) || !Number.isFinite(fin) || fin >= BOARD_CHEAP_RESULT_FINANCES) return delta;
-  return delta * BOARD_CHEAP_RESULT_SCALE;
+  const factor = Number(campaignFactor);
+  const scale =
+    Number.isFinite(factor) && factor <= 0.35
+      ? 0.75
+      : Number.isFinite(factor) && factor <= 0.65
+        ? 0.6
+        : BOARD_CHEAP_RESULT_SCALE;
+  return delta * scale;
 };
 
 /**
@@ -22,7 +29,15 @@ const dampPositiveIfBroke = (delta, finances) => {
  * positionGap = posiçãoRival − suaPosição (positivo = rival pior na tabela).
  */
 export function matchDelta(ctx = {}) {
-  const { result, isHome = false, goalDiff = 0, positionGap = null, finances = null, clamp } = ctx;
+  const {
+    result,
+    isHome = false,
+    goalDiff = 0,
+    positionGap = null,
+    finances = null,
+    campaignFactor = 1,
+    clamp,
+  } = ctx;
   if (!result) return 0;
   const gd = clamp(Number(goalDiff) || 0, -4, 4);
 
@@ -43,11 +58,11 @@ export function matchDelta(ctx = {}) {
       delta = -0.25;
     }
   }
-  return dampPositiveIfBroke(delta, finances);
+  return dampPositiveIfBroke(delta, finances, campaignFactor);
 }
 
 export function tableDelta(ctx = {}) {
-  const { position, clubsCount, points, played, finances = null, clamp } = ctx;
+  const { position, clubsCount, points, played, finances = null, campaignFactor = 1, clamp } = ctx;
   if (!played || played < 1 || !position || !clubsCount) return 0;
   const ppg = points / played;
   const relative = (ppg - 1.35) * 0.55;
@@ -57,7 +72,7 @@ export function tableDelta(ctx = {}) {
   if (position <= topBand) delta += 0.35;
   else if (position > clubsCount - relegationBand) delta -= 0.55;
   delta = clamp(delta, -1.1, 0.95);
-  return dampPositiveIfBroke(delta, finances);
+  return dampPositiveIfBroke(delta, finances, campaignFactor);
 }
 
 export function driftDelta(value) {
@@ -74,6 +89,7 @@ export function financePressureDelta({
   runwayRounds = 99,
   shortfall = false,
   overdraftStreak = 0,
+  campaignFactor = 1,
   clamp = (v, min, max) => Math.min(max, Math.max(min, v)),
 } = {}) {
   let delta = 0;
@@ -90,8 +106,9 @@ export function financePressureDelta({
   if (shortfall) delta -= 0.45;
   if (streak > 0) delta -= 0.35 * Math.min(streak, 6);
   if (!(delta < 0)) return 0;
+  const factor = Number.isFinite(Number(campaignFactor)) ? Number(campaignFactor) : 1;
   const floor = streak > 0 ? -2.0 : -1.2;
-  return clamp(delta, floor, 0);
+  return clamp(delta * factor, floor * factor, 0);
 }
 
 /**
@@ -100,6 +117,7 @@ export function financePressureDelta({
 export function financeGapCeilingDelta({
   board = null,
   finances = null,
+  campaignFactor = 1,
   clamp = (v, min, max) => Math.min(max, Math.max(min, v)),
 } = {}) {
   const b = Number(board);
@@ -108,5 +126,6 @@ export function financeGapCeilingDelta({
   const gap = b - f;
   if (gap <= BOARD_FINANCE_GAP_SOFT_CAP) return 0;
   const excess = gap - BOARD_FINANCE_GAP_SOFT_CAP;
-  return clamp(-(0.25 + excess * 0.035), -1.1, 0);
+  const factor = Number.isFinite(Number(campaignFactor)) ? Number(campaignFactor) : 1;
+  return clamp(-(0.25 + excess * 0.035) * factor, -1.1 * factor, 0);
 }

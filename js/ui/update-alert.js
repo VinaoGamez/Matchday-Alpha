@@ -1,3 +1,4 @@
+import '../../css/update-alert.css';
 import { BUILD_VERSION, SAVE_KEYS } from '../core/constants.js';
 import { RELEASE_NOTES } from '../core/release-notes.js';
 
@@ -54,31 +55,6 @@ function renderTopics(topics = []) {
   `).join('');
 }
 
-function ensureStyles() {
-  if (document.getElementById('update-alert-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'update-alert-styles';
-  style.textContent = `
-    .update-alert-modal-wrap{position:fixed;inset:0;z-index:12000;display:grid;place-items:center;padding:18px;background:#020b10cc;backdrop-filter:blur(3px)}
-    .update-alert-modal-wrap.hidden{display:none!important}
-    .update-alert-modal{width:min(560px,calc(100vw - 28px));text-align:left;border:1px solid #315b68;border-radius:8px;background:linear-gradient(180deg,#0b1f28 0%,#08161d 100%);color:#edf8f5;box-shadow:0 18px 48px #0009;padding:18px 18px 16px;position:relative}
-    .update-alert-modal .close{position:absolute;top:10px;right:10px;width:28px;height:28px;border:0;border-radius:4px;background:#17313a;color:#dce9e8;font:700 18px/1 'DM Sans',sans-serif;cursor:pointer}
-    .update-alert-modal .close:hover{background:#214552;color:#fff}
-    .update-alert-modal>label{display:block;margin:0 0 8px;color:#63d9ff;font:700 11px 'DM Sans',sans-serif;letter-spacing:.7px}
-    .update-alert-modal h2{margin:0 0 6px;font:700 30px 'Barlow Condensed',sans-serif;line-height:1.05}
-    .update-alert-version{margin:0 0 14px;color:#9eb6b8;font:600 12px 'DM Sans',sans-serif}
-    .update-alert-section{padding:12px;border:1px solid #315b68;border-radius:6px;margin-top:10px;background:#0a171d}
-    .update-alert-section>label{display:block;margin:0 0 8px;color:#63d9ff;font:700 10px 'DM Sans',sans-serif;letter-spacing:.55px}
-    .update-alert-section ul{margin:0;padding-left:18px;color:#d7ece8;font:500 12px/1.45 'DM Sans',sans-serif}
-    .update-alert-section li+li{margin-top:6px}
-    .update-alert-fallback{margin:0;color:#b8cfcc;font:500 12px/1.45 'DM Sans',sans-serif}
-    .update-alert-actions{display:flex;justify-content:flex-end;margin-top:16px}
-    .update-alert-actions button{border:1px solid #397487;border-radius:5px;background:#24667c;color:#fff;padding:10px 16px;font:700 10px 'DM Sans',sans-serif;letter-spacing:.2px;cursor:pointer}
-    .update-alert-actions button:hover{background:#2f7890;border-color:#63d9ff}
-  `;
-  document.head.append(style);
-}
-
 function ensureModal() {
   if (document.getElementById(MODAL_ID)) return;
   document.body.insertAdjacentHTML('beforeend', `
@@ -107,7 +83,6 @@ export function showUpdateAlertIfNeeded(buildVersion = BUILD_VERSION) {
   if (getLastSeenBuild() === buildVersion) return;
 
   const notes = getReleaseNotes(buildVersion);
-  ensureStyles();
   ensureModal();
 
   const modal = document.getElementById(MODAL_ID);

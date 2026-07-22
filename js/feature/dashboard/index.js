@@ -2,6 +2,11 @@ import { MODULE_VERSIONS } from '../../core/constants.js';
 import { formatKnockoutFixtureScore, isKnockoutShootoutCompetition as isKnockoutGame } from '../../engine/knockout-shootout.js';
 import { applyCompetitionBadge, competitionBadgeMarkup, resolveCompetitionBadge } from '../../ui/competition-badge.js';
 import { setHumanBadgeOnCrest } from '../../ui/human-badge.js';
+import {
+  clubStandingContext,
+  matchCompetitionPhaseLabel,
+  matchCompetitionRoundEmLabel,
+} from '../shared/match-presentation.js';
 
 const DASHBOARD_TABLE_ROWS = 5;
 const CLUB_UPCOMING_ROWS = 5;
@@ -47,6 +52,9 @@ export function createDashboardFeature(deps) {
     openCalendarMatchReport,
     calendarGameResult,
     isCompletedDashboardGame,
+    getUserSerieDGroupIndex,
+    getSerieDGroups,
+    SERIE_D_GROUP_ROUNDS = 10,
     isSponsorChoicePending,
     onRequestSponsorPicker,
     canReopenLivePostMatch,
@@ -323,6 +331,40 @@ export function createDashboardFeature(deps) {
     return info || resolveCompetitionBadge(game, { userDivision });
   };
 
+  const presentationOpts = () => ({
+    currentRound: getCurrentRound() || 1,
+    userSerieDGroupIndex: getUserSerieDGroupIndex?.() ?? 0,
+    serieDGroupRounds: SERIE_D_GROUP_ROUNDS,
+  });
+
+  const setNextMatchPhase = (text, { hidden = false } = {}) => {
+    const el = $('#nextMatchCompetitionPhase');
+    if (!el) return;
+    if (hidden || !text) {
+      el.textContent = '';
+      el.classList.add('hidden');
+    } else {
+      el.textContent = text;
+      el.classList.remove('hidden');
+    }
+  };
+
+  const setNextMatchTeamContext = (homeText, awayText, { hidden = false } = {}) => {
+    const homeEl = $('#nextMatchHomeContext');
+    const awayEl = $('#nextMatchAwayContext');
+    [homeEl, awayEl].forEach((el, index) => {
+      if (!el) return;
+      const text = index === 0 ? homeText : awayText;
+      if (hidden || !text) {
+        el.textContent = '';
+        el.classList.add('hidden');
+      } else {
+        el.textContent = text;
+        el.classList.remove('hidden');
+      }
+    });
+  };
+
   const dashboardUpcomingGames = () => {
     const futureMatches = getFutureMatches();
     const roundGames = (futureMatches || []).filter(game => !isFixtureCompleted(game));
@@ -462,6 +504,7 @@ export function createDashboardFeature(deps) {
     if (inspectBtn) inspectBtn.classList.toggle('hidden', idle || fullyComplete || !display);
 
     const userUpcomingGames = pendingUserSchedule().slice(0, CLUB_UPCOMING_ROWS).map(entry => entry.game);
+    const serieDGroups = getSerieDGroups?.() || [];
 
     if (idle) {
       $('#nextMatchRound').textContent = `SEM JOGOS · RODADA NACIONAL ${currentRound}`;
@@ -470,6 +513,11 @@ export function createDashboardFeature(deps) {
       bindClubLink($('#nextMatchAway'), null, { label: 'Calendário nacional' });
       $('#nextMatchHomePosition').textContent = `${displayedClubPosition(userClub)}º na série`;
       $('#nextMatchAwayPosition').textContent = 'Aguardando fechamento';
+      setNextMatchPhase(matchCompetitionPhaseLabel(null, userDivision, serieDGroups, presentationOpts()));
+      setNextMatchTeamContext(
+        clubStandingContext(userClub, clubs, serieDGroups, null, userDivision, getCurrentRound() || 1, SERIE_D_GROUP_ROUNDS),
+        '',
+      );
       syncNextMatchCrest($('#nextMatchHome'), userClub, true);
       syncNextMatchCrest($('#nextMatchAway'), null, false, { away: true, initials: 'NF' });
       setNextMatchMeta(['Sem partidas pendentes', 'Simule o restante da temporada']);
@@ -496,8 +544,9 @@ export function createDashboardFeature(deps) {
       // Antes só aparecia com mercado aberto — após o fechamento da janela o save ficava preso.
       const showCalendarAdvance =
         !idle && !fullyComplete && !sponsorPending && !livePostMatch && !onMatchDay;
+      // DIA DE JOGO: atalho para chegar ao dia da partida — oculto quando já estamos nele.
       const showMatchDayBtn =
-        !idle && !fullyComplete && !sponsorPending && !livePostMatch && onMatchDay;
+        !idle && !fullyComplete && !sponsorPending && !livePostMatch && !onMatchDay;
 
       if (playBtn && !sponsorPending) {
         playBtn.disabled = !onMatchDay;
@@ -530,19 +579,24 @@ export function createDashboardFeature(deps) {
       if (calendarBtn) {
         calendarBtn.classList.toggle('hidden', !showMatchDayBtn);
         calendarBtn.disabled = false;
-        calendarBtn.title = 'Você está no dia do jogo — dispute a partida';
+        calendarBtn.title = 'Avançar no calendário até o dia do jogo';
       }
 
       setNextMatchCompetition(game, userDivision);
-      $('#nextMatchRound').textContent = isCup
-        ? `${game.phase || 'COPA'} · ${game.leg || ''}`.replace(/\s·\s$/, '')
-        : isKnockoutShootoutCompetition(game)
-          ? `${game.leg || 'Eliminatórias'}${game.phase ? ` · ${game.phase}` : ''}`
-          : `RODADA ${game.round}${userDivision === 'D' && !isKnockoutShootoutCompetition(game) ? ` · GRUPO A${deps.getUserSerieDGroupIndex() + 1}` : ''}`;
+      $('#nextMatchRound').textContent = matchCompetitionRoundEmLabel(
+        game,
+        userDivision,
+        getUserSerieDGroupIndex?.() ?? 0,
+      );
       bindClubLink($('#nextMatchHome'), game.home);
       bindClubLink($('#nextMatchAway'), game.away);
       $('#nextMatchHomePosition').textContent = `${displayedClubPosition(homeClub.name)}º colocado`;
       $('#nextMatchAwayPosition').textContent = `${displayedClubPosition(awayClub.name)}º colocado`;
+      setNextMatchPhase(matchCompetitionPhaseLabel(game, userDivision, serieDGroups, presentationOpts()));
+      setNextMatchTeamContext(
+        clubStandingContext(game.home, clubs, serieDGroups, game, userDivision, getCurrentRound() || 1, SERIE_D_GROUP_ROUNDS),
+        clubStandingContext(game.away, clubs, serieDGroups, game, userDivision, getCurrentRound() || 1, SERIE_D_GROUP_ROUNDS),
+      );
       syncNextMatchCrest($('#nextMatchHome'), game.home, game.home === userClub);
       syncNextMatchCrest($('#nextMatchAway'), game.away, game.away === userClub, { away: true });
       setNextMatchMeta(
@@ -563,6 +617,8 @@ export function createDashboardFeature(deps) {
     } else if (fullyComplete) {
       $('#nextMatchRound').textContent = '';
       setNextMatchCompetition(null, userDivision, { hidden: true });
+      setNextMatchPhase('', { hidden: true });
+      setNextMatchTeamContext('', '', { hidden: true });
       setNextMatchMeta([]);
       renderSeasonReviewBoard();
     }

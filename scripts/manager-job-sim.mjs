@@ -4,12 +4,17 @@
  */
 import {
   resolveBoardJobRisk,
+  resolveCampaignShield,
+  hydrateManagerJobCrisis,
+  shouldResetJobWarningState,
   generateJobOffers,
   MANAGER_JOB_HONEYMOON_ROUNDS,
   MANAGER_JOB_CRISIS_THRESHOLD,
+  MANAGER_JOB_COLLAPSE_THRESHOLD,
   MANAGER_JOB_BOARD_STREAK_SACK,
   MANAGER_JOB_SEVERE_THRESHOLD,
-  MANAGER_JOB_SOFT_PAIR_THRESHOLD,
+  MANAGER_JOB_WARM_PAIR_THRESHOLD,
+  MANAGER_JOB_WARM_STREAK_ROUNDS,
 } from '../js/engine/manager-job.js';
 import { createManagerRankingEngine } from '../js/engine/manager-ranking.js';
 import { matchDelta, tableDelta, driftDelta } from '../js/engine/club-status/rules/board.js';
@@ -37,7 +42,7 @@ const assertEq = (name, actual, expected) => {
 
 console.log('\n=== 1) Matriz resolveBoardJobRisk ===\n');
 console.log(
-  `Limiar=${MANAGER_JOB_CRISIS_THRESHOLD}  Severo=${MANAGER_JOB_SEVERE_THRESHOLD}/${MANAGER_JOB_SOFT_PAIR_THRESHOLD}  Streak=${MANAGER_JOB_BOARD_STREAK_SACK}  Mel=${MANAGER_JOB_HONEYMOON_ROUNDS}  MIN=${STATUS_MIN}\n`,
+  `Colapso=${MANAGER_JOB_COLLAPSE_THRESHOLD}  Crise=${MANAGER_JOB_CRISIS_THRESHOLD}  Severo=${MANAGER_JOB_SEVERE_THRESHOLD}  Quente=${MANAGER_JOB_WARM_PAIR_THRESHOLD}  Streak=${MANAGER_JOB_BOARD_STREAK_SACK}/${MANAGER_JOB_WARM_STREAK_ROUNDS}  Mel=${MANAGER_JOB_HONEYMOON_ROUNDS}  MIN=${STATUS_MIN}\n`,
 );
 
 const cases = [
@@ -45,17 +50,24 @@ const cases = [
   { name: 'só board baixo (início streak)', board: 30, finances: 60, played: 10, streak: 0, expect: 'warn_board' },
   { name: 'só finanças baixas', board: 60, finances: 30, played: 10, expect: 'warn_finances' },
   { name: 'ambos baixos + mel', board: 30, finances: 30, played: 3, expect: 'critical' },
-  { name: 'ambos baixos pós-mel', board: 30, finances: 30, played: 10, expect: 'sacked' },
+  { name: 'par crítico pós-mel', board: 35, finances: 31, played: 10, expect: 'sacked' },
   { name: 'limiar exato 40/40', board: 40, finances: 40, played: 10, expect: 'ok' },
-  { name: '39/40 (só board)', board: 39, finances: 40, played: 10, streak: 0, expect: 'warn_board' },
-  { name: '40/39 (só fin)', board: 40, finances: 39, played: 10, expect: 'warn_finances' },
-  { name: '39/39 demissão', board: 39, finances: 39, played: 6, expect: 'sacked' },
-  { name: 'par suave board severo', board: 30, finances: 48, played: 10, expect: 'sacked' },
-  { name: 'par suave fin severo', board: 48, finances: 30, played: 10, expect: 'sacked' },
-  { name: 'piso 28/28 demissão', board: 28, finances: 28, played: 20, expect: 'sacked' },
+  { name: '39/46 (só board)', board: 39, finances: 46, played: 10, streak: 0, expect: 'warn_board' },
+  { name: '46/39 (só fin)', board: 46, finances: 39, played: 10, expect: 'warn_finances' },
+  { name: '39/39 zona quente r1', board: 39, finances: 39, played: 10, expect: 'warn_warm' },
+  { name: '39/39 zona quente r2', board: 39, finances: 39, played: 10, warm: 1, expect: 'warn_imminent' },
+  { name: '39/39 demissão quente', board: 39, finances: 39, played: 10, warm: 2, expect: 'sacked' },
+  { name: 'board severo + fin ok', board: 30, finances: 48, played: 10, expect: 'warn_board' },
+  { name: 'fin severo + board 48 (tester)', board: 48, finances: 31, played: 15, expect: 'warn_finances' },
+  { name: 'tester + fortaleza', board: 48, finances: 31, played: 15, shield: 'fortress', expect: 'warn_finances' },
+  { name: 'par crítico + fortaleza', board: 35, finances: 31, played: 15, shield: 'fortress', expect: 'warn_shield' },
+  { name: 'colapso 28/28', board: 28, finances: 28, played: 20, expect: 'sacked' },
+  { name: 'colapso + fortaleza ainda demite', board: 28, finances: 28, played: 20, shield: 'fortress', expect: 'sacked' },
   { name: 'alreadySacked', board: 80, finances: 80, played: 1, alreadySacked: true, expect: 'sacked' },
   { name: 'board sustentado demite', board: 30, finances: 60, played: 12, streak: MANAGER_JOB_BOARD_STREAK_SACK - 1, expect: 'sacked' },
   { name: 'fin isolada ainda avisa', board: 55, finances: 28, played: 20, expect: 'warn_finances' },
+  { name: 'buffer grace 1ª rodada', board: 35, finances: 31, played: 15, shield: 'buffer', expect: 'critical_grace' },
+  { name: 'buffer grace 2ª rodada', board: 35, finances: 31, played: 15, shield: 'buffer', bufferGrace: true, expect: 'sacked' },
 ];
 
 for (const c of cases) {
@@ -64,10 +76,29 @@ for (const c of cases) {
     finances: c.finances,
     played: c.played,
     boardCrisisStreak: c.streak || 0,
+    warmCrisisStreak: c.warm || 0,
     alreadySacked: !!c.alreadySacked,
+    campaignShield: c.shield ? { level: c.shield } : { level: 'none' },
+    bufferGraceActive: !!c.bufferGrace,
   });
   assertEq(c.name, r.status, c.expect);
 }
+
+const shield = resolveCampaignShield({ goalProgress: 88, goalStatus: 'exceeded', position: 3, goalMax: 14 });
+assertEq('escudo fortaleza meta', shield.level, 'fortress');
+
+const hydrated = hydrateManagerJobCrisis({
+  board: 38,
+  finances: 36,
+  warmCrisisStreak: 2,
+  warnedFinances: true,
+  warnedPopups: { warn_finances: true },
+});
+if (hydrated?.warmCrisisStreak === 2 && hydrated?.warnedFinances) ok('hydrateManagerJobCrisis preserva streak e flags');
+else fail('hydrateManagerJobCrisis', JSON.stringify(hydrated));
+
+if (shouldResetJobWarningState(46, 48) && !shouldResetJobWarningState(39, 48)) ok('reset de avisos só acima de 45%');
+else fail('shouldResetJobWarningState', 'limiar incorreto');
 
 console.log('\n=== 2) Temporada simulada: crise combinada ===\n');
 
@@ -330,9 +361,9 @@ for (let b = STATUS_MIN; b <= 50; b++) {
   }
 }
 console.log(grid);
-// Com limiar 40 + par suave, a área de demissão é maior que o antigo quadrado 28–34.
-if (grid.sacked >= 180 && grid.sacked <= 280) ok(`células de demissão amplas (${grid.sacked})`);
-else fail('células de demissão amplas', `got ${grid.sacked}`);
+// v2: colapso só no piso + par crítico + zona quente — área de demissão menor que v1.
+if (grid.sacked >= 70 && grid.sacked <= 130) ok(`células de demissão calibradas v2 (${grid.sacked})`);
+else fail('células de demissão calibradas v2', `got ${grid.sacked}`);
 if (grid.ok >= 100) ok(`ainda há zona segura (${grid.ok} células ok)`);
 else fail('ainda há zona segura', `ok=${grid.ok}`);
 
