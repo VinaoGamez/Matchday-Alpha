@@ -1,5 +1,5 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
-import { sponsorExternalUrl, sponsorLogoSlug } from '../../engine/economy.js';
+import { sponsorExternalUrl, sponsorLogoSlug, formatBudgetExact } from '../../engine/economy.js';
 import {
   BANK_LOAN_TERM_OPTIONS,
   DEFAULT_BANK_LOAN_TERM,
@@ -8,6 +8,7 @@ import {
   loanTermRateMultiplier,
 } from '../../engine/bank-loan.js';
 import { seasonGoalLiveProgress } from '../../engine/season-goals.js';
+import { seasonObjectiveLiveProgress } from '../../engine/season-objectives.js';
 import { seasonGoalGauge } from '../season-summary/goal-gauge.js';
 import { mountStadiumVisual } from './stadium-visual.js';
 
@@ -96,6 +97,8 @@ export function createEconomyFeature(deps) {
     getUserDivision,
     getCareerSeason,
     getSeasonGoal,
+    getSeasonObjectives,
+    getSeasonObjectivesResult,
     getSeasonGoalLiveContext,
     getBoardBriefContext,
     onBudgetChanged,
@@ -281,14 +284,83 @@ export function createEconomyFeature(deps) {
     meter.setAttribute('data-tone', tone);
   };
 
+  const objectiveIsDone = progress => {
+    const score = Math.max(0, Math.min(100, Math.round(Number(progress?.score) || 0)));
+    const status = progress?.status;
+    return status === 'met' || status === 'exceeded' || score >= 100;
+  };
+
+  const officeObjectiveCardHtml = (label, progress, finalStatus = null) => {
+    const status = finalStatus || progress?.status;
+    const done = objectiveIsDone(progress) || status === 'met';
+    const failed = status === 'missed';
+    const near = status === 'near';
+    let marker;
+    if (done) {
+      marker =
+        '<span class="office-objective-marker office-objective-marker--done" aria-label="Meta concluída">✓</span>';
+    } else if (failed) {
+      marker =
+        '<span class="office-objective-marker office-objective-marker--missed" aria-label="Meta não cumprida">✗</span>';
+    } else if (near) {
+      marker =
+        '<span class="office-objective-marker office-objective-marker--near" aria-label="Meta parcialmente cumprida">◐</span>';
+    } else {
+      marker =
+        '<span class="office-objective-marker office-objective-marker--pending" aria-label="Meta em andamento"></span>';
+    }
+    const state = done ? 'done' : failed ? 'missed' : near ? 'near' : 'pending';
+    const hint = progress?.hint || '—';
+    return `
+      <article class="office-objective${done ? ' is-done' : failed ? ' is-missed' : near ? ' is-near' : ''}" data-state="${state}">
+        ${marker}
+        <div class="office-objective-body">
+          <span class="office-objective-label">${label}</span>
+          <small class="office-objective-hint">${hint}</small>
+        </div>
+      </article>`;
+  };
+
+  const renderOfficeObjectives = club => {
+    const wrap = $('#officeObjectives');
+    if (!wrap) return;
+    const goal = getSeasonGoal?.() || null;
+    const objectives = getSeasonObjectives?.() || [];
+    const results = getSeasonObjectivesResult?.();
+    const resultById =
+      results?.items?.length > 0
+        ? Object.fromEntries(results.items.map(item => [item.id, item]))
+        : null;
+    const ctx = getSeasonGoalLiveContext?.(club) || getSeasonGoalLiveContext?.() || {};
+    const cards = [];
+    if (goal?.label) {
+      let mainProgress = { score: 0, hint: '—', status: 'missed' };
+      try {
+        mainProgress = seasonGoalLiveProgress(goal, ctx);
+      } catch {
+        /* noop */
+      }
+      cards.push(officeObjectiveCardHtml(goal.label, mainProgress));
+    }
+    objectives.forEach(item => {
+      const final = resultById?.[item.id];
+      if (final) {
+        cards.push(
+          officeObjectiveCardHtml(item.label, { hint: final.hint, score: final.score, status: final.status }, final.status),
+        );
+      } else {
+        cards.push(officeObjectiveCardHtml(item.label, seasonObjectiveLiveProgress(item, ctx, club)));
+      }
+    });
+    wrap.innerHTML = cards.join('');
+  };
+
   const renderOffice = () => {
     const club = userClubState();
     if (!club) return;
     const balance = getBalance(club);
     const balanceEl = $('#officeBudgetValue');
     const metaEl = $('#officeBudgetMeta');
-    const medicalEl = $('#officeMedicalLevel');
-    const preventionEl = $('#officePreventionLevel');
     if (balanceEl) {
       balanceEl.textContent = formatBudget(balance);
       balanceEl.classList.toggle('is-negative', balance < 0);
@@ -307,55 +379,26 @@ export function createEconomyFeature(deps) {
             : 'caixa disponível para investimentos';
       metaEl.textContent = `${getUserClub()} · Série ${div} · ${runwayTxt}`;
     }
-    const goalEl = $('#officeSeasonGoal');
-    const goalMetaEl = $('#officeSeasonGoalMeta');
     const goalGaugeEl = $('#officeSeasonGoalGauge');
     const goal = getSeasonGoal?.() || null;
-    if (goalEl) {
+    if (goalGaugeEl) {
       if (!goal?.label) {
-        goalEl.textContent = '—';
-        if (goalMetaEl) goalMetaEl.textContent = 'A diretoria define a expectativa da campanha.';
-        if (goalGaugeEl) {
+        goalGaugeEl.innerHTML = '';
+        goalGaugeEl.setAttribute('aria-hidden', 'true');
+      } else {
+        try {
+          const ctx = getSeasonGoalLiveContext?.(club) || {};
+          const progress = seasonGoalLiveProgress(goal, ctx);
+          goalGaugeEl.innerHTML = seasonGoalGauge(progress, { office: true });
+          goalGaugeEl.removeAttribute('aria-hidden');
+        } catch {
           goalGaugeEl.innerHTML = '';
           goalGaugeEl.setAttribute('aria-hidden', 'true');
         }
-      } else {
-        goalEl.textContent = goal.label;
-        if (goalMetaEl) {
-          const tierLabel =
-            goal.tier === 'soft'
-              ? 'Expectativa conservadora'
-              : goal.tier === 'stretch'
-                ? 'Expectativa ambiciosa'
-                : 'Expectativa equilibrada';
-          goalMetaEl.textContent = `Série ${goal.division || getUserDivision?.() || club.division || 'A'} · ${tierLabel}`;
-        }
-        if (goalGaugeEl) {
-          try {
-            const ctx = getSeasonGoalLiveContext?.(club) || {};
-            const progress = seasonGoalLiveProgress(goal, ctx);
-            goalGaugeEl.innerHTML = seasonGoalGauge(progress, { compact: true });
-            goalGaugeEl.removeAttribute('aria-hidden');
-          } catch {
-            goalGaugeEl.innerHTML = '';
-            goalGaugeEl.setAttribute('aria-hidden', 'true');
-          }
-        }
       }
     }
-    const medicalLevel = Number(club.medicalInvestment) || 0;
-    const preventionLevel = Number(club.preventionProgram) || 0;
-    const youthRow = listUpgrades?.(club)?.find?.(row => row.id === 'youth_academy');
-    const youthMax = Number(youthRow?.maxLevel) || 5;
-    const youthLevel = Math.max(0, Math.min(youthMax, Number(youthRow?.level) || 0));
-    if (medicalEl) medicalEl.textContent = `${medicalLevel}/5`;
-    if (preventionEl) preventionEl.textContent = `${preventionLevel}/3`;
-    const youthEl = $('#officeYouthLevel');
-    if (youthEl) youthEl.textContent = `${youthLevel}/${youthMax}`;
-    setMeterBar('#officeMedicalBar', (medicalLevel / 5) * 100);
-    setMeterBar('#officePreventionBar', (preventionLevel / 3) * 100);
-    setMeterBar('#officeYouthBar', (youthLevel / youthMax) * 100);
     renderBoardBrief(club);
+    renderOfficeObjectives(club);
     renderRestrictionBanner(club);
     renderInvestments();
     renderSponsors();
@@ -435,7 +478,7 @@ export function createEconomyFeature(deps) {
   const bankLoanRejectCopy = reason =>
     ({
       loan_active: 'Já existe um empréstimo ativo. Quite ou amortize o saldo antes de pedir outro.',
-      over_limit: 'Valor acima do crédito que o banco libera hoje para o seu clube.',
+      over_limit: 'Valor acima do crédito que o banco libera hoje para o seu clube. Use o teto exato exibido no card.',
       credit_denied:
         'Banco recusou crédito. Melhore receitas, controle a folha e recupere a saúde financeira para voltar a negociar.',
       invalid_amount: 'Informe um valor válido.',
@@ -507,7 +550,7 @@ export function createEconomyFeature(deps) {
         </div>
         <div class="office-bank-loan-metrics-row">
           <div class="office-bank-loan-metric" data-meter="credit">
-            <div class="office-meter-top"><small>CRÉDITO</small><b>${formatBudget(status.available || 0)}</b></div>
+            <div class="office-meter-top"><small>CRÉDITO</small><b>${formatBudgetExact(status.available || 0)}</b></div>
             <span class="office-bank-loan-metric-sub">Teto liberado agora</span>
           </div>
           <div class="office-bank-loan-metric" data-meter="rate">
@@ -518,7 +561,30 @@ export function createEconomyFeature(deps) {
       </div>`;
   };
 
-  const bankLoanBreakdownHtml = (bd, { delinquent = false, effectiveRatePct = null } = {}) => {
+  const buildBorrowRateBreakdown = (status, term) => {
+    const t = BANK_LOAN_TERM_OPTIONS.includes(Number(term)) ? Number(term) : DEFAULT_BANK_LOAN_TERM;
+    const termMult = loanTermRateMultiplier(t);
+    const offerRate = status.offerRate ?? status.rate ?? 0;
+    const contractRate = Math.round(offerRate * termMult * 10000) / 10000;
+    return buildLoanRateBreakdown(
+      {
+        division: status.division,
+        baseRate: status.seriesBaseRate ?? offerRate,
+        rate: offerRate,
+        finances: status.finances,
+        coverage: status.coverage,
+        tier: status.tier,
+        tierLabel: status.tierLabel,
+      },
+      t,
+      contractRate,
+    );
+  };
+
+  const bankLoanInfoButtonHtml = () =>
+    `<button type="button" class="office-bank-loan-info-btn" data-bank-loan-info>INFORMAÇÕES EMPRÉSTIMO</button>`;
+
+  const bankLoanBreakdownRowsHtml = (bd, { delinquent = false, effectiveRatePct = null } = {}) => {
     if (!bd) return '';
     const coverageLine =
       bd.coverage != null
@@ -531,6 +597,18 @@ export function createEconomyFeature(deps) {
       delinquent && effectiveRatePct != null && effectiveRatePct !== bd.contractRatePct
         ? `<div class="office-bank-loan-preview-row office-bank-loan-preview-row--warn"><span>Taxa por atraso (esta rodada)</span><b class="spend">${effectiveRatePct}%</b></div>`
         : '';
+    return `
+        <div class="office-bank-loan-preview-row"><span>Taxa base · Série ${bd.division}</span><b>${bd.baseRatePct}%</b></div>
+        <div class="office-bank-loan-preview-row"><span>Análise do clube</span><b>×${Number(bd.profileMult).toFixed(2)} → ${bd.profileRatePct}%</b></div>
+        ${coverageLine}
+        ${tierLine}
+        <div class="office-bank-loan-preview-row"><span>Financiamento ${bd.term}x</span><b>×${Number(bd.termMult).toFixed(2)}</b></div>
+        <div class="office-bank-loan-preview-row office-bank-loan-preview-row--total"><span>Taxa contratada</span><b>${bd.contractRatePct}% / rodada</b></div>
+        ${delinquentLine}`;
+  };
+
+  const bankLoanBreakdownHtml = (bd, { delinquent = false, effectiveRatePct = null } = {}) => {
+    if (!bd) return '';
     const lockedNote = bd.locked
       ? '<span class="office-bank-loan-breakdown-note">Valores congelados na assinatura do contrato.</span>'
       : '';
@@ -538,13 +616,20 @@ export function createEconomyFeature(deps) {
       <div class="office-bank-loan-breakdown">
         <small>COMO A TAXA FOI CALCULADA</small>
         ${lockedNote}
-        <div class="office-bank-loan-preview-row"><span>Taxa base · Série ${bd.division}</span><b>${bd.baseRatePct}%</b></div>
-        <div class="office-bank-loan-preview-row"><span>Análise do clube</span><b>×${Number(bd.profileMult).toFixed(2)} → ${bd.profileRatePct}%</b></div>
-        ${coverageLine}
-        ${tierLine}
-        <div class="office-bank-loan-preview-row"><span>Financiamento ${bd.term}x</span><b>×${Number(bd.termMult).toFixed(2)}</b></div>
-        <div class="office-bank-loan-preview-row office-bank-loan-preview-row--total"><span>Taxa contratada</span><b>${bd.contractRatePct}% / rodada</b></div>
-        ${delinquentLine}
+        ${bankLoanBreakdownRowsHtml(bd, { delinquent, effectiveRatePct })}
+      </div>`;
+  };
+
+  const bankLoanBreakdownWindowHtml = (bd, { delinquent = false, effectiveRatePct = null } = {}) => {
+    if (!bd) return '';
+    const lockedNote = bd.locked
+      ? '<p class="office-bank-loan-info-modal-note">Valores congelados na assinatura do contrato.</p>'
+      : '';
+    return `
+      ${lockedNote}
+      <div class="office-bank-loan-breakdown office-bank-loan-breakdown--window">
+        <small>COMO A TAXA FOI CALCULADA</small>
+        ${bankLoanBreakdownRowsHtml(bd, { delinquent, effectiveRatePct })}
       </div>`;
   };
 
@@ -568,33 +653,22 @@ export function createEconomyFeature(deps) {
       </div>`;
   };
 
-  const bankLoanBorrowPreviewHtml = (status, amount, term) => {
+  const bankLoanBorrowPreviewHtml = (status, amount, term, { includeHint = true } = {}) => {
     const fee = Math.max(0, Math.round(Number(amount) || 0));
     const t = BANK_LOAN_TERM_OPTIONS.includes(Number(term)) ? Number(term) : DEFAULT_BANK_LOAN_TERM;
     const termMult = loanTermRateMultiplier(t);
     const offerRate = status.offerRate ?? status.rate ?? 0;
     const contractRate = Math.round(offerRate * termMult * 10000) / 10000;
-    const breakdown = buildLoanRateBreakdown(
-      {
-        division: status.division,
-        baseRate: status.seriesBaseRate ?? offerRate,
-        rate: offerRate,
-        finances: status.finances,
-        coverage: status.coverage,
-        tier: status.tier,
-        tierLabel: status.tierLabel,
-      },
-      t,
-      contractRate,
-    );
     if (!(fee >= 50_000)) {
-      return `${bankLoanBreakdownHtml(breakdown)}<p class="office-bank-loan-hint">Digite o valor e escolha quantas parcelas — a simulação atualiza abaixo.</p>`;
+      return `<p class="office-bank-loan-hint">Informe pelo menos R$ 50 mil e toque em OK para simular o empréstimo.</p>`;
     }
     const plan = previewLoanPlan(Math.min(fee, status.available || fee), contractRate, t);
+    const hint = includeHint
+      ? `<p class="office-bank-loan-hint">A cada rodada nacional: juros saem do caixa sozinhos; a parcela do principal você paga aqui no Escritório.</p>`
+      : '';
     return `
-      ${bankLoanBreakdownHtml(breakdown)}
       <div class="office-bank-loan-preview" aria-live="polite">
-        <small>SIMULAÇÃO · ${t}x PARCELAS</small>
+        <small>SIMULAÇÃO · ${t}x PARCELAS · ${formatBudget(Math.min(fee, status.available || fee))}</small>
         <div class="office-bank-loan-preview-row">
           <span>Parcela do principal</span><b>${formatBudget(plan.installmentPrincipal)}</b>
         </div>
@@ -607,21 +681,14 @@ export function createEconomyFeature(deps) {
         <div class="office-bank-loan-preview-row office-bank-loan-preview-row--total">
           <span>Juros totais do financiamento</span><b>${formatBudget(plan.totalInterest)}</b>
         </div>
-        <p class="office-bank-loan-hint">A cada rodada nacional: juros saem do caixa sozinhos; a parcela do principal você paga aqui no Escritório.</p>
+        ${hint}
       </div>`;
   };
 
-  const refreshBankLoanBorrowPreview = () => {
-    const club = userClubState();
-    if (!club) return;
-    const division = getUserDivision?.() || club.division || 'A';
-    const status = bankLoanStatus(club, { division });
-    const preview = document.querySelector('#officeBankLoanPreview');
-    if (!preview || status.active) return;
-    const amount = readLoanInputReais($('#officeBankLoanAmount'));
-    const termBtn = document.querySelector('[data-bank-term].is-active');
-    const term = Number(termBtn?.dataset.bankTerm) || DEFAULT_BANK_LOAN_TERM;
-    preview.innerHTML = bankLoanBorrowPreviewHtml(status, amount, term);
+  const buildBankLoanBorrowModalBody = (status, amount, term) => {
+    const simulation = bankLoanBorrowPreviewHtml(status, amount, term, { includeHint: true });
+    const breakdown = bankLoanBreakdownWindowHtml(buildBorrowRateBreakdown(status, term));
+    return `${simulation}${breakdown}`;
   };
 
   const renderBankLoan = () => {
@@ -675,15 +742,15 @@ export function createEconomyFeature(deps) {
               aria-label="Valor do empréstimo"
               autocomplete="off"
             />
-            <button type="submit" class="office-bank-loan-submit" data-bank-borrow-submit title="Contratar empréstimo">OK</button>
+            <button type="button" class="office-bank-loan-submit" data-bank-simulate title="Simular empréstimo">OK</button>
           </div>
           <div class="office-bank-loan-term-row" role="group" aria-label="Quantidade de parcelas">
             <span class="office-bank-loan-form-label">QUANTIDADE DE PARCELAS</span>
             <p class="office-bank-loan-term-hint">Mais parcelas = taxa maior · menos parcelas = taxa menor</p>
             <div class="office-bank-loan-term-buttons">${termButtons}</div>
           </div>
-          <div id="officeBankLoanPreview">${bankLoanBorrowPreviewHtml(status, 0, DEFAULT_BANK_LOAN_TERM)}</div>
-          <p class="office-bank-loan-hint">Crédito disponível até ${formatBudget(status.available)} · mínimo R$ 50 mil</p>
+          ${bankLoanInfoButtonHtml()}
+          <p class="office-bank-loan-hint">Crédito disponível até ${formatBudgetExact(status.available)} · mínimo R$ 50 mil · toque OK para simular</p>
         </form>`;
       return;
     }
@@ -707,10 +774,7 @@ export function createEconomyFeature(deps) {
         ? `<p class="office-bank-loan-hint-inline">Parcela aberta nesta rodada — pague no Escritório antes da próxima rodada nacional.</p>`
         : '';
     body.innerHTML = `
-      ${bankLoanBreakdownHtml(status.rateBreakdown, {
-        delinquent: status.delinquent,
-        effectiveRatePct: status.effectiveRatePct,
-      })}
+      ${bankLoanInfoButtonHtml()}
       <div class="office-bank-loan-stats">
         <div><small>SALDO DEVEDOR</small><b class="spend">${formatBudget(status.balance)}</b>
           <span>De ${formatBudget(status.principal)} original · faltam ${status.installmentsRemaining || 0} parcela(s)</span>
@@ -745,6 +809,217 @@ export function createEconomyFeature(deps) {
       no_club: 'Clube indisponível.',
       credit_failed: 'Não foi possível creditar o adiantamento.',
     })[reason] || 'Não foi possível adiantar os direitos de TV.';
+
+  const BANK_LOAN_ALERT_MODAL_HTML = `
+<div id="officeBankLoanAlertModal" class="modal hidden">
+  <div class="modal-card manager-sack-modal">
+    <label>EMPRÉSTIMO BANCÁRIO</label>
+    <h2 id="officeBankLoanAlertTitle">Empréstimo bancário</h2>
+    <p id="officeBankLoanAlertLead" class="manager-sack-lead"></p>
+    <div class="manager-sack-actions">
+      <button id="officeBankLoanAlertDismiss" type="button" class="manager-sack-refuse">FECHAR</button>
+    </div>
+  </div>
+</div>`;
+
+  const BANK_LOAN_BORROW_MODAL_HTML = `
+<div id="officeBankLoanBorrowModal" class="modal hidden">
+  <div class="modal-card office-bank-loan-info-modal" role="dialog" aria-modal="true" aria-labelledby="officeBankLoanBorrowTitle">
+    <header class="office-bank-loan-info-modal-header">
+      <div class="office-bank-loan-info-modal-heading">
+        <h2 id="officeBankLoanBorrowTitle">Simulador do empréstimo</h2>
+      </div>
+    </header>
+    <div class="office-bank-loan-info-modal-body" id="officeBankLoanBorrowContent"></div>
+    <footer class="office-bank-loan-info-modal-actions office-bank-loan-borrow-modal-actions">
+      <button id="officeBankLoanBorrowDeny" type="button" class="office-bank-loan-info-dismiss">NEGAR</button>
+      <button id="officeBankLoanBorrowConfirm" type="button" class="office-bank-loan-borrow-confirm">CONFIRMAR</button>
+    </footer>
+  </div>
+</div>`;
+
+  const BANK_LOAN_INFO_MODAL_HTML = `
+<div id="officeBankLoanInfoModal" class="modal hidden">
+  <div class="modal-card office-bank-loan-info-modal" role="dialog" aria-modal="true" aria-labelledby="officeBankLoanInfoTitle">
+    <header class="office-bank-loan-info-modal-header">
+      <div class="office-bank-loan-info-modal-heading">
+        <h2 id="officeBankLoanInfoTitle">Simulador do empréstimo</h2>
+      </div>
+    </header>
+    <div class="office-bank-loan-info-modal-body" id="officeBankLoanInfoContent"></div>
+    <footer class="office-bank-loan-info-modal-actions">
+      <button id="officeBankLoanInfoDismiss" type="button" class="office-bank-loan-info-dismiss">FECHAR</button>
+    </footer>
+  </div>
+</div>`;
+
+  const closeBankLoanInfoModal = () => {
+    $('#officeBankLoanInfoModal')?.classList.add('hidden');
+  };
+
+  let bankLoanAlertModalBound = false;
+  const ensureBankLoanAlertModal = () => {
+    if (!$('#officeBankLoanAlertModal')) {
+      document.body.insertAdjacentHTML('beforeend', BANK_LOAN_ALERT_MODAL_HTML);
+    }
+    if (bankLoanAlertModalBound) return;
+    bankLoanAlertModalBound = true;
+    document.addEventListener('click', event => {
+      const dismissBtn = event.target.closest('#officeBankLoanAlertDismiss');
+      const modal = $('#officeBankLoanAlertModal');
+      if (dismissBtn) {
+        event.preventDefault();
+        modal?.classList.add('hidden');
+        return;
+      }
+      if (event.target === modal) {
+        modal?.classList.add('hidden');
+      }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      $('#officeBankLoanAlertModal')?.classList.add('hidden');
+    });
+  };
+
+  /** Aviso efêmero do empréstimo — não grava na inbox. */
+  const showBankLoanAlert = ({ title = 'Empréstimo bancário', lead = '' } = {}) => {
+    ensureBankLoanAlertModal();
+    const titleEl = $('#officeBankLoanAlertTitle');
+    const leadEl = $('#officeBankLoanAlertLead');
+    if (titleEl) titleEl.textContent = title;
+    if (leadEl) leadEl.textContent = lead;
+    $('#officeBankLoanAlertModal')?.classList.remove('hidden');
+  };
+
+  let bankLoanBorrowState = null;
+
+  const closeBankLoanBorrowModal = () => {
+    bankLoanBorrowState = null;
+    $('#officeBankLoanBorrowModal')?.classList.add('hidden');
+  };
+
+  let bankLoanBorrowModalBound = false;
+  const ensureBankLoanBorrowModal = () => {
+    if (!$('#officeBankLoanBorrowModal')) {
+      document.body.insertAdjacentHTML('beforeend', BANK_LOAN_BORROW_MODAL_HTML);
+    }
+    if (bankLoanBorrowModalBound) return;
+    bankLoanBorrowModalBound = true;
+    document.addEventListener('click', event => {
+      const denyBtn = event.target.closest('#officeBankLoanBorrowDeny');
+      const confirmBtn = event.target.closest('#officeBankLoanBorrowConfirm');
+      const modal = $('#officeBankLoanBorrowModal');
+      if (denyBtn) {
+        event.preventDefault();
+        closeBankLoanBorrowModal();
+        return;
+      }
+      if (confirmBtn) {
+        event.preventDefault();
+        const pending = bankLoanBorrowState;
+        closeBankLoanBorrowModal();
+        if (pending) submitBankLoanBorrow(pending.amount, pending.term);
+        return;
+      }
+      if (event.target === modal) {
+        closeBankLoanBorrowModal();
+      }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      if ($('#officeBankLoanBorrowModal')?.classList.contains('hidden')) return;
+      closeBankLoanBorrowModal();
+    });
+  };
+
+  const openBankLoanBorrowModal = (amount, term) => {
+    const club = userClubState();
+    if (!club || !bankLoanStatus) return;
+    const division = getUserDivision?.() || club.division || 'A';
+    const status = bankLoanStatus(club, { division });
+    const limit = Math.max(0, Math.round(Number(status.available) || 0));
+    let fee = Math.max(0, Math.round(Number(amount) || 0));
+    const t = BANK_LOAN_TERM_OPTIONS.includes(Number(term)) ? Number(term) : DEFAULT_BANK_LOAN_TERM;
+    if (!(fee >= 50_000)) {
+      showBankLoanAlert({
+        title: 'Valor insuficiente',
+        lead: 'Informe pelo menos R$ 50 mil para simular o empréstimo.',
+      });
+      const input = $('#officeBankLoanAmount');
+      input?.focus();
+      input?.select?.();
+      return;
+    }
+    if (fee > limit) {
+      if (limit < 50_000) {
+        showBankLoanAlert({
+          title: 'Crédito indisponível',
+          lead: bankLoanRejectCopy('over_limit'),
+        });
+        return;
+      }
+      fee = limit;
+      const input = $('#officeBankLoanAmount');
+      if (input) {
+        input.dataset.loanCents = String(limit * 100);
+        input.value = formatLoanCurrencyInput(limit * 100);
+      }
+    }
+    ensureBankLoanBorrowModal();
+    bankLoanBorrowState = { amount: fee, term: t };
+    const content = $('#officeBankLoanBorrowContent');
+    if (content) content.innerHTML = buildBankLoanBorrowModalBody(status, fee, t);
+    $('#officeBankLoanBorrowModal')?.classList.remove('hidden');
+  };
+
+  let bankLoanInfoModalBound = false;
+  const ensureBankLoanInfoModal = () => {
+    if (!$('#officeBankLoanInfoModal')) {
+      document.body.insertAdjacentHTML('beforeend', BANK_LOAN_INFO_MODAL_HTML);
+    }
+    if (bankLoanInfoModalBound) return;
+    bankLoanInfoModalBound = true;
+    document.addEventListener('click', event => {
+      const dismissBtn = event.target.closest('#officeBankLoanInfoDismiss');
+      const modal = $('#officeBankLoanInfoModal');
+      if (dismissBtn) {
+        event.preventDefault();
+        closeBankLoanInfoModal();
+        return;
+      }
+      if (event.target === modal) {
+        closeBankLoanInfoModal();
+      }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      if ($('#officeBankLoanInfoModal')?.classList.contains('hidden')) return;
+      closeBankLoanInfoModal();
+    });
+  };
+
+  const openBankLoanInfoModal = () => {
+    const club = userClubState();
+    if (!club || !bankLoanStatus) return;
+    const division = getUserDivision?.() || club.division || 'A';
+    const status = bankLoanStatus(club, { division });
+    let breakdownHtml = '';
+    if (status.active) {
+      breakdownHtml = bankLoanBreakdownWindowHtml(status.rateBreakdown, {
+        delinquent: status.delinquent,
+        effectiveRatePct: status.effectiveRatePct,
+      });
+    } else {
+      const termBtn = document.querySelector('[data-bank-term].is-active');
+      const term = Number(termBtn?.dataset.bankTerm) || DEFAULT_BANK_LOAN_TERM;
+      breakdownHtml = bankLoanBreakdownWindowHtml(buildBorrowRateBreakdown(status, term));
+    }
+    ensureBankLoanInfoModal();
+    const content = $('#officeBankLoanInfoContent');
+    if (content) content.innerHTML = breakdownHtml;
+    $('#officeBankLoanInfoModal')?.classList.remove('hidden');
+  };
 
   const TV_ADVANCE_MODAL_HTML = `
 <div id="officeTvAdvanceModal" class="modal hidden">
@@ -808,9 +1083,31 @@ export function createEconomyFeature(deps) {
     onBudgetChanged?.();
   };
 
+  const renderInvestmentLevels = club => {
+    if (!club) return;
+    const medicalLevel = Number(club.medicalInvestment) || 0;
+    const preventionLevel = Number(club.preventionProgram) || 0;
+    const youthRow = listUpgrades?.(club)?.find?.(row => row.id === 'youth_academy');
+    const youthMax = Number(youthRow?.maxLevel) || 5;
+    const youthLevel = Math.max(0, Math.min(youthMax, Number(youthRow?.level) || 0));
+    const medicalEl = $('#officeMedicalLevel');
+    const preventionEl = $('#officePreventionLevel');
+    const youthEl = $('#officeYouthLevel');
+    if (medicalEl) medicalEl.textContent = `${medicalLevel}/5`;
+    if (preventionEl) preventionEl.textContent = `${preventionLevel}/3`;
+    if (youthEl) youthEl.textContent = `${youthLevel}/${youthMax}`;
+    document.querySelectorAll('.office-investment-levels .office-meter').forEach(meter => {
+      meter.removeAttribute('data-tone');
+    });
+    setMeterBar('#officeMedicalBar', (medicalLevel / 5) * 100);
+    setMeterBar('#officePreventionBar', (preventionLevel / 3) * 100);
+    setMeterBar('#officeYouthBar', (youthLevel / youthMax) * 100);
+  };
+
   const renderInvestments = () => {
     const club = userClubState();
     renderUpgradeRows($('#economyInvestmentsList'), club ? listUpgrades(club) : [], 'data-buy-upgrade');
+    renderInvestmentLevels(club);
   };
 
   const renderStadium = () => {
@@ -939,6 +1236,11 @@ export function createEconomyFeature(deps) {
 
   const OUTFLOW_CATEGORIES = [
     { key: 'wages', label: 'Folha salarial', match: reason => reason === 'wages' },
+    {
+      key: 'loan_out_wages',
+      label: 'Salários emprestados',
+      match: reason => reason === 'loan_out_wages',
+    },
     { key: 'staff', label: 'Comissão técnica', match: reason => reason === 'staff_wages' },
     { key: 'stadium', label: 'Manutenção do estádio', match: reason => reason === 'stadium_ops' },
     { key: 'upgrades', label: 'Investimentos', match: reason => String(reason || '').startsWith('upgrade:') },
@@ -1349,13 +1651,9 @@ export function createEconomyFeature(deps) {
       term,
     });
     if (!result.ok) {
-      pushMessage?.({
-        category: 'club',
-        type: 'budget',
-        title: 'Empréstimo bancário',
-        body: bankLoanRejectCopy(result.reason),
-        round: getCurrentRound?.() ?? 1,
-        meta: { competition: 'Finanças' },
+      showBankLoanAlert({
+        title: 'Empréstimo negado',
+        lead: bankLoanRejectCopy(result.reason),
       });
       renderOffice();
       onBudgetChanged?.();
@@ -1390,15 +1688,24 @@ export function createEconomyFeature(deps) {
         const input = form.querySelector('#officeBankLoanAmount');
         const termBtn = form.querySelector('[data-bank-term].is-active');
         const term = Number(termBtn?.dataset.bankTerm) || DEFAULT_BANK_LOAN_TERM;
-        submitBankLoanBorrow(readLoanInputReais(input), term);
+        openBankLoanBorrowModal(readLoanInputReais(input), term);
       });
       loanBody.addEventListener('input', event => {
         if (event.target.matches('#officeBankLoanAmount')) {
           applyLoanCurrencyMask(event.target);
-          refreshBankLoanBorrowPreview();
         }
       });
       loanBody.addEventListener('click', event => {
+        const simulateBtn = event.target.closest('[data-bank-simulate]');
+        if (simulateBtn) {
+          event.preventDefault();
+          const form = simulateBtn.closest('#officeBankLoanForm');
+          const input = form?.querySelector('#officeBankLoanAmount');
+          const termBtn = form?.querySelector('[data-bank-term].is-active');
+          const term = Number(termBtn?.dataset.bankTerm) || DEFAULT_BANK_LOAN_TERM;
+          openBankLoanBorrowModal(readLoanInputReais(input), term);
+          return;
+        }
         const termBtn = event.target.closest('[data-bank-term]');
         if (!termBtn) return;
         event.preventDefault();
@@ -1406,7 +1713,6 @@ export function createEconomyFeature(deps) {
           btn.classList.toggle('is-active', btn === termBtn);
           btn.setAttribute('aria-pressed', btn === termBtn ? 'true' : 'false');
         });
-        refreshBankLoanBorrowPreview();
       });
     }
 
@@ -1417,6 +1723,13 @@ export function createEconomyFeature(deps) {
     });
 
     onClick('#officeBankLoanBody', event => {
+      const infoBtn = event.target.closest('[data-bank-loan-info]');
+      if (infoBtn) {
+        event.preventDefault();
+        openBankLoanInfoModal();
+        return;
+      }
+
       const parcelBtn = event.target.closest('[data-bank-pay-installment]');
       if (parcelBtn && !parcelBtn.disabled) {
         const club = userClubState();

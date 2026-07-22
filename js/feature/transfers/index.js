@@ -384,9 +384,12 @@ export function createTransfersFeature(deps) {
   };
 
   /** Preview de expansão de elenco (compra / empréstimo de entrada). */
-  const previewExpandPayroll = player => {
+  const previewExpandPayroll = (player, { loanIn = false, playerId = null } = {}) => {
     const api = engine();
     if (!api?.evaluateUserPayroll || !player) return null;
+    if (loanIn && playerId && typeof api.previewLoanInPayroll === 'function') {
+      return api.previewLoanInPayroll(playerId)?.payroll ?? null;
+    }
     const wage =
       typeof api.resolvePlayerWage === 'function'
         ? api.resolvePlayerWage(player)
@@ -937,6 +940,7 @@ export function createTransfersFeature(deps) {
           const p = row.player;
           const wage = Number(p.wage || row.wage) || 0;
           const canLoan = !!p.loanListed;
+          const wageCell = escapeHtml(formatMoney(wage));
           return `<tr>
           <td class="col-name">${escapeHtml(p.name)}${p.setPieceSpecialist ? ' <span class="player-specialist-star" title="Especialista em bola parada" aria-label="Especialista">★</span>' : ''}${canLoan ? ' <small class="transfers-loan-tag transfers-loan-tag--offer" title="Disponível para empréstimo">EMPR.</small>' : ''}</td>
           <td class="col-club" title="${escapeHtml(row.clubName)}"><span class="club-link" data-club="${escapeHtml(row.clubName)}" role="button" tabindex="0">${escapeHtml(row.clubName)}</span></td>
@@ -944,7 +948,7 @@ export function createTransfersFeature(deps) {
           <td>${escapeHtml(sideLetter(p))}</td>
           <td class="col-force">${escapeHtml(p.overall)}</td>
           <td>${escapeHtml(p.age)}</td>
-          <td>${escapeHtml(formatMoney(wage))}</td>
+          <td>${wageCell}</td>
           <td class="col-passe">${escapeHtml(formatMoney(row.price))}</td>
           <td class="col-traits">${escapeHtml(traitCodes(p))}</td>
           <td>${listedMark(!!p.listed)}</td>
@@ -1053,13 +1057,14 @@ export function createTransfersFeature(deps) {
             <button type="button" class="transfers-action secondary" data-loan-list-id="${escapeHtml(row.playerId)}" data-loan-listed="${row.loanListed ? '1' : '0'}">${row.loanListed ? 'RET. EMPR.' : 'EMPRESTAR'}</button>
             <button type="button" class="transfers-action" data-sell-id="${escapeHtml(row.playerId)}">VENDER</button>`;
           }
+          const wageCell = escapeHtml(formatMoney(wage));
           return `<tr>
           <td class="col-name">${nameCell}</td>
           <td>${escapeHtml(p.pos)}</td>
           <td>${escapeHtml(sideLetter(p))}</td>
           <td class="col-force">${escapeHtml(p.overall)}</td>
           <td>${escapeHtml(p.age)}</td>
-          <td>${escapeHtml(formatMoney(wage))}</td>
+          <td>${wageCell}</td>
           <td class="col-passe">${escapeHtml(formatMoney(price))}</td>
           <td class="col-traits">${escapeHtml(traitCodes(p))}</td>
           <td>${listedMark(!!row.listed)}</td>
@@ -1741,7 +1746,8 @@ export function createTransfersFeature(deps) {
     }
     const slots = api.loanSlots?.(getUserClub?.()) || { incoming: 0, max: 3 };
     const p = found.player;
-    const payroll = previewExpandPayroll(p);
+    const loanPreview = api.previewLoanInPayroll?.(playerId);
+    const payroll = loanPreview?.payroll ?? previewExpandPayroll(p);
     openConfirmModal({
       title: 'Confirmar empréstimo',
       eyebrow: 'MERCADO · EMPRÉSTIMO',
@@ -1749,9 +1755,9 @@ export function createTransfersFeature(deps) {
       meta: [found.clubName, p.pos, p.overall != null ? `OVR ${p.overall}` : null, p.age != null ? `${p.age} anos` : null]
         .filter(Boolean)
         .join(' · '),
-      lead: 'Trazer até o fim da temporada, com opção de compra fixa (100–120% do valor). O salário entra na folha enquanto ele estiver no elenco.',
+      lead: 'Trazer até o fim da temporada, com opção de compra fixa (100–120% do valor). O salário entra integralmente na sua folha.',
       slotsLabel: `${slots.incoming}/${slots.max}`,
-      wage: p.wage,
+      wage: loanPreview?.hostWage ?? p.wage,
       submitLabel: 'CONFIRMAR EMPRÉSTIMO',
       payroll,
       onConfirm: () => {
@@ -1779,10 +1785,14 @@ export function createTransfersFeature(deps) {
           result.loanBuyFee > 0
             ? ` Opção de compra: ${formatMoney(result.loanBuyFee)} (exerce quando quiser, na janela).`
             : '';
+        const salBit =
+          result.loanHostWage > 0
+            ? ` Salário: ${formatMoney(result.loanHostWage)}/rod (integral na sua folha).`
+            : '';
         setStatus(`Emprestado: ${result.player.name} ← ${result.from}`);
         alertTransferResult(result, {
           titleOk: 'Empréstimo concluído',
-          leadOk: `${result.player.name} chega por empréstimo de ${result.from} até o fim da temporada.${feeBit}`,
+          leadOk: `${result.player.name} chega por empréstimo de ${result.from} até o fim da temporada.${salBit}${feeBit}`,
         });
         onDealComplete?.(result);
         persistSeason();

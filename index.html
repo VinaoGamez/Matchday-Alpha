@@ -158,11 +158,7 @@
             </div>
             <div class="office-budget-col office-season-goal-col">
               <label>META DE TEMPORADA</label>
-              <div class="office-season-goal-row">
-                <div class="office-budget-body office-season-goal-copy">
-                  <div id="officeSeasonGoal" class="office-season-goal-value">—</div>
-                  <p id="officeSeasonGoalMeta" class="office-budget-meta">A diretoria define a expectativa da campanha.</p>
-                </div>
+              <div class="office-season-goal-visual">
                 <div id="officeSeasonGoalGauge" class="office-season-goal-gauge" aria-hidden="true"></div>
               </div>
             </div>
@@ -175,7 +171,21 @@
             <small>RESTRIÇÃO FINANCEIRA</small>
             <p>Compras e empréstimos de jogadores suspensos. Venda, adiante TV ou regularize o banco para liberar o mercado.</p>
           </aside>
-          <div class="office-status-strip" aria-label="Indicadores do clube">
+          <div class="office-objectives-section">
+            <label>METAS DE TEMPORADA</label>
+            <div id="officeObjectives" class="office-objectives" aria-label="Metas da temporada"></div>
+          </div>
+        </article>
+        <article class="card office-bank-loan" id="officeBankLoan" aria-label="Empréstimo bancário">
+          <label>EMPRÉSTIMO BANCÁRIO</label>
+          <p class="office-bank-loan-meta" id="officeBankLoanMeta">Financiamento por parcelas · taxa travada no contrato · juros automáticos</p>
+          <div id="officeBankLoanBody" class="office-bank-loan-body"></div>
+        </article>
+        <article class="card economy-investments" id="economyInvestments" aria-label="Investimentos do clube">
+          <label>INVESTIMENTOS DO CLUBE</label>
+          <div class="economy-invest-head"><span>INVESTIMENTO</span><span>NÍVEL</span><span>INVESTIR</span></div>
+          <div id="economyInvestmentsList" class="economy-investments-list"></div>
+          <div class="office-status-strip office-investment-levels" aria-label="Níveis dos investimentos">
             <div class="office-meter" data-meter="medical">
               <div class="office-meter-top"><small>DEP. MÉDICO</small><b id="officeMedicalLevel">0/5</b></div>
               <div class="office-meter-track" aria-hidden="true"><i id="officeMedicalBar"></i></div>
@@ -189,16 +199,6 @@
               <div class="office-meter-track" aria-hidden="true"><i id="officeYouthBar"></i></div>
             </div>
           </div>
-        </article>
-        <article class="card office-bank-loan" id="officeBankLoan" aria-label="Empréstimo bancário">
-          <label>EMPRÉSTIMO BANCÁRIO</label>
-          <p class="office-bank-loan-meta" id="officeBankLoanMeta">Financiamento por parcelas · taxa travada no contrato · juros automáticos</p>
-          <div id="officeBankLoanBody" class="office-bank-loan-body"></div>
-        </article>
-        <article class="card economy-investments" id="economyInvestments" aria-label="Investimentos do clube">
-          <label>INVESTIMENTOS DO CLUBE</label>
-          <div class="economy-invest-head"><span>INVESTIMENTO</span><span>NÍVEL</span><span>INVESTIR</span></div>
-          <div id="economyInvestmentsList" class="economy-investments-list"></div>
         </article>
         <article class="card office-sponsors" id="officeSponsors" aria-label="Patrocínio">
           <label>PATROCÍNIO</label>

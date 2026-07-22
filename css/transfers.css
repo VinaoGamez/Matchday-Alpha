@@ -297,6 +297,16 @@ main > .view.active.transfers-view {
   color: #e6d08a;
 }
 
+.transfers-loan-wage-note {
+  display: inline-block;
+  margin-left: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #7ecbff;
+  white-space: nowrap;
+}
+
 .transfers-loan-away-note {
   color: #c49a9a;
   font: 700 10px 'DM Sans', sans-serif;

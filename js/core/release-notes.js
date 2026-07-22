@@ -5,6 +5,37 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.50',
+    date: '2026-07-21',
+    publishedAt: '2026-07-21T20:55:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Escritório · metas de temporada',
+        items: [
+          'Card de orçamento reorganizado: meta principal no anel e bloco Metas de temporada.',
+          'Três metas complementares (torneio, economia, estrutura) com progresso ao vivo.',
+          'No fim da temporada: avaliação com ✓/◐/✗, mensagem na caixa de entrada e impacto na diretoria.',
+        ],
+      },
+      {
+        label: 'Empréstimo bancário',
+        items: [
+          'Simulação só aparece após OK; confirmação com CONFIRMAR / NEGAR.',
+          'Popup de informações e teto de crédito em valor exato (ex.: R$ 1.075.000).',
+          'Se digitar acima do teto, ajusta ao máximo automaticamente.',
+          'Avisos de validação em popup efêmero — não vão para Mensagens.',
+        ],
+      },
+      {
+        label: 'Mercado · empréstimo de jogador',
+        items: [
+          'O salário do emprestado entra integralmente na folha do clube que está usando o jogador.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.49',
     date: '2026-07-21',
     publishedAt: '2026-07-21T19:00:00-03:00',

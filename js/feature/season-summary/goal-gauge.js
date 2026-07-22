@@ -12,6 +12,7 @@ export const GOAL_GAUGE = {
  */
 export function seasonGoalGauge(input = 'met', options = {}) {
   const compact = !!options.compact;
+  const office = !!options.office;
   const hideLegend = !!options.hideLegend;
   let status = 'met';
   let score;
@@ -37,20 +38,25 @@ export function seasonGoalGauge(input = 'met', options = {}) {
   const progress = score / 100;
   const dash = (circumference * progress).toFixed(2);
   const gap = (circumference - circumference * progress).toFixed(2);
-  const compactClass = compact ? ' season-goal-gauge--compact' : '';
+  const sizeClass = office ? ' season-goal-gauge--office' : compact ? ' season-goal-gauge--compact' : '';
   const legend = hideLegend
     ? ''
-    : compact
-      ? `<div class="season-goal-gauge-legend season-goal-gauge-legend--inline">
+    : office
+      ? `<div class="season-goal-gauge-legend season-goal-gauge-legend--side">
       <span><i class="delivered" aria-hidden="true"></i>Entregue</span>
       <span><i class="requested" aria-hidden="true"></i>Pedido</span>
     </div>`
-      : `<div class="season-goal-gauge-legend">
+      : compact
+        ? `<div class="season-goal-gauge-legend season-goal-gauge-legend--inline">
+      <span><i class="delivered" aria-hidden="true"></i>Entregue</span>
+      <span><i class="requested" aria-hidden="true"></i>Pedido</span>
+    </div>`
+        : `<div class="season-goal-gauge-legend">
       <span><i class="delivered" aria-hidden="true"></i>Entregue</span>
       <span><i class="requested" aria-hidden="true"></i>Pedido</span>
     </div>`;
 
-  return `<aside class="season-goal-gauge goal-${status}${compactClass}" style="--gauge-color:${color};--gauge-score:${score}" aria-label="Desempenho frente à meta: ${hint}">
+  return `<aside class="season-goal-gauge goal-${status}${sizeClass}" style="--gauge-color:${color};--gauge-score:${score}" aria-label="Desempenho frente à meta: ${hint}">
     <div class="season-goal-gauge-ring">
       <svg viewBox="0 0 88 88" aria-hidden="true" focusable="false">
         <circle class="season-goal-gauge-track" cx="44" cy="44" r="${radius}"/>

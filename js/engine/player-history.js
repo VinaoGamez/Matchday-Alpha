@@ -349,6 +349,21 @@ export function createPlayerHistoryEngine(deps = {}) {
             feeling: payload.seasonGoalResult.feeling,
           }
         : null,
+      seasonObjectivesResult: payload.seasonObjectivesResult
+        ? {
+            boardDelta: payload.seasonObjectivesResult.boardDelta,
+            feeling: payload.seasonObjectivesResult.feeling,
+            metCount: payload.seasonObjectivesResult.metCount,
+            missedCount: payload.seasonObjectivesResult.missedCount,
+            items: Array.isArray(payload.seasonObjectivesResult.items)
+              ? payload.seasonObjectivesResult.items.map(item => ({
+                  id: item.id,
+                  label: item.label,
+                  status: item.status,
+                }))
+              : [],
+          }
+        : null,
       champions: payload.champions ? { ...payload.champions } : null,
       movements: Array.isArray(payload.movements)
         ? payload.movements.map(row => ({

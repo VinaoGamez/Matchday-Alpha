@@ -2,7 +2,7 @@
  * Build pública para testers.
  * Nomenclatura: Alpha V.X.YY — sobe +0.05 a cada publicação (1.00 → 1.05 → …).
  */
-export const BUILD_VERSION = 'Alpha V.1.49';
+export const BUILD_VERSION = 'Alpha V.1.50';
 
 export const SAVE_KEYS = {
   career: 'matchday-new-game',

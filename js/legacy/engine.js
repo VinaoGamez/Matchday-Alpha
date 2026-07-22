@@ -88,6 +88,11 @@ import { createEconomyEngine } from '../engine/economy.js';
 import { createClubStatusEngine } from '../engine/club-status.js';
 import { createManagerRankingEngine } from '../engine/manager-ranking.js';
 import { pickSeasonGoal, evaluateSeasonGoal, seasonGoalLiveProgress } from '../engine/season-goals.js';
+import {
+  pickSeasonObjectives,
+  seasonObjectiveLiveProgress,
+  evaluateSeasonObjectives,
+} from '../engine/season-objectives.js';
 import { seasonGoalGauge } from '../feature/season-summary/goal-gauge.js';
 import { createPlayerHistoryEngine, PLAYER_HISTORY_LIMITS, seasonAverageRating } from '../engine/player-history.js';
 import { formatMatchRating, buildMatchPlayerSheets, playerKey } from '../engine/player-match-stats.js';
@@ -847,6 +852,8 @@ export async function bootEngine({ bus } = {}) {
       division:userDivision,
       round,
       season:careerSeason,
+      clubName:userClub,
+      clubs,
       managerId:manager?.id||null,
       managerName:manager?.name||careerProfile.managerName||null,
       managerReputation:reputation,
@@ -1228,7 +1235,24 @@ export async function bootEngine({ bus } = {}) {
     ||(savedNewGame?.seasonGoal?.id?savedNewGame.seasonGoal:null)
     ||null;
   let seasonGoalResult=(validSavedSeason&&savedSeason.seasonGoalResult?.status?savedSeason.seasonGoalResult:null)||null;
+  let seasonObjectives=(validSavedSeason&&Array.isArray(savedSeason.seasonObjectives)&&savedSeason.seasonObjectives.length?savedSeason.seasonObjectives:null)
+    ||(savedNewGame?.seasonObjectives?.length?savedNewGame.seasonObjectives:null)
+    ||null;
+  let seasonObjectivesResult=(validSavedSeason&&savedSeason.seasonObjectivesResult?.items?.length?savedSeason.seasonObjectivesResult:null)||null;
   let seasonGoalJustCreated=false;
+  const buildSeasonObjectives=()=>pickSeasonObjectives({
+    division:userDivision,
+    seed:(savedNewGame?.seed||1)^(careerSeason*31),
+    club:clubs[userClub],
+    inCup:true,
+  });
+  const ensureSeasonObjectives=()=>{
+    if(!savedNewGame)return [];
+    if(seasonObjectives?.length)return seasonObjectives;
+    ensureSeasonGoal();
+    seasonObjectives=buildSeasonObjectives();
+    return seasonObjectives;
+  };
   const ensureSeasonGoal=()=>{
     if(!savedNewGame)return null;
     if(seasonGoal?.id)return seasonGoal;
@@ -1238,8 +1262,25 @@ export async function bootEngine({ bus } = {}) {
       seed:savedNewGame.seed||careerSeason,
     });
     seasonGoalResult=null;
+    seasonObjectivesResult=null;
     seasonGoalJustCreated=true;
+    seasonObjectives=buildSeasonObjectives();
     return seasonGoal;
+  };
+  const buildSeasonObjectiveEvalContext=(clubState)=>{
+    const ctx=buildSeasonGoalLiveContext();
+    const club=clubState||clubs[userClub];
+    const cupPhase=resolveCupPrizePhase(userClub,cupCompetition);
+    const cupPhaseIndex=cupPhase==='champion'?9:Number(cupPhase)||0;
+    return {
+      ...ctx,
+      balance:getBalance(club),
+      finances:club?.finances,
+      runway:estimateWageRunway(club,userDivision,{managerReputation:club?.managerReputation}),
+      cupPhaseIndex,
+      cupPhaseLabel:cupPhase==='champion'?'Campeão da Copa':cupPhaseIndex?`Copa · fase ${cupPhaseIndex}`:'Copa do Brasil',
+      season:careerSeason,
+    };
   };
   const buildSeasonGoalLiveContext=()=>{
     const knockout=nationalCompetitions.D?.knockout||{};
@@ -2500,7 +2541,10 @@ export async function bootEngine({ bus } = {}) {
     getUserDivision:()=>userDivision,
     getCareerSeason:()=>careerSeason,
     getSeasonGoal:()=>ensureSeasonGoal(),
-    getSeasonGoalLiveContext:()=>buildSeasonGoalLiveContext(),
+    getSeasonObjectives:()=>ensureSeasonObjectives(),
+    getSeasonObjectivesResult:()=>seasonObjectivesResult,
+    getSeasonGoalLiveContext:()=>buildSeasonObjectiveEvalContext(),
+    seasonObjectiveLiveProgress,
     getBoardBriefContext:club=>{
       const target=club||clubs[userClub];
       if(!target)return null;
@@ -5215,6 +5259,8 @@ export async function bootEngine({ bus } = {}) {
     const activeDivision=opts.userDivision||userDivision;
     const activeGoal=opts.seasonGoal!==undefined?opts.seasonGoal:seasonGoal;
     const activeGoalResult=opts.seasonGoalResult!==undefined?opts.seasonGoalResult:seasonGoalResult;
+    const activeObjectives=opts.seasonObjectives!==undefined?opts.seasonObjectives:seasonObjectives;
+    const activeObjectivesResult=opts.seasonObjectivesResult!==undefined?opts.seasonObjectivesResult:seasonObjectivesResult;
     const activeCrisis=opts.managerJobCrisis!==undefined?opts.managerJobCrisis:managerJobCrisis;
     pruneClubMemory(clubs,nationalRankingEntries);
     const standings=Object.fromEntries(Object.entries(nationalCompetitions).map(([division,competition])=>[division,competition.standings.map(row=>({...row}))]));
@@ -5385,6 +5431,11 @@ export async function bootEngine({ bus } = {}) {
       })(),
       seasonGoal:activeGoal?{...activeGoal,evaluate:activeGoal.evaluate?{...activeGoal.evaluate}:null}:null,
       seasonGoalResult:activeGoalResult?{...activeGoalResult}:null,
+      seasonObjectives:Array.isArray(activeObjectives)?activeObjectives.map(item=>({...item,evaluate:item.evaluate?{...item.evaluate}:null})):null,
+      seasonObjectivesResult:activeObjectivesResult?{
+        ...activeObjectivesResult,
+        items:Array.isArray(activeObjectivesResult.items)?activeObjectivesResult.items.map(item=>({...item})):[],
+      }:null,
       managerJobCrisis:activeCrisis?{
         status:activeCrisis.status,
         reason:activeCrisis.reason||null,
@@ -6134,6 +6185,12 @@ export async function bootEngine({ bus } = {}) {
       overall:clubSquadOverall(newClub),
       seed:(savedNewGame.seed||1)^(careerSeason*17),
     });
+    const nextObjectives=pickSeasonObjectives({
+      division:newDivision,
+      seed:(savedNewGame.seed||1)^(careerSeason*31),
+      club:newClub,
+      inCup:true,
+    });
     managerRanking.syncSeasonPointsFromClubs(managerRankingHelpers().getClubSeasonPoints);
     const rankingSnap=managerRanking.snapshot();
     pendingSponsorChoice=true;
@@ -6165,6 +6222,8 @@ export async function bootEngine({ bus } = {}) {
       managerRanking:rankingSnap,
       seasonGoal:nextGoal?{...nextGoal,evaluate:nextGoal.evaluate?{...nextGoal.evaluate}:null}:null,
       seasonGoalResult:null,
+      seasonObjectives:nextObjectives,
+      seasonObjectivesResult:null,
       createdAt:new Date().toISOString(),
       version:4,
     };
@@ -6175,6 +6234,8 @@ export async function bootEngine({ bus } = {}) {
       userDivision:newDivision,
       seasonGoal:nextGoal,
       seasonGoalResult:null,
+      seasonObjectives:nextObjectives,
+      seasonObjectivesResult:null,
       managerJobCrisis:null,
       userClubStatus:statusSnapshot,
       userBudget:statusSnapshot.budget,
@@ -6325,6 +6386,8 @@ export async function bootEngine({ bus } = {}) {
         })(),
         seasonGoal:null,
         seasonGoalResult:null,
+        seasonObjectives:null,
+        seasonObjectivesResult:null,
         season:(savedNewGame.season||2026)+1,
         stadiumName:clubs[userClub]?.stadiumName||savedNewGame.stadiumName||null,
         pendingSponsorChoice:true,
@@ -6444,6 +6507,26 @@ export async function bootEngine({ bus } = {}) {
           read:false,
         });
       }
+      ensureSeasonObjectives();
+      if(seasonObjectives?.length&&!seasonObjectivesResult?.items?.length){
+        seasonObjectivesResult=evaluateSeasonObjectives(
+          seasonObjectives,
+          buildSeasonObjectiveEvalContext(userClubState),
+          userClubState,
+        );
+        if(seasonObjectivesResult?.boardDelta){
+          clubStatus.applyDeltas(clubs[userClub],{board:seasonObjectivesResult.boardDelta});
+          renderEnvironmentCard();
+        }
+        pushMessage({
+          category:'club',
+          type:'season-objectives-result',
+          title:'METAS COMPLEMENTARES',
+          body:seasonObjectivesResult.body,
+          round:currentRound,
+          read:false,
+        });
+      }
       pushSeasonEndBrief({prizeTotal:prize.total,budgetAfter});
       seasonTransitionPrepared=true;
     }else{
@@ -6472,6 +6555,7 @@ export async function bootEngine({ bus } = {}) {
       userStatus,
       seasonGoal,
       seasonGoalResult,
+      seasonObjectivesResult,
       champions,
       movements,
       leadersByDivision,

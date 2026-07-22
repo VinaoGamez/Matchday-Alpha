@@ -11,6 +11,14 @@ import {
 } from './economy.js';
 import { evaluateLoanFit, loanAcceptChance } from './loan-fit.js';
 import {
+  computeLoanSalaryShare,
+  previewLoanHostWage,
+  loanOutPayrollDelta,
+  resolveHostRoundWage,
+  stampLoanSalaryShare,
+  clearLoanSalaryShare,
+} from './loan-salary-split.js';
+import {
   evaluateSellerDivisionFit,
   evaluateBuyerOfferDivisionFit,
   sellerAcceptRatioDeltaForDivision,
@@ -230,6 +238,7 @@ const clearLoanState = player => {
   if (!player) return;
   player.onLoan = false;
   player.loanFrom = null;
+  clearLoanSalaryShare(player);
   clearLoanOffer(player);
   clearLoanBuyOption(player);
 };
@@ -315,18 +324,43 @@ export function createTransfersEngine(deps) {
     return false;
   };
 
-  const payrollExpand = (club, player) =>
-    evaluateRosterPayroll(club, {
-      division: club?.division || 'A',
-      extraWage: resolvePlayerRoundWage(player, club?.division || 'A'),
+  const payrollContext = () => ({
+    clubName: getUserClub?.() || null,
+    clubs: getClubs?.() || null,
+  });
+
+  const payrollExpand = (club, player, ownerClub = null) => {
+    const division = club?.division || 'A';
+    const fullWage = resolvePlayerRoundWage(player, division);
+    let extraWage = fullWage;
+    if (ownerClub) {
+      extraWage = Math.round(fullWage * computeLoanSalaryShare(player, ownerClub, club));
+    } else if (player?.onLoan) {
+      extraWage = resolveHostRoundWage(player, division, resolvePlayerRoundWage);
+    }
+    return evaluateRosterPayroll(club, {
+      division,
+      extraWage,
       rosterDelta: 1,
+      ...payrollContext(),
     });
-  const payrollShrink = (club, player) =>
-    evaluateRosterPayroll(club, {
-      division: club?.division || 'A',
-      removeWage: resolvePlayerRoundWage(player, club?.division || 'A'),
+  };
+  const payrollShrink = (club, player, { loanOut = false, ownerClub = null, hostClub = null } = {}) => {
+    const division = club?.division || 'A';
+    const fullWage = resolvePlayerRoundWage(player, division);
+    let removeWage = fullWage;
+    if (loanOut && ownerClub && hostClub) {
+      removeWage = loanOutPayrollDelta(player, ownerClub, hostClub, resolvePlayerRoundWage).netRemoveWage;
+    } else if (player?.onLoan) {
+      removeWage = resolveHostRoundWage(player, division, resolvePlayerRoundWage);
+    }
+    return evaluateRosterPayroll(club, {
+      division,
+      removeWage,
       rosterDelta: -1,
+      ...payrollContext(),
     });
+  };
   const clubCanHostPlayer = (club, player) =>
     !!club && Array.isArray(club.roster) && payrollExpand(club, player).ok;
 
@@ -703,7 +737,7 @@ export function createTransfersEngine(deps) {
   };
 
   const listBuyCandidates = (filters = {}) => {
-    const { name: userName } = userClubState();
+    const { name: userName, club: userClub } = userClubState();
     const clubs = getClubs() || {};
     const pos = filters.pos || null;
     const division = filters.division || null;
@@ -761,9 +795,17 @@ export function createTransfersEngine(deps) {
         }
         const value = Number(player.marketValue) || estimatePlayerValue(player, club.division);
         const price = player.listed && player.askingPrice > 0 ? Number(player.askingPrice) : value;
-        const wage = Number(player.wage) || 0;
+        const wage = Number(player.wage) || resolvePlayerRoundWage(player, club.division);
+        let loanHostWage = null;
+        let loanHostSharePct = null;
+        if (player.loanListed && userClub) {
+          const split = previewLoanHostWage(player, club, userClub, resolvePlayerRoundWage);
+          loanHostWage = split.hostWage;
+          loanHostSharePct = split.hostSharePct;
+        }
+        const wageForFilter = loanHostWage != null ? loanHostWage : wage;
         if (Number.isFinite(maxPrice) && maxPrice > 0 && price > maxPrice) return;
-        if (Number.isFinite(maxWage) && maxWage > 0 && wage > maxWage) return;
+        if (Number.isFinite(maxWage) && maxWage > 0 && wageForFilter > maxWage) return;
         rows.push({
           playerId: resolvePlayerId(player),
           player,
@@ -772,6 +814,8 @@ export function createTransfersEngine(deps) {
           value,
           price,
           wage,
+          loanHostWage,
+          loanHostSharePct,
           age,
           overall: ovr,
           loanListed: !!player.loanListed,
@@ -841,6 +885,12 @@ export function createTransfersEngine(deps) {
         loanFrom: player.loanFrom || null,
         loanTo: null,
         loanBuyFee: player.loanBuyOption?.fee || null,
+        loanHostSharePct: player.onLoan
+          ? Math.round((Number(player.loanSalaryShare) || 1) * 100)
+          : null,
+        loanOwnerSharePct: player.onLoan
+          ? Math.round((1 - (Number(player.loanSalaryShare) || 1)) * 100)
+          : null,
         askingPrice: player.askingPrice,
         outgoingSlots: slots,
         windowLocked: playerMovedThisWindow(player),
@@ -867,6 +917,7 @@ export function createTransfersEngine(deps) {
           loanFrom: name,
           loanTo: hostName,
           loanBuyFee: player.loanBuyOption?.fee || null,
+          loanOwnerSharePct: Math.round((1 - (Number(player.loanSalaryShare) || 1)) * 100),
           askingPrice: null,
           outgoingSlots: slots,
           windowLocked: playerMovedThisWindow(player),
@@ -1451,7 +1502,7 @@ export function createTransfersEngine(deps) {
     if (countOutgoingLoans(ownerName) >= maxLoans) {
       return { ok: false, reason: 'loan_out_limit', slots: loanSlots(ownerName) };
     }
-    const payroll = payrollExpand(borrower, player);
+    const payroll = payrollExpand(borrower, player, owner);
     if (!payroll.ok) {
       return { ok: false, reason: payroll.reason || 'payroll_pressure', payroll };
     }
@@ -1469,11 +1520,13 @@ export function createTransfersEngine(deps) {
       onLoan: true,
       loanFrom: ownerName,
     };
+    stampLoanSalaryShare(moved, owner, borrower);
     markPlayerMoved(moved);
     refreshMarketFields(moved, { division: borrower.division, season: getCareerSeason() });
     const buyOpt = stampLoanBuyOption(moved, owner, playerId);
     borrower.roster.push(moved);
 
+    const salarySplit = previewLoanHostWage(moved, owner, borrower, resolvePlayerRoundWage);
     const result = {
       ok: true,
       type: 'loan_in',
@@ -1482,8 +1535,14 @@ export function createTransfersEngine(deps) {
       to: borrowerName,
       fee: 0,
       loanBuyFee: buyOpt?.fee || null,
+      loanHostWage: salarySplit.hostWage,
+      loanHostSharePct: salarySplit.hostSharePct,
+      loanOwnerSharePct: salarySplit.ownerSharePct,
       slots: loanSlots(borrowerName),
-      payroll: evaluateRosterPayroll(borrower, { division: borrower.division || 'A' }),
+      payroll: evaluateRosterPayroll(borrower, {
+        division: borrower.division || 'A',
+        ...payrollContext(),
+      }),
       fit,
     };
     onAfterTransfer?.(result);
@@ -1524,6 +1583,7 @@ export function createTransfersEngine(deps) {
       onLoan: true,
       loanFrom: ownerName,
     };
+    stampLoanSalaryShare(moved, owner, host.club);
     markPlayerMoved(moved);
     refreshMarketFields(moved, {
       division: host.club.division,
@@ -1541,7 +1601,10 @@ export function createTransfersEngine(deps) {
       fee: 0,
       loanBuyFee: buyOpt?.fee || null,
       slots: loanSlots(ownerName),
-      payroll: evaluateRosterPayroll(owner, { division: owner.division || 'A' }),
+      payroll: evaluateRosterPayroll(owner, {
+        division: owner.division || 'A',
+        ...payrollContext(),
+      }),
     };
     onAfterTransfer?.(result);
     return result;
@@ -1561,7 +1624,13 @@ export function createTransfersEngine(deps) {
     const ownerName = player.loanFrom;
     const owner = getClubs()?.[ownerName];
     if (!owner || !Array.isArray(owner.roster)) return { ok: false, reason: 'no_club' };
-    const hostPayroll = payrollExpand(owner, player);
+    const ownerDiv = owner.division || 'A';
+    const hostPayroll = evaluateRosterPayroll(owner, {
+      division: ownerDiv,
+      extraWage: resolvePlayerRoundWage(player, ownerDiv),
+      rosterDelta: 1,
+      ...payrollContext(),
+    });
     if (!hostPayroll.ok) {
       return { ok: false, reason: hostPayroll.reason || 'payroll_pressure', payroll: hostPayroll };
     }
@@ -1581,7 +1650,10 @@ export function createTransfersEngine(deps) {
       from: borrowerName,
       to: ownerName,
       slots: loanSlots(borrowerName),
-      payroll: evaluateRosterPayroll(borrower, { division: borrower.division || 'A' }),
+      payroll: evaluateRosterPayroll(borrower, {
+        division: borrower.division || 'A',
+        ...payrollContext(),
+      }),
     };
     onAfterTransfer?.(result);
     return result;
@@ -1668,7 +1740,7 @@ export function createTransfersEngine(deps) {
     const moveGate = assertPlayerCanMove(player);
     if (!moveGate.ok) return moveGate;
     if (owner.roster.length <= minRoster) return { ok: false, reason: 'seller_min_roster' };
-    const hostPayroll = payrollExpand(host, player);
+    const hostPayroll = payrollExpand(host, player, owner);
     if (!hostPayroll.ok) {
       return { ok: false, reason: hostPayroll.reason || 'payroll_pressure', payroll: hostPayroll };
     }
@@ -1687,6 +1759,7 @@ export function createTransfersEngine(deps) {
       onLoan: true,
       loanFrom: ownerName,
     };
+    stampLoanSalaryShare(moved, owner, host);
     markPlayerMoved(moved);
     refreshMarketFields(moved, { division: host.division, season: getCareerSeason() });
     const buyOpt = stampLoanBuyOption(moved, owner, resolvePlayerId(player));
@@ -2470,10 +2543,34 @@ export function createTransfersEngine(deps) {
     evaluateUserPayroll: (opts = {}) => {
       const { club } = userClubState();
       if (!club) return null;
-      return evaluateRosterPayroll(club, { division: club.division || 'A', ...opts });
+      return evaluateRosterPayroll(club, {
+        division: club.division || 'A',
+        ...payrollContext(),
+        ...opts,
+      });
+    },
+    previewLoanInPayroll: playerId => {
+      const found = findPlayerInWorld(getClubs(), playerId);
+      const { club: borrower } = userClubState();
+      if (!found || !borrower) return null;
+      const split = previewLoanHostWage(found.player, found.club, borrower, resolvePlayerRoundWage);
+      const payroll = evaluateRosterPayroll(borrower, {
+        division: borrower.division || 'A',
+        extraWage: split.hostWage,
+        rosterDelta: 1,
+        ...payrollContext(),
+      });
+      return { ...split, payroll };
     },
     resolvePlayerWage: (player, division) =>
       resolvePlayerRoundWage(player, division || userClubState().club?.division || 'A'),
+    resolveLoanHostWage: (player, ownerClub, hostClub) =>
+      previewLoanHostWage(
+        player,
+        ownerClub,
+        hostClub || userClubState().club,
+        resolvePlayerRoundWage,
+      ),
     expirePendingOffers,
     runAiMarketTick,
     snapshotSeasonDeals,

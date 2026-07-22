@@ -248,6 +248,11 @@ export function estimatePlayerWage(player, division = 'A') {
   return Math.round(base * scale * wageAgeFactor(player?.age));
 }
 
+import {
+  estimateLoanOutWageBill,
+  resolveHostRoundWage,
+} from './loan-salary-split.js';
+
 /** Prefere `player.wage` persistido; senão estima. */
 export function resolvePlayerRoundWage(player, division = 'A') {
   const wage = Number(player?.wage);
@@ -256,16 +261,27 @@ export function resolvePlayerRoundWage(player, division = 'A') {
 }
 
 /**
- * Folha salarial da rodada (soma do elenco).
- * @param {{ softCap?: boolean }} [options] softCap=false para gate de elenco (impacto real).
+ * Folha salarial da rodada (elenco ativo; emprestados pagam só a parte do hospedeiro).
+ * @param {{ softCap?: boolean, clubName?: string, clubs?: object }} [options]
  */
 export function estimateWageBill(club, division = club?.division || 'A', options = {}) {
   const roster = Array.isArray(club?.roster) ? club.roster : [];
-  if (!roster.length) return 0;
   const softCap = options.softCap !== false;
-  const raw = roster.reduce((sum, player) => sum + resolvePlayerRoundWage(player, division), 0);
-  if (!softCap) return raw;
   const cap = WAGE_BILL_SOFT_CAP[division] ?? WAGE_BILL_SOFT_CAP.D;
+  let raw = 0;
+  if (roster.length) {
+    raw = roster.reduce((sum, player) => {
+      if (player?.onLoan) {
+        return sum + resolveHostRoundWage(player, division, resolvePlayerRoundWage);
+      }
+      return sum + resolvePlayerRoundWage(player, division);
+    }, 0);
+  }
+  if (options.clubName && options.clubs) {
+    raw += estimateLoanOutWageBill(options.clubName, options.clubs, resolvePlayerRoundWage);
+  }
+  if (!raw) return 0;
+  if (!softCap) return raw;
   return Math.min(raw, cap);
 }
 
@@ -311,7 +327,12 @@ export function evaluateRosterPayroll(club, opts = {}) {
   const rosterDelta = Math.round(Number(opts.rosterDelta) || 0);
   const sizeNow = Array.isArray(club?.roster) ? club.roster.length : 0;
   const sizeNext = sizeNow + rosterDelta;
-  const wageBefore = estimateWageBill(club, division, { softCap: false });
+  const wageOpts = {
+    softCap: false,
+    clubName: opts.clubName || null,
+    clubs: opts.clubs || null,
+  };
+  const wageBefore = estimateWageBill(club, division, wageOpts);
   const wageAfter = Math.max(0, wageBefore + extraWage - removeWage);
   const revenue = estimateRoundRecurringRevenue(club, division);
   const factor = financesPayrollFactor(club?.finances);
@@ -613,6 +634,8 @@ export function chargeRoundCosts(club, {
   preferredDivision = null,
   titlePoints = 0,
   season = null,
+  clubName = null,
+  clubs = null,
 } = {}) {
   if (!club) {
     return {
@@ -633,6 +656,7 @@ export function chargeRoundCosts(club, {
     return {
       ok: true,
       wages: club.lastWageBill || { due: 0, paid: 0, shortfall: 0 },
+      loanOutWages: club.lastLoanOutWageBill || { due: 0, paid: 0, shortfall: 0 },
       staff: club.lastStaffBill || { due: 0, paid: 0, shortfall: 0 },
       stadium: club.lastStadiumOpsBill || { due: 0, paid: 0, shortfall: 0 },
       due: Number(club.lastRoundCostBill?.due) || 0,
@@ -659,10 +683,14 @@ export function chargeRoundCosts(club, {
     preferredDivision: preferredDivision || division,
     titlePoints,
   };
-  const wagesDue = estimateWageBill(club, division);
+  const wagesDue = estimateWageBill(club, division, { softCap: false });
+  const loanOutDue =
+    clubName && clubs
+      ? estimateLoanOutWageBill(clubName, clubs, resolvePlayerRoundWage)
+      : 0;
   const staffDue = estimateStaffBill(club, division, staffOpts);
   const stadiumDue = estimateStadiumOpsBill(club, division);
-  const due = wagesDue + staffDue + stadiumDue;
+  const due = wagesDue + loanOutDue + staffDue + stadiumDue;
   const balanceBefore = getBalance(club);
   // Débito integral: obrigações entram no caixa mesmo sem cobertura.
   club.budget = balanceBefore - due;
@@ -676,14 +704,23 @@ export function chargeRoundCosts(club, {
     return Math.round((overdraft * partDue) / due);
   };
   const wagesOd = splitOverdraft(wagesDue);
+  const loanOutOd = splitOverdraft(loanOutDue);
   const staffOd = splitOverdraft(staffDue);
-  const stadiumOd = Math.max(0, overdraft - wagesOd - staffOd);
+  const stadiumOd = Math.max(0, overdraft - wagesOd - loanOutOd - staffOd);
 
   club.lastWageBill = {
     due: wagesDue,
     paid: wagesDue,
     shortfall: wagesOd,
     overdraft: wagesOd,
+    round: roundKey,
+    at: new Date().toISOString(),
+  };
+  club.lastLoanOutWageBill = {
+    due: loanOutDue,
+    paid: loanOutDue,
+    shortfall: loanOutOd,
+    overdraft: loanOutOd,
     round: roundKey,
     at: new Date().toISOString(),
   };
@@ -725,6 +762,15 @@ export function chargeRoundCosts(club, {
     due: wagesDue,
     shortfall: wagesOd,
   });
+  if (loanOutDue > 0) {
+    pushCostLedger(club, {
+      reason: 'loan_out_wages',
+      label: `Salários emprestados${roundLabel}`,
+      paid: loanOutDue,
+      due: loanOutDue,
+      shortfall: loanOutOd,
+    });
+  }
   pushCostLedger(club, {
     reason: 'staff_wages',
     label: `Comissão técnica${roundLabel}`,
@@ -743,6 +789,7 @@ export function chargeRoundCosts(club, {
   return {
     ok: true,
     wages: club.lastWageBill,
+    loanOutWages: club.lastLoanOutWageBill,
     staff: club.lastStaffBill,
     stadium: club.lastStadiumOpsBill,
     due,
@@ -926,6 +973,16 @@ export function formatBudget(value) {
     text = amount.toLocaleString('pt-BR');
   }
   return negative ? `− R$ ${text}` : `R$ ${text}`;
+}
+
+/** Valor exato em reais — use em tetos/limites (evita "1,1 mi" quando o teto é 1,075 mi). */
+export function formatBudgetExact(value) {
+  const amount = Math.round(Number(value) || 0);
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 0,
+  }).format(amount);
 }
 
 export function formatCapacity(value) {

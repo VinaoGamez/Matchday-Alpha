@@ -18,15 +18,28 @@
 .office-balance-bar[data-tone="good"] .office-balance-end.is-rev{color:#d4ff6a}
 .office-budget-card,.economy-investments,.office-ledger,.office-sponsors,.office-bank-loan,.stadium-summary-card,.stadium-upgrades,.stadium-tickets{display:flex;flex-direction:column;min-height:0;padding:18px 20px}
 .office-budget-card>label,.office-budget-col>label,.economy-investments>label,.office-ledger>label,.office-sponsors>label,.office-bank-loan>label,.stadium-summary-card>label,.stadium-upgrades>label,.stadium-tickets>label{display:block;margin:0 0 14px;color:#2abee9;font:700 11px DM Sans,sans-serif;letter-spacing:.6px}
-.office-budget-header{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px 24px;align-items:stretch;margin-bottom:14px}
-.office-budget-col{display:flex;flex-direction:column;min-width:0}
-.office-budget-col>label{margin-bottom:10px}
-.office-season-goal-col{padding-left:24px;border-left:1px solid #1e4a5c}
-.office-season-goal-row{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;flex:1}
-.office-season-goal-copy{flex:1;min-width:0}
-.office-season-goal-gauge{flex:0 0 auto;display:grid;place-items:center;min-width:0}
+.office-budget-header{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px 24px;align-items:stretch;margin-bottom:14px;min-height:148px}
+.office-budget-col{display:flex;flex-direction:column;min-width:0;min-height:0}
+.office-budget-col>label{margin-bottom:10px;flex-shrink:0}
+.office-season-goal-col{padding-left:24px;border-left:1px solid #1e4a5c;overflow:hidden}
+.office-season-goal-visual{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:6px 0;overflow:hidden}
+.office-season-goal-gauge{display:flex;align-items:center;justify-content:center;width:100%;max-width:100%;min-height:0;transform:scale(.92);transform-origin:center center}
 .office-season-goal-gauge:empty{display:none}
-.office-season-goal-value{margin:0 0 6px;color:#edf8f5;font:700 22px Barlow Condensed,sans-serif;letter-spacing:.15px;line-height:1.15}
+.office-objectives-section{display:grid;gap:10px;margin-top:auto}
+.office-objectives-section>label{display:block;margin:0;color:#2abee9;font:700 11px DM Sans,sans-serif;letter-spacing:.6px}
+.office-objectives{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.office-objective{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;padding:11px 12px;border:1px solid #28505b;border-radius:6px;background:linear-gradient(165deg,#14303a 0%,#0e222c 100%)}
+.office-objective-body{display:grid;gap:4px;min-width:0}
+.office-objective-label{color:#edf8f5;font:700 12px DM Sans,sans-serif;line-height:1.35}
+.office-objective-hint{color:#7fa8b0;font-size:10px;line-height:1.35}
+.office-objective-marker{flex-shrink:0;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;font:800 13px Barlow Condensed,sans-serif;line-height:1}
+.office-objective-marker--pending{border:1px solid #2a5560;background:#0a1820;box-shadow:inset 0 0 0 1px #1e4a5c44}
+.office-objective-marker--done{border:1px solid #8fd42a;background:linear-gradient(165deg,#b6ff38 0%,#8fd42a 100%);color:#0a1820;box-shadow:0 0 10px #b6ff3844}
+.office-objective-marker--near{border:1px solid #ffc94f;background:linear-gradient(165deg,#ffe08a 0%,#ffc94f 100%);color:#0a1820;font-size:11px}
+.office-objective-marker--missed{border:1px solid #ff6b7a;background:linear-gradient(165deg,#ff9aa4 0%,#ff6b7a 100%);color:#0a1820}
+.office-objective.is-near .office-objective-label{color:#ffe08a}
+.office-objective.is-missed .office-objective-label{color:#ff9aa4}
+.office-objective.is-done .office-objective-label{color:#d8f5a8}
 .office-sponsors-meta,.office-bank-loan-meta{margin:0 0 12px;color:#7fa8b0;font-size:10px;line-height:1.4}
 .office-bank-loan-body{display:flex;flex-direction:column;gap:14px;min-height:0;flex:1}
 .office-bank-loan-copy{margin:0;color:#9eb6b8;font-size:11px;line-height:1.45}
@@ -45,7 +58,7 @@
 .office-bank-loan-metric[data-tone="warn"] .office-meter-track>i{background:linear-gradient(90deg,#ffc94f,#b6ff38)}
 .office-bank-loan-metric[data-tone="risk"] .office-meter-top b{color:#ff8c94}
 .office-bank-loan-metric[data-tone="risk"] .office-meter-track>i{background:linear-gradient(90deg,#ff8c94,#ffc94f)}
-.office-bank-loan-metric[data-meter="credit"] .office-meter-top b{color:#b6ff38;font-size:24px}
+.office-bank-loan-metric[data-meter="credit"] .office-meter-top b{color:#b6ff38;font-size:22px;line-height:1.05;white-space:normal;text-align:right}
 .office-bank-loan-metric[data-meter="rate"] .office-meter-top b{color:#63d9ff;font-size:24px}
 .office-bank-loan-metric-sub{color:#7fa8b0;font-size:11px;line-height:1.3}
 .office-bank-loan-form{display:flex;flex-direction:column;gap:8px;margin-top:auto}
@@ -87,6 +100,24 @@
 .office-bank-loan-term-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 .office-bank-loan-term{padding:8px 6px;border:1px solid #2a5560;border-radius:6px;background:#0a1820;color:#9eb6b8;font:700 11px DM Sans,sans-serif;letter-spacing:.2px;cursor:pointer}
 .office-bank-loan-term.is-active,.office-bank-loan-term[aria-pressed="true"]{border-color:#63d9ff;color:#edf8f5;background:#14303a;box-shadow:0 0 0 1px #63d9ff44}
+.office-bank-loan-info-btn{display:block;width:100%;padding:10px 14px;border:1px solid #2a5560;border-radius:6px;background:#14303a;color:#63d9ff;font:700 11px DM Sans,sans-serif;letter-spacing:.45px;cursor:pointer;text-align:center}
+.office-bank-loan-info-btn:hover,.office-bank-loan-info-btn:focus-visible{border-color:#63d9ff;outline:none;box-shadow:0 0 0 1px #63d9ff44}
+#officeBankLoanInfoModal{z-index:45}
+.office-bank-loan-info-modal{width:min(calc(100vw - 32px),420px)!important;padding:0!important;overflow:hidden;text-align:left;border:1px solid #2a6980!important;border-radius:10px!important;background:linear-gradient(165deg,#14303a 0%,#0e222c 100%)!important;box-shadow:0 18px 58px #000b,0 0 0 1px #63d9ff22!important}
+.office-bank-loan-info-modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px 12px;border-bottom:1px solid #28505b;background:linear-gradient(180deg,#1a3a44 0%,#14303a 100%)}
+.office-bank-loan-info-modal-heading{min-width:0}
+.office-bank-loan-info-modal-header label{display:block;margin:0 0 4px;color:#63d9ff;font:700 10px DM Sans,sans-serif;letter-spacing:.6px}
+.office-bank-loan-info-modal-header h2{margin:0;color:#edf8f5;font:700 22px Barlow Condensed,sans-serif;line-height:1.1;letter-spacing:.3px}
+.office-bank-loan-info-modal-body{padding:14px 16px 12px}
+.office-bank-loan-info-modal-note{margin:0 0 10px;color:#63d9ff;font-size:10px;line-height:1.35}
+.office-bank-loan-breakdown--window{margin:0}
+.office-bank-loan-info-modal-actions{display:flex;justify-content:center;padding:12px 16px 14px;border-top:1px solid #234650;background:#0b1d25}
+.office-bank-loan-borrow-modal-actions{gap:10px}
+.office-bank-loan-borrow-confirm{min-width:120px;padding:8px 20px;border:1px solid #8fd42a;border-radius:6px;background:linear-gradient(165deg,#b6ff38 0%,#8fd42a 100%);color:#0a1820;font:800 11px DM Sans,sans-serif;letter-spacing:.35px;cursor:pointer}
+.office-bank-loan-borrow-confirm:hover,.office-bank-loan-borrow-confirm:focus-visible{filter:brightness(1.06);outline:none}
+.office-bank-loan-info-modal-body .office-bank-loan-preview{margin-bottom:12px}
+.office-bank-loan-info-dismiss{min-width:120px;padding:8px 20px;border:1px solid #2a5560;border-radius:6px;background:#0a1820;color:#9eb6b8;font:700 11px DM Sans,sans-serif;letter-spacing:.35px;cursor:pointer}
+.office-bank-loan-info-dismiss:hover,.office-bank-loan-info-dismiss:focus-visible{border-color:#63d9ff;color:#edf8f5;outline:none}
 .office-bank-loan-breakdown{display:grid;gap:6px;padding:12px 14px;border:1px solid #28505b;border-radius:6px;background:#0e222c}
 .office-bank-loan-breakdown>small{color:#7fa8b0;font:700 9px DM Sans,sans-serif;letter-spacing:.35px}
 .office-bank-loan-preview{display:grid;gap:6px;padding:12px 14px;border:1px solid #234650;border-radius:6px;background:#0b1d25}
@@ -170,7 +201,8 @@ a.office-sponsor-logo.is-link:hover,a.office-sponsor-logo.is-link:focus-visible{
   font:500 13px/1.35 'DM Sans',sans-serif;
   color:#e8d0d4;
 }
-.office-status-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:auto}
+.office-status-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.economy-investments .office-investment-levels{margin-top:12px;padding-top:12px;border-top:1px solid #234650}
 .office-meter{display:grid;gap:8px;min-width:0;padding:12px 12px 11px;border:1px solid #28505b;border-radius:6px;background:linear-gradient(165deg,#14303a 0%,#0e222c 100%)}
 .office-meter-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-width:0}
 .office-meter-top small{color:#7fa8b0;font:700 8px DM Sans,sans-serif;letter-spacing:.35px}
@@ -272,5 +304,5 @@ a.office-sponsor-logo.is-link:hover,a.office-sponsor-logo.is-link:focus-visible{
 .office-entry-card strong{font:700 17px Barlow Condensed,sans-serif;color:#f4fbf5}
 .office-entry-card small{font-size:10px;color:#9fcfd8}
 .office-entry-card .office-icon{color:#63d9ff}
-@media(max-width:900px){.office-view .office-layout,.stadium-view .office-stadium-layout{grid-template-columns:1fr}.office-budget-header{grid-template-columns:1fr}.office-season-goal-col{padding-left:0;border-left:none;padding-top:12px;border-top:1px solid #1e4a5c}.office-status-strip,.office-cashflow-projection,.office-bank-loan-stats,.office-bank-loan-metrics-row{grid-template-columns:1fr}.office-stats{grid-template-columns:1fr 1fr}.stadium-summary-stats{grid-template-columns:1fr 1fr}.office-sponsors-list{grid-template-columns:1fr 1fr}.office-sponsor-card.master{grid-column:1 / -1}.office-balance-bar{grid-template-columns:1fr;gap:8px}.office-balance-end{text-align:center}}
-@media(max-width:560px){.office-sponsors-list{grid-template-columns:1fr}.office-season-goal-row{flex-wrap:wrap;align-items:flex-start}.office-season-goal-gauge{margin-left:auto}.office-bank-loan-form-row{grid-template-columns:minmax(0,1fr) 48px}}
+@media(max-width:900px){.office-view .office-layout,.stadium-view .office-stadium-layout{grid-template-columns:1fr}.office-budget-header{grid-template-columns:1fr;min-height:0}.office-season-goal-col{padding-left:0;border-left:none;padding-top:12px;border-top:1px solid #1e4a5c}.office-objectives{grid-template-columns:1fr}.office-investment-levels,.office-cashflow-projection,.office-bank-loan-stats,.office-bank-loan-metrics-row{grid-template-columns:1fr}.office-stats{grid-template-columns:1fr 1fr}.stadium-summary-stats{grid-template-columns:1fr 1fr}.office-sponsors-list{grid-template-columns:1fr 1fr}.office-sponsor-card.master{grid-column:1 / -1}.office-balance-bar{grid-template-columns:1fr;gap:8px}.office-balance-end{text-align:center}}
+@media(max-width:560px){.office-sponsors-list{grid-template-columns:1fr}.office-season-goal-gauge{transform:scale(.88)}.office-bank-loan-form-row{grid-template-columns:minmax(0,1fr) 48px}}
