@@ -919,6 +919,7 @@ export async function bootEngine({ bus } = {}) {
     return Object.keys(clubs).find(name=>name!==userClub&&clubs[name]?.roster)||Object.keys(clubs).find(name=>name!==userClub)||userClub;
   };
   const matchClub=()=>clubs[resolveOpponentClubName()];
+  const SERIE_D_GROUP_ROUNDS=10;
   // Calendário nacional: gerado por campeonato (política em competition-calendar.js).
   // Fixtures persistidos no save — não regenerar temporada em andamento.
   let restoredNationalFixtures=validSavedSeason&&savedSeason.nationalFixtures?{...savedSeason.nationalFixtures}:null;
@@ -948,7 +949,6 @@ export async function bootEngine({ bus } = {}) {
   const serieDGroups=restoredSerieDGroups?restoredSerieDGroups.map(group=>[...group]):savedNewGame?buildSerieDGroups():[];
   const userSerieDGroupIndex=Math.max(0,serieDGroups.findIndex(group=>group.includes(userClub)));
   const userSerieDGroup=serieDGroups[userSerieDGroupIndex]||[];
-  const SERIE_D_GROUP_ROUNDS=10;
   /** Fases do mata-mata Série D (espelho de updateSeriesDKnockout). */
   const serieDKnockoutPhaseDefs=[
     {index:1,key:'second',name:'2ª FASE',startRound:11,teams:64},

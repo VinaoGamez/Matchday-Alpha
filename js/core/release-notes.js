@@ -5,6 +5,21 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.70',
+    date: '2026-07-22',
+    publishedAt: '2026-07-22T12:12:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Correção urgente',
+        items: [
+          'Carreiras voltam a abrir normalmente — o jogo não trava mais na tela inicial.',
+          'Dashboard, Próximos Jogos e Calendário carregam de novo após a atualização.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.65',
     date: '2026-07-22',
     publishedAt: '2026-07-22T12:05:00-03:00',
