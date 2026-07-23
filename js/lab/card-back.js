@@ -4,6 +4,7 @@
 
 import {
   isCraque,
+  isDestaque,
   isPenaltySavingSpecialist,
   isSetPieceSpecialist,
 } from '../engine/player-generation.js';
@@ -288,6 +289,8 @@ function renderStarBadge(player, { preview = false } = {}) {
     asset = CARD_BADGE_ASSETS.specialistStar;
   } else if (isCraque(player)) {
     asset = CARD_BADGE_ASSETS.craque;
+  } else if (isDestaque(player)) {
+    asset = CARD_BADGE_ASSETS.specialistStar;
   } else if (isSpecialist) {
     asset = CARD_BADGE_ASSETS.specialistStar;
   }
@@ -312,6 +315,24 @@ export function careerSnapshot(player) {
 function fmtRating(v) {
   if (v == null) return '—';
   return v.toFixed(1).replace('.', ',');
+}
+
+function formatDivisionTag(division) {
+  if (!division) return '';
+  const raw = String(division).trim();
+  if (!raw) return '';
+  const upper = raw.toUpperCase();
+  if (upper.includes('SÉRIE') || upper.includes('SERIE')) return upper.replace('SERIE', 'SÉRIE');
+  if (raw.length === 1 && 'ABCD'.includes(upper)) return `SÉRIE ${upper}`;
+  return upper;
+}
+
+function clubDivisionTag(player) {
+  return formatDivisionTag(player?.clubDivision || player?.division);
+}
+
+function clubDisplayName(player) {
+  return player?.clubName || player?.club || null;
 }
 
 function renderCareerRow(career) {
@@ -354,6 +375,8 @@ export function renderCardBack(player, meta, { showActions = true, actionMode = 
   const topStats = topThreeStats(player, pos);
   const bars = barStats(player, pos);
   const career = careerSnapshot(player);
+  const divisionTag = clubDivisionTag(player);
+  const clubName = clubDisplayName(player);
 
   const gauges =
     topStats.length > 0
@@ -366,16 +389,15 @@ export function renderCardBack(player, meta, { showActions = true, actionMode = 
       : '';
 
   return `<div class="md-card-face md-card-back">
-    <div class="mdc-back-zone" data-zone="backHead">
-      <div class="md-card-back-head">
-        <div class="md-card-back-id">
-          <strong class="md-card-back-last">${esc(last)}</strong>
-          <span class="md-card-back-role">${esc(roleName)} · ${age ?? '—'} anos</span>
-        </div>
-        <div class="md-card-back-ovr-wrap">
-          <small>OVR</small>
-          <span class="md-card-back-ovr">${esc(String(ovr))}</span>
-        </div>
+    <div class="mdc-back-zone" data-zone="backHead"><div class="md-card-back-head-bg" aria-hidden="true"></div></div>
+    <div class="mdc-back-zone" data-zone="backLast"><strong class="md-card-back-last">${esc(last)}</strong></div>
+    <div class="mdc-back-zone" data-zone="backRole"><span class="md-card-back-role">${esc(roleName)} · ${age ?? '—'} anos</span></div>
+    ${divisionTag ? `<div class="mdc-back-zone" data-zone="backClubTag"><span class="md-card-back-club-tag">${esc(divisionTag)}</span></div>` : ''}
+    ${clubName ? `<div class="mdc-back-zone" data-zone="backClubName"><span class="md-card-back-club-name" title="${esc(clubName)}">${esc(clubName)}</span></div>` : ''}
+    <div class="mdc-back-zone" data-zone="backOvr">
+      <div class="md-card-back-ovr-wrap">
+        <small>OVR</small>
+        <span class="md-card-back-ovr">${esc(String(ovr))}</span>
       </div>
     </div>
     <div class="mdc-back-zone" data-zone="backGauges">

@@ -66,7 +66,7 @@ export const setHumanBadgeOnCrest = (crestOrHost, isHuman) => {
   host.classList.add('has-human');
 };
 
-/** HTML de escudo + badge (templates string). */
+/** HTML de escudo + badge (templates string). @deprecated use teamCrestWithHumanHtml em team-crest.js */
 export const crestWithHumanHtml = (initials, { isHuman = false, away = false, className = '' } = {}) => {
   const crestClass = ['crest', away ? 'away' : '', className].filter(Boolean).join(' ');
   const crest = `<i class="${crestClass}" aria-hidden="true">${initials}</i>`;

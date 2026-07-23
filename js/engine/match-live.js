@@ -1,6 +1,6 @@
 import { MODULE_VERSIONS } from '../core/constants.js';
 import { ownGoalChance } from './match-clock.js';
-import { isFreeKickSpecialist, isPenaltySpecialist, penaltyGoalChanceRate, SPECIALIST_BONUS } from './player-generation.js';
+import { isFreeKickSpecialist, isPenaltySpecialist, penaltyGoalChanceRate, resolveShootoutKickOutcome, SPECIALIST_BONUS } from './player-generation.js';
 
 /**
  * Ações de partida ao vivo — passes, finalização e construção de jogadas.
@@ -85,9 +85,19 @@ export function createLiveMatchActions(deps) {
     const forced = options.forcedOutcome;
     let outcome = forced;
     if (!outcome) {
-      const onTargetChance = clamp(.9 + (penaltySkill - 70) / 350, .8, .96);
-      if (random() >= onTargetChance) outcome = 'wide';
-      else outcome = random() < penaltyGoalChance(penaltySkill, keeperData.penaltySaving, { ...takerData, penaltyTaking: penaltySkill }, keeperData) ? 'goal' : 'save';
+      if (options.shootout) {
+        outcome = resolveShootoutKickOutcome({
+          penaltySkill,
+          keeperSaving: keeperData.penaltySaving,
+          taker: { ...takerData, penaltyTaking: penaltySkill },
+          keeper: keeperData,
+          random,
+        }).outcome;
+      } else {
+        const onTargetChance = clamp(.9 + (penaltySkill - 70) / 350, .8, .96);
+        if (random() >= onTargetChance) outcome = 'wide';
+        else outcome = random() < penaltyGoalChance(penaltySkill, keeperData.penaltySaving, { ...takerData, penaltyTaking: penaltySkill }, keeperData) ? 'goal' : 'save';
+      }
     }
     let corner = options.forcedCorner;
     if (!corner) {
@@ -120,9 +130,35 @@ export function createLiveMatchActions(deps) {
     const penaltySpecialist=options.penalty && isPenaltySpecialist({...attackerData,penaltyTaking:options.penaltySkill||attackerData.penaltyTaking});
     if(!options.shootout){s.shots++; influencePossession(side,1.8);}
     const forcedOutcome = options.forcedOutcome;
+    if (options.shootout) {
+      const penaltySkill = options.penaltySkill ?? attackerData.penaltyTaking ?? 70;
+      const resolved = forcedOutcome
+        ? { outcome: forcedOutcome, scored: forcedOutcome === 'goal' }
+        : resolveShootoutKickOutcome({
+          penaltySkill,
+          keeperSaving: keeperData.penaltySaving,
+          taker: { ...attackerData, penaltyTaking: penaltySkill },
+          keeper: keeperData,
+          random,
+        });
+      if (resolved.outcome === 'wide') {
+        matchLiveAudio?.playPenaltyMiss?.();
+        writeLog(`${attacker} finaliza ${label}, mas a bola sai para fora.`, 'shootout-miss', side);
+        return false;
+      }
+      if (resolved.scored) {
+        const goalType = `goal shootout-${penaltySpecialist ? 'specialist' : 'standard'}`;
+        matchLiveAudio?.playGoal?.();
+        writeLog(`GOL! ${attacker} converte ${label} para o ${team}.`, goalType, side);
+        return true;
+      }
+      matchLiveAudio?.playPenaltyMiss?.();
+      writeLog(`${attacker} finaliza ${label}, mas ${goalkeeper} faz a defesa.`, 'shootout-miss', side);
+      return false;
+    }
     const onTarget = forcedOutcome
       ? forcedOutcome !== 'wide'
-      : options.penalty || options.shootout
+      : options.penalty
         ? random() < clamp(.9 + ((options.penaltySkill || attackerData.penaltyTaking || 70) - 70) / 350, .8, .96)
         : random()<clamp(options.freeKick ? (freeKickSpecialist ? clamp(.50+(finishing-keeperData.positioning)/170+(current.attack-other.defense)/600,.42,.58) : clamp(.30+(finishing-keeperData.positioning)/220,.25,.42)) : options.corner ? clamp(.30+(attackerData.heading-keeperData.positioning)/165,.22,.57) : clamp(.37+(finishing-keeperData.positioning)/158+(current.attack-other.defense)/175,.25,.76),.18,.76);
     if(!onTarget){

@@ -807,6 +807,7 @@ export function createTransfersEngine(deps) {
           season: getCareerSeason(),
         });
         if (player.onLoan) return;
+        if (player.nationalTeamOnly) return;
         if (playerMovedThisWindow(player)) return;
         if (listedOnly && !player.listed) return;
         if (loanOnly && !player.loanListed) return;

@@ -94,6 +94,47 @@ export const PLAYER_NAME_POOLS = {
       'Tapia', 'Vargas', 'Vidal',
     ],
   },
+  Europa: {
+    first: [
+      'Adrian', 'Alexander', 'Andreas', 'Antoine', 'Benjamin', 'Christian', 'Daniel', 'David', 'Erik', 'Fabian',
+      'Felix', 'Florian', 'Hans', 'Jan', 'Jonas', 'Julian', 'Karl', 'Leon', 'Lukas', 'Marco',
+      'Martin', 'Max', 'Niklas', 'Oliver', 'Patrick', 'Paul', 'Philip', 'Sebastian', 'Simon', 'Thomas',
+    ],
+    last: [
+      'Bauer', 'Becker', 'Fischer', 'Hoffmann', 'Keller', 'Klein', 'Koch', 'Lang', 'Meyer', 'Richter',
+      'Schmid', 'Schneider', 'Schulz', 'Schwarz', 'Vogel', 'Weber', 'Werner', 'Wolf', 'Zimmermann',
+    ],
+  },
+  África: {
+    first: [
+      'Abdou', 'Amadou', 'Boubacar', 'Cheikh', 'Ibrahim', 'Issa', 'Karim', 'Mamadou', 'Moussa', 'Ousmane',
+      'Pape', 'Samuel', 'Seydou', 'Youssef', 'Zakaria',
+    ],
+    last: [
+      'Ba', 'Camara', 'Cissé', 'Diallo', 'Diop', 'Fall', 'Koné', 'Ndiaye', 'Sarr', 'Sy',
+      'Touré', 'Traoré',
+    ],
+  },
+  Ásia: {
+    first: [
+      'Akira', 'Chen', 'Daichi', 'Hassan', 'Hiroshi', 'Kenji', 'Li', 'Min', 'Mohammad', 'Ravi',
+      'Ren', 'Takeshi', 'Wei', 'Yuki',
+    ],
+    last: [
+      'Ali', 'Hassan', 'Huang', 'Ito', 'Khan', 'Kim', 'Lee', 'Nakamura', 'Park', 'Sato',
+      'Singh', 'Tanaka', 'Wang', 'Yamamoto',
+    ],
+  },
+  Concacaf: {
+    first: [
+      'Alejandro', 'Carlos', 'Diego', 'Eduardo', 'Hector', 'Javier', 'Jose', 'Luis', 'Manuel', 'Miguel',
+      'Ricardo', 'Roberto',
+    ],
+    last: [
+      'Castro', 'Flores', 'Garcia', 'Gomez', 'Hernandez', 'Lopez', 'Martinez', 'Morales', 'Ramirez', 'Reyes',
+      'Rivera', 'Torres',
+    ],
+  },
 };
 
 const normalizeNameKey = value =>

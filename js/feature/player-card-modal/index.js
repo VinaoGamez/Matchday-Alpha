@@ -66,6 +66,8 @@ export function createPlayerCardModal(deps = {}) {
     const cardPlayer = rosterPlayerToCardPlayer(player, {
       playerHistory: deps.getPlayerHistory?.(),
       careerSeason: deps.getCareerSeason?.(),
+      clubName: ownerClub,
+      clubDivision: ownerClub ? deps.getClubs?.()?.[ownerClub]?.division : null,
     });
 
     modal()?.classList.remove('hidden');

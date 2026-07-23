@@ -176,12 +176,15 @@ export function createMatchLiveSessionFeature(deps) {
             .map(entry => `<span>${entry.name} ${entry.minutes}</span>`)
             .join('')
         : '<span>Nenhum gol</span>';
-    const rows = [['Posse de bola', `${hp}%`, `${ap}%`], ['Total de Passes', h.passes, a.passes], ['Finalizações', h.shots, a.shots], ['Faltas Cometidas', h.fouls, a.fouls], ['Cartões Amarelos', h.yellow, a.yellow], ['Cartões Vermelhos', h.red, a.red]];
+    const liveMatchGame = getLiveMatchGame(), nextUserGame = getNextUserGame();
+    const rows = [['Posse de bola', `${hp}%`, `${ap}%`], ['Total de Passes', h.passes, a.passes], ['Finalizações', h.shots, a.shots], ['Pênaltis marcados', h.penalties, a.penalties], ['Faltas Cometidas', h.fouls, a.fouls], ['Cartões Amarelos', h.yellow, a.yellow], ['Cartões Vermelhos', h.red, a.red]];
+    const shootoutSection = liveMatchGame?.shootoutPenalties
+      ? `<section class="final-shootout"><h3>DISPUTA DE PÊNALTIS</h3><p class="final-shootout-score"><strong>${liveMatchGame.shootoutPenalties}</strong>${liveMatchGame.shootoutWinner ? ` · ${liveMatchGame.shootoutWinner} venceu` : ''}</p><small>Não entra na média de gols do jogo — só decide o mata-mata.</small></section>`
+      : '';
     const injuryReports = medicalReports.map(item => item.text);
     const injurySection = injuryReports.length ? `<section class="final-injuries"><h3>DIAGNÓSTICOS MÉDICOS</h3>${medicalReports.map(item => `<p class="${item.outcome === 'cleared' ? 'cleared' : item.outcome === 'monitoring' ? 'monitoring' : ''}">${item.text}</p>`).join('')}</section>` : '';
-    const liveMatchGame = getLiveMatchGame(), nextUserGame = getNextUserGame();
     const homeClub = (liveMatchGame || nextUserGame)?.home || userClub, awayClub = (liveMatchGame || nextUserGame)?.away || club.name;
-    $('#stats').innerHTML = `<section class="final-goals"><h3>GOLS</h3><div><article><b>${homeClub.toUpperCase()}</b>${scorers('home')}</article><article><b>${awayClub.toUpperCase()}</b>${scorers('away')}</article></div></section><section class="final-basic"><h3>ESTATÍSTICAS DA PARTIDA</h3>${rows.map(row => `<div class="stat"><span>${row[1]}</span><span>${row[0]}</span><span>${row[2]}</span></div>`).join('')}</section>${injurySection}`;
+    $('#stats').innerHTML = `<section class="final-goals"><h3>GOLS</h3><div><article><b>${homeClub.toUpperCase()}</b>${scorers('home')}</article><article><b>${awayClub.toUpperCase()}</b>${scorers('away')}</article></div></section><section class="final-basic"><h3>ESTATÍSTICAS DA PARTIDA</h3>${rows.map(row => `<div class="stat"><span>${row[1]}</span><span>${row[0]}</span><span>${row[2]}</span></div>`).join('')}</section>${shootoutSection}${injurySection}`;
     $('#stats').classList.remove('hidden');
     if (!processMedical) return;
     const postMatchMedicalQueue = getPostMatchMedicalQueue();
@@ -259,8 +262,8 @@ export function createMatchLiveSessionFeature(deps) {
       $('#penaltyDuelModal')?.classList.add('hidden');
       $('#penaltyChoice').classList.add('hidden');
       if (shootoutState) { renderShootoutTrack(); $('#shootoutPanel').classList.remove('hidden'); }
-      else if (liveMatchGame?.penalties) { $('#shootoutTitle').textContent = `Shootout ${liveMatchGame.penalties}`; $('#shootoutPanel').classList.remove('hidden'); }
-      $('#matchStatus').textContent = shootoutState ? 'Disputa de pênaltis em andamento.' : liveMatchGame?.penalties ? `Partida encerrada · Shootout ${liveMatchGame.penalties}.` : 'Partida encerrada.';
+      else if (liveMatchGame?.penalties) { $('#shootoutTitle').textContent = `Disputa ${liveMatchGame.penalties}`; $('#shootoutPanel').classList.remove('hidden'); }
+      $('#matchStatus').textContent = shootoutState ? 'Disputa de pênaltis em andamento.' : liveMatchGame?.penalties ? `Partida encerrada · Disputa ${liveMatchGame.penalties}.` : 'Partida encerrada.';
       // Reabertura: não reprocessa fila médica / calendário (já feitos no fim do jogo).
       renderFinalSummary({ processMedical: false });
       showFinalActions({ reopen: true });

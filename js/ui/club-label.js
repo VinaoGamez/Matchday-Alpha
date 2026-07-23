@@ -3,6 +3,8 @@
  * Uso: chaveamento da Copa e lista de confrontos na página Campeonatos.
  */
 
+import { teamCrestHtml } from './team-crest.js';
+
 const DIVISIONS = new Set(['A', 'B', 'C', 'D']);
 
 const resolveCtx = ctx => {
@@ -58,16 +60,13 @@ export const defaultClubCrestInitials = name =>
     .toUpperCase() || '—';
 
 /**
- * Padrão visual: escudo + nome do clube.
+ * Padrão visual: escudo + nome do clube ou bandeira da seleção.
  * @param {string} clubName
  * @param {{ initialsFn?: (name:string)=>string, className?: string }} [options]
  */
 export const clubCrestTitleHtml = (clubName, options = {}) => {
   const name = String(clubName || '');
   if (!name) return '';
-  const initialsFn =
-    typeof options.initialsFn === 'function' ? options.initialsFn : defaultClubCrestInitials;
   const className = ['club-crest-title', options.className].filter(Boolean).join(' ');
-  const initials = initialsFn(name) || defaultClubCrestInitials(name);
-  return `<span class="${className}"><i class="crest" aria-hidden="true">${initials}</i><b>${name}</b></span>`;
+  return `<span class="${className}">${teamCrestHtml(name)}<b>${name}</b></span>`;
 };

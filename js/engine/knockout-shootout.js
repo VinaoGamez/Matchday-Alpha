@@ -6,6 +6,7 @@
  * Confrontos com o usuário NUNCA resolvem shootout no automático silencioso:
  * a disputa precisa ser jogada ao vivo (AO VIVO).
  */
+import { simulateProbabilisticShootout } from './shootout-sim.js';
 export const KNOCKOUT_COMPETITIONS = {
   COPA: 'COPA DO BRASIL',
   SERIE_D: 'SÉRIE D ELIMINATÓRIAS',
@@ -107,19 +108,16 @@ export const sanitizeKnockoutShootoutSave = ({ cupCompetition, serieDFixtures = 
 };
 
 /**
- * Simula shootout automático (jogos só CPU) com placar plausível.
+ * Simula shootout automático (jogos só CPU) — mesma engine probabilística do ao vivo.
  * NÃO usar em confrontos do usuário.
+ * @param {object} [opts]
+ * @param {Function} [opts.random]
+ * @param {Function} [opts.getKickPair] — (clubName, attemptIndex) => perfil da cobrança
  */
-export const simulateAutomaticShootout = (clubA, clubB, { pickWinner, int }) => {
-  const winner = pickWinner(clubA, clubB);
-  const firstWon = winner === clubA;
-  const scoreA = firstWon ? int(4, 6) : int(3, 5);
-  const scoreB = firstWon ? Math.max(2, scoreA - int(1, 2)) : scoreA + int(1, 2);
-  return {
-    winner,
-    scores: { [clubA]: scoreA, [clubB]: scoreB },
-    penalties: `${scoreA}–${scoreB}`,
-  };
+export const simulateAutomaticShootout = (clubA, clubB, { pickWinner, int, random, getKickPair } = {}) => {
+  void pickWinner;
+  void int;
+  return simulateProbabilisticShootout([clubA, clubB], { random, getKickPair });
 };
 
 /**
@@ -127,7 +125,7 @@ export const simulateAutomaticShootout = (clubA, clubB, { pickWinner, int }) => 
  * @param {object} [opts]
  * @param {boolean} [opts.allowAutoShootout=true] — false bloqueia simulação silenciosa (confrontos do usuário)
  */
-export const resolveKnockoutTieWinner = (games, { pickWinner, int, allowAutoShootout = true } = {}) => {
+export const resolveKnockoutTieWinner = (games, { pickWinner, int, allowAutoShootout = true, random, getKickPair } = {}) => {
   if (!games?.length) return null;
   const clubsInTie = [games[0].home, games[0].away];
   const aggregate = knockoutTieAggregate(games);
@@ -142,7 +140,13 @@ export const resolveKnockoutTieWinner = (games, { pickWinner, int, allowAutoShoo
   // Empate no agregado sem disputa jogada: só CPU pode resolver no automático
   if (!allowAutoShootout) return null;
 
-  const shootout = simulateAutomaticShootout(clubsInTie[0], clubsInTie[1], { pickWinner, int });
+  const shootout = simulateAutomaticShootout(clubsInTie[0], clubsInTie[1], {
+    pickWinner,
+    int,
+    random,
+    getKickPair,
+  });
+  if (!shootout?.winner) return null;
   applyShootoutToDecidingGame(deciding, shootout.winner, shootout.scores);
   return shootout.winner;
 };

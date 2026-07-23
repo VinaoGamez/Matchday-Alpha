@@ -1,4 +1,5 @@
 import { SAVE_KEYS } from './constants.js';
+import { normalizeWorldCupHistory } from '../engine/world-cup-history.js';
 
 /** Limites para conter crescimento de save/RAM em carreiras longas. */
 export const MEMORY_LIMITS = {
@@ -82,7 +83,12 @@ export function writeJson(key, value) {
 }
 
 export function loadCareerSave() {
-  return readJson(SAVE_KEYS.career, null);
+  const raw = readJson(SAVE_KEYS.career, null);
+  if (!raw) return null;
+  return {
+    ...raw,
+    worldCupHistory: normalizeWorldCupHistory(raw.worldCupHistory),
+  };
 }
 
 export function loadSeasonSave() {

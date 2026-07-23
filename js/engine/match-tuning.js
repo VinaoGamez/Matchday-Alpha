@@ -56,6 +56,24 @@ export const ENGINE_TUNING = {
   subChaseWindows: [72, 78],
 };
 
+/**
+ * Disputa de pênaltis (mata-mata) — calibrada à parte do GPM e do pênalti in-game.
+ * Alvo: ~76–78% de conversão por cobrança (inclui bolas fora).
+ */
+export const SHOOTOUT_TUNING = {
+  wideBase: 0.05,
+  wideSkillDivisor: 420,
+  wideMin: 0.03,
+  wideMax: 0.08,
+  goalBase: 0.79,
+  skillGapDivisor: 110,
+  skillBiasDivisor: 320,
+  goalMin: 0.64,
+  goalMax: 0.96,
+  /** Máximo de cobranças por time antes de abortar simulação automática (segurança). */
+  maxKicksPerClub: 24,
+};
+
 /** Cansaço por minuto em campo (100 = fresco, 0 = exausto). */
 export const fatigueMinuteWear = player =>
   0.28 +

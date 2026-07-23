@@ -1,5 +1,6 @@
 import { $, $$, on, onClick, redirectGame, clamp, cleanCareerText } from '../ui/dom.js';
 import { clubLabelHtml, clubCrestTitleHtml } from '../ui/club-label.js';
+import { teamCrestHtml, clubCrestInitials as teamCrestInitials } from '../ui/team-crest.js';
 import { bindBoardRosterHover } from '../ui/board-roster-hover.js';
 import { createRouter } from '../ui/router.js';
 import { createMessagesFeature } from '../feature/messages/index.js';
@@ -201,6 +202,7 @@ import {
   sanitizeKnockoutShootoutSave,
   sameKnockoutFixture,
 } from '../engine/knockout-shootout.js';
+import { rosterShootoutKickPair, simulateProbabilisticShootout } from '../engine/shootout-sim.js';
 
 /** Motor legado — migração incremental para módulos (Alpha 02). */
 export async function bootEngine({ bus } = {}) {
@@ -1746,7 +1748,7 @@ export async function bootEngine({ bus } = {}) {
     const day=String(date.getDate()).padStart(2,'0'),month=date.toLocaleDateString('pt-BR',{month:'short'}).replace('.','').toUpperCase();
     return {date,display:`${day} ${month}`,time:game.time||fixtureTimes[Math.max(0,gameIndex)%fixtureTimes.length]};
   };
-  const clubCrestInitials=name=>name.split(' ').filter(Boolean).map(part=>part[0]).join('').slice(0,2).toUpperCase();
+  const clubCrestInitials=teamCrestInitials;
   /** Badge de divisão só no chaveamento da Copa (evita poluir tabelas/listas). */
   const cupClubLabel=(name,opts)=>clubLabelHtml(name,{clubs,userClub,userDivision},opts);
   const matchVenueFor=homeClubName=>{
@@ -4001,6 +4003,7 @@ export async function bootEngine({ bus } = {}) {
     getPlayerHistory:()=>playerHistory,
     getTransfersUi:()=>transfersUi,
     getTransfersEngine:()=>transfersEngine,
+    getClubs:()=>clubs,
     findPlayerInWorld:playerId=>transfersEngine?.findPlayerInWorld?.(playerId)||null,
   });
   playerCardModal.bindHandlers();
@@ -4297,7 +4300,7 @@ export async function bootEngine({ bus } = {}) {
   const renderStats = () => {
     recordLiveVolumeSample();
     const {home:h,away:a}=calendarLiveSideStats(),{home:hp,away:ap}=calendarPossessionPair();
-    const rows = [['Posse de bola',`${hp}%`,`${ap}%`,'possession'],['Passes','','','group'],['Total de Passes',h.passes,a.passes],['% passes certos',percent(h.accurate,h.passes),percent(a.accurate,a.passes)],['Passes errados',h.passes-h.accurate,a.passes-a.accurate],['Ataque','','','group'],['Finalizações',h.shots,a.shots],['Para Fora',h.off,a.off],['No Gol',h.on,a.on],['Defendidas',h.saved,a.saved],['Pênaltis',h.penalties,a.penalties],['Escanteios',h.corners,a.corners],['Impedimentos',h.offsides,a.offsides],['Defesa','','','group'],['Defesas do Goleiro',h.keeperSaves,a.keeperSaves],['Desarmes',h.tackles,a.tackles],['Faltas Cometidas',h.fouls,a.fouls],['Cartões Amarelos',h.yellow,a.yellow,'yellow'],['Cartões Vermelhos',h.red,a.red,'red']];
+    const rows = [['Posse de bola',`${hp}%`,`${ap}%`,'possession'],['Passes','','','group'],['Total de Passes',h.passes,a.passes],['% passes certos',percent(h.accurate,h.passes),percent(a.accurate,a.passes)],['Passes errados',h.passes-h.accurate,a.passes-a.accurate],['Ataque','','','group'],['Finalizações',h.shots,a.shots],['Para Fora',h.off,a.off],['No Gol',h.on,a.on],['Defendidas',h.saved,a.saved],['Pênaltis marcados',h.penalties,a.penalties],['Escanteios',h.corners,a.corners],['Impedimentos',h.offsides,a.offsides],['Defesa','','','group'],['Defesas do Goleiro',h.keeperSaves,a.keeperSaves],['Desarmes',h.tackles,a.tackles],['Faltas Cometidas',h.fouls,a.fouls],['Cartões Amarelos',h.yellow,a.yellow,'yellow'],['Cartões Vermelhos',h.red,a.red,'red']];
     const statsBody=rows.map(r => r[3] === 'group' ? `<div class="stat-group">${r[0]}</div>` : `<div class="stat ${r[3] || ''}"><span>${r[1]}</span><span>${r[0]}</span><span>${r[2]}</span></div>`).join('');
     $('#stats').innerHTML=statsBody;
     renderLiveOpponent?.();
@@ -4496,6 +4499,7 @@ export async function bootEngine({ bus } = {}) {
     };
     return strength(first)>=strength(second)?first:second;
   };
+  const knockoutShootoutKickPair=(clubName,attemptIndex)=>rosterShootoutKickPair(clubs[clubName],attemptIndex);
   const applyCupFatigue=(game,result)=>fatigueEngine.applyCupFatigue(game,result,applyMatchAvailability);
   const nextCupEntrants=(phase,winners)=>phase===1?[...winners,...cupSecondDirect]:phase===2?[...winners,...cupSpecialEntrants]:phase===4?[...winners,...cupSerieAEntrants]:[...winners];
   const cupTieGames=(stage,tieId)=>{
@@ -4580,7 +4584,7 @@ export async function bootEngine({ bus } = {}) {
     if(name===userClub)classes.push('user-club');
     if(winner===name)classes.push('winner');
     const main=plain?`<b>${name}</b>`:cupClubLabel(name,{tag:'b'});
-    return `<div class="${classes.join(' ')}"><i class="crest">${clubCrestInitials(name)}</i><span class="cup-tree-team-main">${main}</span><em>${score}</em></div>`;
+    return `<div class="${classes.join(' ')}">${teamCrestHtml(name)}<span class="cup-tree-team-main">${main}</span><em>${score}</em></div>`;
   };
   const renderCupTreeMatch=(tie,{plain=false}={})=>{
     const badge=tie.userTie?`<div class="cup-tree-user-badge">${tie.winner===userClub?'VOCÊ AVANÇOU':tie.allDone?'VOCÊ ELIMINADO':'SEU JOGO'}</div>`:'';
@@ -4895,7 +4899,7 @@ export async function bootEngine({ bus } = {}) {
     return max;
   };
   const renderChampionshipPageTieSide=(name,side)=>{
-    const crest=`<i class="crest championship-page-tie-crest" aria-hidden="true">${clubCrestInitials(name)}</i>`;
+    const crest=teamCrestHtml(name,{className:'championship-page-tie-crest'});
     const label=`<span class="championship-page-tie-club">${cupClubLabel(name,{tag:'b'})}</span>`;
     return side==='away'
       ?`<div class="championship-page-tie-side is-away">${label}${crest}</div>`
@@ -5212,6 +5216,8 @@ export async function bootEngine({ bus } = {}) {
         pickWinner:cupPenaltyWinner,
         int,
         allowAutoShootout:!involvesUser,
+        random,
+        getKickPair:knockoutShootoutKickPair,
       });
     }else games.forEach(clearStaleKnockoutShootout);
     if(winner)games.forEach(game=>{game.winner=winner;});
@@ -6127,6 +6133,8 @@ export async function bootEngine({ bus } = {}) {
         pickWinner:cupPenaltyWinner,
         int,
         allowAutoShootout:!involvesUser,
+        random,
+        getKickPair:knockoutShootoutKickPair,
       });
       if(!winner)return null;
       persistSerieDTieShootout(games);
@@ -7560,7 +7568,7 @@ export async function bootEngine({ bus } = {}) {
       const current=isUser?profile():opponentForMatch();
       const other=isUser?opponentForMatch():profile();
       const side=isUser?'home':'away';
-      const plan=planPenaltyOutcome(side,{...current,attack:current.attack+9},other,{taker:taker.name,penaltySkill:taker.penaltyTaking});
+      const plan=planPenaltyOutcome(side,{...current,attack:current.attack+9},other,{taker:taker.name,penaltySkill:taker.penaltyTaking,shootout:true});
       if(!plan?.outcome)return;
       pendingPenalty={mode:'shootout',kickingClub};
       const beginShootoutDuel=()=>{
@@ -7649,6 +7657,48 @@ export async function bootEngine({ bus } = {}) {
       references:{brasileiraoSerieA:{goalsPerMatch:'2.45-2.55',drawRate:'24-27%',homeWinRate:'45-48%',shotsPerMatch:'22-28',foulsPerMatch:'24-30'},topLeagues:{goalsPerMatch:'2.6-2.9',drawRate:'22-26%',homeWinRate:'44-46%'}}
     };
     document.body.innerHTML=`<pre id="benchmark-json">${JSON.stringify(report,null,2)}</pre>`;document.title='BENCHMARK_DONE';
+  }
+  const autoBenchmarkShootoutCount=Number(new URLSearchParams(location.search).get('autoBenchmarkShootout'));
+  if(autoBenchmarkShootoutCount>0){
+    const percentile=(sorted,p)=>{const index=(sorted.length-1)*p,lower=Math.floor(index),upper=Math.ceil(index);return lower===upper?sorted[lower]:sorted[lower]+(sorted[upper]-sorted[lower])*(index-lower);};
+    const sample=Math.max(100,Math.min(20000,autoBenchmarkShootoutCount)),clubNames=Object.keys(clubs);
+    const scoreDist={},goalsPerShootout=[],kicksPerShootout=[],convSamples=[];
+    const totals={shootouts:0,goals:0,kicks:0,scored:0,suddenDeath:0};
+    const started=performance.now();
+    for(let index=0;index<sample;index++){
+      const home=clubNames[index%clubNames.length],away=clubNames[(index*7+3)%clubNames.length];
+      if(home===away)continue;
+      const getKickPair=(clubName,attemptIndex)=>rosterShootoutKickPair(clubs[clubName],attemptIndex);
+      const result=simulateProbabilisticShootout([home,away],{random,getKickPair});
+      if(!result?.winner)continue;
+      const g0=result.scores[home]||0,g1=result.scores[away]||0,tg=g0+g1;
+      const kicks=result.totalKicks||((result.results[home]?.length||0)+(result.results[away]?.length||0));
+      totals.shootouts++;totals.goals+=tg;totals.kicks+=kicks;
+      Object.values(result.results||{}).flat().forEach(hit=>{if(hit)totals.scored++;});
+      if(result.suddenDeath)totals.suddenDeath++;
+      const key=`${g0}-${g1}`;scoreDist[key]=(scoreDist[key]||0)+1;
+      goalsPerShootout.push(tg);kicksPerShootout.push(kicks);
+      convSamples.push(tg/Math.max(1,kicks));
+    }
+    goalsPerShootout.sort((a,b)=>a-b);kicksPerShootout.sort((a,b)=>a-b);convSamples.sort((a,b)=>a-b);
+    const n=Math.max(1,totals.shootouts),report={
+      sampleSize:n,elapsedMs:Math.round(performance.now()-started),mode:'shootout-only',
+      note:'Disputa de pênaltis — não entra na média de gols (GPM) do campeonato.',
+      rates:{
+        goalsPerShootout:Number((totals.goals/n).toFixed(3)),
+        kicksPerShootout:Number((totals.kicks/n).toFixed(2)),
+        conversionPct:Number((totals.scored/Math.max(1,totals.kicks)*100).toFixed(2)),
+        suddenDeathRate:Number((totals.suddenDeath/n*100).toFixed(2)),
+      },
+      percentiles:{
+        goals:{p25:percentile(goalsPerShootout,.25),p50:percentile(goalsPerShootout,.5),p75:percentile(goalsPerShootout,.75),p90:percentile(goalsPerShootout,.9)},
+        kicks:{p50:percentile(kicksPerShootout,.5),p90:percentile(kicksPerShootout,.9)},
+        conversion:{p50:Number((percentile(convSamples,.5)*100).toFixed(2)),p90:Number((percentile(convSamples,.9)*100).toFixed(2))},
+      },
+      topScores:Object.entries(scoreDist).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([score,count])=>({score,count,pct:Number((count/n*100).toFixed(2))})),
+      references:{typicalShootout:{goalsPerShootout:'6-9',conversionPct:'74-80%',kicksPerShootout:'10-14'}},
+    };
+    document.body.innerHTML=`<pre id="benchmark-shootout-json">${JSON.stringify(report,null,2)}</pre>`;document.title='BENCHMARK_SHOOTOUT_DONE';
   }
   const expectedCupEntryPhase=()=>{
     if(userDivision==='A')return 5;

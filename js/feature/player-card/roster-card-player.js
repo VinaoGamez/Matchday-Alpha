@@ -5,7 +5,7 @@
 import { cardDisplayPos, cardArtForPlayer, resolveCardRoleKey } from '../../engine/player-card-art.js';
 import { playerKey } from '../../engine/player-match-stats.js';
 
-export function rosterPlayerToCardPlayer(player, { playerHistory, careerSeason } = {}) {
+export function rosterPlayerToCardPlayer(player, { playerHistory, careerSeason, clubName, clubDivision } = {}) {
   if (!player) return null;
 
   const key = playerKey(player);
@@ -16,6 +16,8 @@ export function rosterPlayerToCardPlayer(player, { playerHistory, careerSeason }
     pos: cardDisplayPos(player),
     roleKey: resolveCardRoleKey(player),
     nationality: player.nationality || 'Brasil',
+    clubName: clubName || player.clubName || player.club || null,
+    clubDivision: clubDivision || player.clubDivision || player.division || null,
     cardStats: {
       avgRating: bucket?.avgRating ?? player?.avgRating ?? player?.seasonAvg ?? null,
       clubApps: bucket?.apps ?? 0,

@@ -2,6 +2,7 @@ import { MODULE_VERSIONS, SAVE_KEYS } from '../../core/constants.js';
 import { clamp } from '../../ui/dom.js';
 import { competitionBadgeMarkup, resolveCompetitionBadge } from '../../ui/competition-badge.js';
 import { crestWithHumanHtml } from '../../ui/human-badge.js';
+import { teamCrestWithHumanHtml } from '../../ui/team-crest.js';
 import { formatMatchRating as defaultFormatMatchRating } from '../../engine/player-match-stats.js';
 import { formatMatchMinuteLabel } from '../../engine/match-clock.js';
 import { isDateInTransferWindow, getTransferWindowPhase } from '../../engine/transfers.js';
@@ -487,7 +488,7 @@ export function createCalendarViewFeature(deps) {
         })}</div>
         <div class="score live-score match-report-live-score">
           <div class="live-team live-team-home">
-            ${crestWithHumanHtml(clubCrestInitials(game.home), { isHuman: homeUser })}
+            ${teamCrestWithHumanHtml(game.home, { isHuman: homeUser })}
             <b class="${homeUser ? 'user-club-live' : ''}">${game.home.toUpperCase()}</b>
             <div class="live-scorers">${scorerLines('home')}</div>
           </div>
@@ -496,7 +497,7 @@ export function createCalendarViewFeature(deps) {
             <p class="live-match-clock"><strong class="live-match-clock-time">90:00</strong><small class="live-match-clock-phase">FIM DE JOGO</small></p>
           </div>
           <div class="live-team live-team-away">
-            ${crestWithHumanHtml(clubCrestInitials(game.away), { isHuman: awayUser, away: true })}
+            ${teamCrestWithHumanHtml(game.away, { isHuman: awayUser, away: true })}
             <b class="${awayUser ? 'user-club-live' : ''}">${game.away.toUpperCase()}</b>
             <div class="live-scorers">${scorerLines('away')}</div>
           </div>

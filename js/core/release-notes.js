@@ -5,6 +5,41 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.2.00',
+    date: '2026-07-23',
+    publishedAt: '2026-07-23T15:10:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Disputa de pênaltis',
+        items: [
+          'Disputa de pênaltis refeita — mais realista, com a mesma lógica no ao vivo e nos jogos automáticos de mata-mata.',
+          'Gols na disputa não entram na média de gols do jogo.',
+          'Relatório pós-jogo mostra Pênaltis marcados (durante o jogo) e, quando houver, a seção Disputa de pênaltis com placar e vencedor.',
+        ],
+      },
+      {
+        label: 'Cartas de jogador',
+        items: [
+          'Verso do card exibe série/divisão e nome do clube do jogador.',
+        ],
+      },
+      {
+        label: 'Seleções',
+        items: [
+          'Escudos de seleções nacionais usam a bandeira do país (48 seleções da Copa 2026).',
+          'Bandeiras aparecem no placar ao vivo, no calendário e nas chaves de campeonato.',
+        ],
+      },
+      {
+        label: 'Calendário',
+        items: [
+          'Agenda e calendário mais leves ao avançar semana (menos recálculos repetidos).',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.95',
     date: '2026-07-23',
     publishedAt: '2026-07-23T13:12:00-03:00',

@@ -2,6 +2,7 @@ import { MEMORY_LIMITS } from '../../core/save.js';
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { applyCompetitionBadge } from '../../ui/competition-badge.js';
 import { setHumanBadgeOnCrest } from '../../ui/human-badge.js';
+import { applyTeamCrestToElement, teamCrestHtml } from '../../ui/team-crest.js';
 import {
   clubStandingContext,
   matchCompetitionPhaseLabel,
@@ -162,14 +163,13 @@ export function createMatchLiveUiFeature(deps) {
     return null;
   };
 
-  const teamBadgeHtml = (calendarSide) => {
+  const teamBadgeHtml = calendarSide => {
     if (!calendarSide) return '';
     const atHome = typeof getUserAtHome === 'function' ? getUserAtHome() : true;
     const user = getUserClub?.() || '—';
     const opp = getMatchClub?.()?.name || '—';
     const name = calendarSide === 'home' ? (atHome ? user : opp) : atHome ? opp : user;
-    const initials = clubCrestInitials?.(name) || String(name).slice(0, 2).toUpperCase();
-    return `<span class="tl-crest tl-${calendarSide}" title="${name}" aria-label="${name}">${initials}</span>`;
+    return teamCrestHtml(name, { className: `tl-crest tl-${calendarSide}`, title: name });
   };
 
   const timeline = $('#timeline');
@@ -340,13 +340,11 @@ export function createMatchLiveUiFeature(deps) {
     const homeCrest = $('#liveHomeCrest'),
       awayCrest = $('#liveAwayCrest');
     if (homeCrest) {
-      homeCrest.textContent = clubCrestInitials(homeClub);
-      homeCrest.classList.remove('away');
+      applyTeamCrestToElement(homeCrest, homeClub, { away: false });
       setHumanBadgeOnCrest(homeCrest, userHome);
     }
     if (awayCrest) {
-      awayCrest.textContent = clubCrestInitials(awayClub);
-      awayCrest.classList.add('away');
+      applyTeamCrestToElement(awayCrest, awayClub, { away: true });
       setHumanBadgeOnCrest(awayCrest, !userHome);
     }
     const homeNameEl = $('#liveHomeName');

@@ -8,7 +8,7 @@ import {
   decideShootoutWinner,
   shootoutChoiceOptions,
 } from './shootout-takers.js';
-import { isPenaltySpecialist, isPenaltySavingSpecialist, penaltyGoalChanceRate } from './player-generation.js';
+import { isPenaltySpecialist, isPenaltySavingSpecialist, penaltyGoalChanceRate, shootoutKickGoalChance } from './player-generation.js';
 
 const SPONSOR_LOGO_URLS = Object.fromEntries(
   Object.entries(
@@ -760,12 +760,14 @@ export function createLiveMatchOrchestration(deps) {
       attackLabel = 'COBRADOR · ADVERSÁRIO',
       defendLabel = 'SEU GOLEIRO',
       note = 'Leia o comparativo e toque em ASSISTIR para a cobrança.',
+      shootout = false,
     } = {},
   ) => {
     const specialist = isPenaltySpecialist(taker);
     const keeperSpec = isPenaltySavingSpecialist(keeper);
+    const rateFn = shootout ? shootoutKickGoalChance : penaltyGoalChanceRate;
     const goalChance = Math.round(
-      penaltyGoalChanceRate(taker?.penaltyTaking, keeper?.penaltySaving, taker, keeper) * 100,
+      rateFn(taker?.penaltyTaking, keeper?.penaltySaving, taker, keeper) * 100,
     );
     const root = $('#penaltyCompare');
     if (!root) return;
@@ -911,6 +913,7 @@ export function createLiveMatchOrchestration(deps) {
     const resolved = plan || planPenaltyOutcome?.(side, { ...current, attack: current.attack + 9 }, other, {
       taker: taker.name,
       penaltySkill: taker.penaltyTaking,
+      shootout: true,
     });
     const scored = shot(side, { ...current, attack: current.attack + 9 }, other, {
       penalty: true,
@@ -940,7 +943,7 @@ export function createLiveMatchOrchestration(deps) {
     heading.innerHTML = `<div><strong>Cobrança ${kickNo} — escolha o batedor</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
     const takers = shootoutChoiceOptions(shootoutTakersFor(kickingClub), 5);
     const chanceFor = player =>
-      Math.round(penaltyGoalChanceRate(player.penaltyTaking, keeper.penaltySaving, player, keeper) * 100);
+      Math.round(shootoutKickGoalChance(player.penaltyTaking, keeper.penaltySaving, player, keeper) * 100);
     $('#penaltyTakers').innerHTML = takers.length ? takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR OPÇÃO</i>' : isPenaltySpecialist(player) ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('') : '<p class="shootout-empty">Sem cobradores disponíveis.</p>';
     openPenaltyDuel(
       'Disputa de pênaltis',
@@ -976,6 +979,7 @@ export function createLiveMatchOrchestration(deps) {
       attackLabel: `COBRADOR · ${kickingClub}`,
       defendLabel: defendingUser ? 'SEU GOLEIRO' : `GOLEIRO · ${keeperClub}`,
       note: 'Leia o comparativo e toque em ASSISTIR para a cobrança.',
+      shootout: true,
     });
     openPenaltyDuel(
       'Disputa de pênaltis',
@@ -991,7 +995,7 @@ export function createLiveMatchOrchestration(deps) {
       side,
       { ...current, attack: current.attack + 9 },
       other,
-      { taker: taker.name, penaltySkill: taker.penaltyTaking },
+      { taker: taker.name, penaltySkill: taker.penaltyTaking, shootout: true },
     );
 
     wirePenaltyWatchButton(() => {
@@ -1049,7 +1053,7 @@ export function createLiveMatchOrchestration(deps) {
     liveMatchGame.penalties = liveMatchGame.shootoutPenalties;
     log('Disputa de pênaltis encerrada.', 'penalty');
     renderShootoutTrack();
-    $('#matchStatus').textContent = `Shootout: ${winner} venceu ${liveMatchGame.shootoutPenalties}.`;
+    $('#matchStatus').textContent = `Disputa: ${winner} venceu ${liveMatchGame.shootoutPenalties}.`;
     closePenaltyDuel();
     setShootoutState(null);
     setMatchFinished(true);

@@ -22,7 +22,7 @@ export const CARD_LAB_ROLES = [
   { key: 'mc', label: 'MC', pos: 'MC', sampleName: 'Thiago Nunes', title: 'Meio-campo' },
   { key: 'zagueiro', label: 'ZAG', pos: 'ZAG', sampleName: 'Bruno Ferreira', title: 'Zagueiro' },
   { key: 'ponta', label: 'PON', pos: 'PON', sampleName: 'Diego Rocha', title: 'Ponta' },
-  { key: 'volante', label: 'VOL', pos: 'VOL', sampleName: 'Gustavo Lima', title: 'Volante' },
+  { key: 'volante', label: 'VOL', pos: 'VOL', sampleName: 'Carlos Andrade', title: 'Volante' },
   { key: 'atacante', label: 'ATA', pos: 'ATA', sampleName: 'Felipe Santos', title: 'Atacante' },
 ];
 
@@ -383,12 +383,12 @@ const SAMPLES = {
     },
   },
   volante: {
-    name: 'Gustavo Lima',
+    name: 'Carlos Andrade',
     pos: 'VOL',
     roleKey: 'volante',
     overall: 79,
     potential: 83,
-    age: 26,
+    age: 25,
     nationality: 'Brasil',
     preferredFoot: 'Direito',
     tackling: 82,
@@ -535,10 +535,16 @@ const SAMPLES = {
 
 
 
+const LAB_CLUB_PREVIEW = {
+  clubName: 'Fluminense',
+  clubDivision: 'A',
+};
+
+
+
 export function buildCardSample(roleKey) {
-
-  return SAMPLES[roleKey] || SAMPLES.goleiro;
-
+  const base = SAMPLES[roleKey] || SAMPLES.goleiro;
+  return { ...base, ...LAB_CLUB_PREVIEW };
 }
 
 

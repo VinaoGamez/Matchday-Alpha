@@ -5,6 +5,7 @@
 import { rollSquadAge, rollPotential, POT_CAPS } from './player-development.js';
 import { assignRosterNationalities } from './player-nationality.js';
 import { ensureCardVariantId } from './player-card-art.js';
+import { SHOOTOUT_TUNING } from './match-tuning.js';
 
 export const GENERIC_SQUAD_ROLES = [
   'GOL', 'GOL', 'GOL',
@@ -175,6 +176,7 @@ export function isPlayerSpecialist(player) {
   return isFreeKickSpecialist(player) || isPenaltySpecialist(player);
 }
 
+
 /** Chance base de gol em pênalti (0–1), com bônus de especialista cobrador/goleiro. */
 export function penaltyGoalChanceRate(penaltySkill, keeperSaving, taker = null, keeper = null) {
   const takerSpec = taker ? isPenaltySpecialist(taker) : false;
@@ -192,9 +194,69 @@ export function penaltyGoalChanceRate(penaltySkill, keeperSaving, taker = null, 
   );
 }
 
-/** Craque — regras de elegibilidade a definir. */
-export function isCraque(_player) {
-  return false;
+/** Chance de bola fora na disputa de pênaltis (0–1). */
+export function shootoutWideChance(penaltySkill) {
+  const skill = Number(penaltySkill) || 70;
+  return clamp(
+    SHOOTOUT_TUNING.wideBase - (skill - 70) / SHOOTOUT_TUNING.wideSkillDivisor,
+    SHOOTOUT_TUNING.wideMin,
+    SHOOTOUT_TUNING.wideMax,
+  );
+}
+
+/** Conversão quando a cobrança vai no gol — só disputa de pênaltis. */
+export function shootoutGoalChanceRate(penaltySkill, keeperSaving, taker = null, keeper = null) {
+  const takerSpec = taker ? isPenaltySpecialist(taker) : false;
+  const keeperSpec = keeper ? isPenaltySavingSpecialist(keeper) : false;
+  const skill = Number(penaltySkill) || 70;
+  const saving = Number(keeperSaving) || 70;
+  return clamp(
+    SHOOTOUT_TUNING.goalBase +
+      (skill - saving) / SHOOTOUT_TUNING.skillGapDivisor +
+      (skill - 70) / SHOOTOUT_TUNING.skillBiasDivisor +
+      (takerSpec ? SPECIALIST_BONUS.penaltyTaking : 0) -
+      (keeperSpec ? SPECIALIST_BONUS.penaltySaving : 0),
+    SHOOTOUT_TUNING.goalMin,
+    SHOOTOUT_TUNING.goalMax,
+  );
+}
+
+/** Chance total de gol por cobrança na disputa (fora + defesa). */
+export function shootoutKickGoalChance(penaltySkill, keeperSaving, taker = null, keeper = null) {
+  const wide = shootoutWideChance(penaltySkill);
+  const onFrame = shootoutGoalChanceRate(penaltySkill, keeperSaving, taker, keeper);
+  return clamp((1 - wide) * onFrame, 0.52, 0.95);
+}
+
+/**
+ * Desfecho de uma cobrança na disputa (animação + motor compartilham o mesmo RNG).
+ * @returns {{ outcome: 'goal'|'save'|'wide', scored: boolean }}
+ */
+export function resolveShootoutKickOutcome({
+  penaltySkill,
+  keeperSaving,
+  taker = null,
+  keeper = null,
+  random = Math.random,
+} = {}) {
+  const skill = Number(penaltySkill) || 70;
+  if (random() < shootoutWideChance(skill)) {
+    return { outcome: 'wide', scored: false };
+  }
+  const takerPayload = taker ? { ...taker, penaltyTaking: skill } : null;
+  const scored =
+    random() < shootoutGoalChanceRate(skill, keeperSaving, takerPayload, keeper);
+  return { outcome: scored ? 'goal' : 'save', scored };
+}
+
+/** Craque — superestrela global (Copa / eco-nome). */
+export function isCraque(player) {
+  return !!player?.craque;
+}
+
+/** Destaque — estrela prata (referência regional). */
+export function isDestaque(player) {
+  return !!player?.destaque;
 }
 
 export function setPieceSpecialistTitle(player) {

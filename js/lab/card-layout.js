@@ -9,7 +9,12 @@ export const ZONE_META = {
   first: { label: 'Primeiro nome', color: '#3b82f6', group: 'foot' },
   last: { label: 'Sobrenome', color: '#a855f7', group: 'foot' },
   nation: { label: 'País + bandeira', color: '#06b6d4', group: 'foot' },
-  backHead: { label: 'Cabeçalho', color: '#a855f7', group: 'back' },
+  backHead: { label: 'Fundo cabeçalho', color: '#581c87', group: 'back' },
+  backLast: { label: 'Sobrenome', color: '#a855f7', group: 'back' },
+  backRole: { label: 'Função · idade', color: '#c084fc', group: 'back' },
+  backClubTag: { label: 'Tag divisão', color: '#818cf8', group: 'back' },
+  backClubName: { label: 'Nome do clube', color: '#6366f1', group: 'back' },
+  backOvr: { label: 'OVR verso', color: '#f59e0b', group: 'back' },
   backGauges: { label: 'Destaques stats', color: '#22c55e', group: 'back' },
   backBars: { label: 'Stats secundários', color: '#f59e0b', group: 'back' },
   backFeet: { label: 'Pé forte', color: '#06b6d4', group: 'back' },
@@ -23,6 +28,11 @@ export const ZONE_META = {
 export const FRONT_ZONE_KEYS = ['foot', 'number', 'role', 'first', 'last', 'nation'];
 export const BACK_ZONE_KEYS = [
   'backHead',
+  'backLast',
+  'backRole',
+  'backClubTag',
+  'backClubName',
+  'backOvr',
   'backGauges',
   'backBars',
   'backFeet',
@@ -35,6 +45,11 @@ export const BACK_ZONE_KEYS = [
 
 export const DEFAULT_BACK_ZONES = {
   backHead: { x: 0, y: 0, w: 100, h: 13.5 },
+  backLast: { x: 3.4, y: 1.7, w: 58, h: 6.5 },
+  backRole: { x: 3.2, y: 8.4, w: 58, h: 4.2 },
+  backClubTag: { x: 48, y: 8, w: 18, h: 2.2 },
+  backClubName: { x: 48, y: 10.2, w: 38, h: 2.5 },
+  backOvr: { x: 75.3, y: 2.7, w: 22, h: 9 },
   backGauges: { x: 3, y: 14.8, w: 94, h: 16.5 },
   backBars: { x: 2.8, y: 34.1, w: 94, h: 23 },
   actions: { x: 17.9, y: 59.5, w: 60, h: 8 },
@@ -79,7 +94,9 @@ export const DEFAULT_LAYOUTS = {
   mc: cloneLayout(DEFAULT_FOOT_BLOCK),
 };
 
-const STORAGE_PREFIX = 'matchday-card-layout-v19-';
+const STORAGE_PREFIX = 'matchday-card-layout-v20-';
+
+const BACK_HEADER_TEXT_KEYS = ['backLast', 'backRole', 'backClubTag', 'backClubName', 'backOvr'];
 
 export function isBackZoneKey(key) {
   return BACK_ZONE_KEYS.includes(key);
@@ -105,6 +122,11 @@ function normalizeBackZones(layout) {
   }
   delete bz.backSpecPen;
   delete bz.backSpecFk;
+  if (!BACK_HEADER_TEXT_KEYS.some(k => bz[k])) {
+    for (const k of BACK_HEADER_TEXT_KEYS) {
+      bz[k] = cloneLayout(DEFAULT_BACK_ZONES[k]);
+    }
+  }
 }
 
 function mergeBackZones(out, patch) {
