@@ -142,7 +142,21 @@ import {
   buildCupPhaseNominalDates,
   seasonEndDate as planSeasonEndDate,
 } from '../engine/season-calendar-plan.js';
-import { resolveFixtureCompetitionCode } from '../engine/season-calendar-mold.js';
+import { resolveFixtureCompetitionCode, isWorldCupYear } from '../engine/season-calendar-mold.js';
+import {
+  buildWorldCupCalendarFixtures,
+  WORLD_CUP_COMPETITION,
+  WORLD_CUP_CALENDAR_CODE,
+  WORLD_CUP_GROUP_FIXTURE_COUNT,
+} from '../engine/world-cup-calendar.js';
+import {
+  createWorldCupCompetition,
+  getWorldCupAllFixtures,
+  advanceWorldCupThroughDate,
+  serializeWorldCupCompetition,
+  worldCupCalendarSummary,
+} from '../engine/world-cup-competition.js';
+import { nationalTeamByCode } from '../engine/national-teams.js';
 import { competitionRulesHtml } from '../engine/competition-rules.js';
 import {
   resolveBoardJobRisk,
@@ -219,6 +233,8 @@ export async function bootEngine({ bus } = {}) {
   };
   const userClub=careerProfile.clubName;
   const userDivision=careerProfile.division;
+  const userNationalTeamCode=savedNewGame?.nationalTeamCode?String(savedNewGame.nationalTeamCode).trim().toUpperCase():null;
+  const userNationalTeamName=userNationalTeamCode?nationalTeamByCode(userNationalTeamCode)?.name||null:null;
   const DEFAULT_CAREER_SEASON=2026;
   const careerSeason=Number(savedNewGame?.season)||DEFAULT_CAREER_SEASON;
   let seededState=(savedNewGame?.seed||0)>>>0;
@@ -455,6 +471,7 @@ export async function bootEngine({ bus } = {}) {
   let startMatchClock=()=>{};
   let openSeasonGoalPreview=()=>{};
   const matchLiveAudio=createMatchLiveAudioFeature();
+  matchLiveAudio.syncControls?.();
   const optionsUi=createOptionsFeature({
     $, $$, onClick, redirectGame, cleanCareerText, writeJson, clearSeasonSave, clearCareerStorage, markSkipPersistOnce, SAVE_KEYS,
     hasCareer: !!savedNewGame,
@@ -1657,6 +1674,21 @@ export async function bootEngine({ bus } = {}) {
   }
   const shuffleCup=entries=>{const values=[...entries];for(let index=values.length-1;index>0;index--){const swap=int(0,index),item=values[index];values[index]=values[swap];values[swap]=item;}return values;};
   const copaDoBrasilFixtures=[];
+  let worldCupCompetition=isWorldCupYear(careerSeason)
+    ?createWorldCupCompetition({
+      year:careerSeason,
+      worldCupHistory:savedNewGame?.worldCupHistory||[],
+      random:gameRandom,
+      saved:validSavedSeason?savedSeason.worldCupCompetition:null,
+    })
+    :null;
+  const worldCupFixtures=[];
+  const refreshWorldCupFixtures=()=>{
+    worldCupFixtures.length=0;
+    if(worldCupCompetition)worldCupFixtures.push(...getWorldCupAllFixtures(worldCupCompetition));
+  };
+  refreshWorldCupFixtures();
+  let advanceWorldCupThroughDateLocal=()=>false;
   let onCupScheduleChanged=()=>{};
   const restoredCup=validSavedSeason&&savedSeason.cupCompetition?.stages?.length?savedSeason.cupCompetition:null;
   const cupCompetition=restoredCup?{currentPhase:restoredCup.currentPhase||1,champion:restoredCup.champion||null,stages:restoredCup.stages.map(stage=>({...stage,fixtures:(stage.fixtures||[]).map(game=>({...game,date:new Date(game.date)}))}))}:{currentPhase:1,champion:null,stages:[]};
@@ -1739,7 +1771,7 @@ export async function bootEngine({ bus } = {}) {
   const calculateRestConflicts=()=>countRestConflicts(clubMatchDates,MIN_REST_DAYS);
   let restConflictCount=0;
   const fixtureDetails=game=>{
-    if(game.competition==='COPA DO BRASIL'){
+    if(game.competition==='COPA DO BRASIL'||game.competition===WORLD_CUP_COMPETITION){
       const date=new Date(game.date),day=String(date.getDate()).padStart(2,'0'),month=date.toLocaleDateString('pt-BR',{month:'short'}).replace('.','').toUpperCase();
       return{date,display:`${day} ${month}`,time:game.time};
     }
@@ -1800,7 +1832,7 @@ export async function bootEngine({ bus } = {}) {
       const gateAmount=Number.isFinite(Number(game.gateRevenue))
         ?Number(game.gateRevenue)
         :Math.round(estimateGateReceipt(clubs[userClub],{
-          channel:game.competition==='COPA DO BRASIL'?'cup':'national',
+          channel:game.competition==='COPA DO BRASIL'?'cups':'national',
           division:userDivision,
         }).revenue||0);
       if(gateAmount>0)parts.push(`Renda ${formatBudget(gateAmount)}`);
@@ -1938,7 +1970,21 @@ export async function bootEngine({ bus } = {}) {
     });
   };
   const fixtureCompetitionLabel=game=>{if(game.competition==='COPA DO BRASIL')return `Copa ${game.leg}`;if(isKnockoutShootoutCompetition(game))return `Série D · ${game.leg||'Eliminatórias'}`;return `${game.round}ª`;};
-  const isUserFixture=game=>game.home===userClub||game.away===userClub;
+  const isUserFixture=game=>{
+    if(game.competition===WORLD_CUP_COMPETITION&&userNationalTeamName){
+      return game.home===userNationalTeamName||game.away===userNationalTeamName;
+    }
+    return game.home===userClub||game.away===userClub;
+  };
+  advanceWorldCupThroughDateLocal=date=>{
+    if(!worldCupCompetition||!date)return false;
+    const changed=advanceWorldCupThroughDate(worldCupCompetition,date,{
+      random:gameRandom,
+      isUserTeam:game=>game.competition===WORLD_CUP_COMPETITION&&isUserFixture(game),
+    });
+    if(changed)refreshWorldCupFixtures();
+    return changed;
+  };
   const leagueFixtureRecorded=game=>{
     if(!game?.home||!game?.away)return false;
     const byRound=game.round&&seasonRoundHistory.find(item=>item.round===game.round);
@@ -1947,6 +1993,7 @@ export async function bootEngine({ bus } = {}) {
   };
   const isSerieDGroupStageGame=game=>userDivision!=='D'||(!isKnockoutShootoutCompetition(game)&&(game.round||0)<=SERIE_D_GROUP_ROUNDS);
   const isFixtureCompleted=game=>{
+    if(game.competition===WORLD_CUP_COMPETITION)return !!game.completed||game.homeGoals!=null;
     if(game.competition==='COPA DO BRASIL'||isKnockoutShootoutCompetition(game))return !!game.completed;
     if(leagueFixtureRecorded(game))return true;
     return (game.round||99)<=userLeaguePlayed();
@@ -1959,7 +2006,8 @@ export async function bootEngine({ bus } = {}) {
     const league=championshipFixtures.flat().filter(isUserFixture).filter(isSerieDGroupStageGame);
     const knockout=userGroupStageComplete()?userKnockoutFixtures().filter(isUserFixture):[];
     const cup=copaDoBrasilFixtures.filter(isUserFixture);
-    userScheduleCache=[...league,...knockout,...cup].map(game=>({game,details:fixtureDetails(game)})).sort((a,b)=>a.details.date-b.details.date||((a.game.round||0)-(b.game.round||0))||String(a.game.leg||'').localeCompare(String(b.game.leg||'')));
+    const worldCup=worldCupCompetition?getWorldCupAllFixtures(worldCupCompetition).filter(isUserFixture):[];
+    userScheduleCache=[...league,...knockout,...cup,...worldCup].map(game=>({game,details:fixtureDetails(game)})).sort((a,b)=>a.details.date-b.details.date||((a.game.round||0)-(b.game.round||0))||String(a.game.leg||'').localeCompare(String(b.game.leg||'')));
     pendingUserScheduleCache=null;
     return userScheduleCache;
   };
@@ -2346,7 +2394,7 @@ export async function bootEngine({ bus } = {}) {
   if(savedNewGame&&(messages.getMedicalActionMessages?.().length||postMatchMedicalQueue.length||pendingTreatmentDecision)){
     queueMicrotask(()=>openMedicalActionFlow());
   }
-  let seasonCalendarFixtures=[...championshipFixtures.flat(),...copaDoBrasilFixtures].sort((a,b)=>fixtureDetails(a).date-fixtureDetails(b).date);
+  let seasonCalendarFixtures=[...championshipFixtures.flat(),...copaDoBrasilFixtures,...worldCupFixtures].sort((a,b)=>fixtureDetails(a).date-fixtureDetails(b).date);
   const calendarKey=date=>`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
   const calendarDate=key=>{const [year,month,day]=key.split('-').map(Number);return new Date(year,month-1,day,12);};
   const matchBriefAlreadySent=briefKey=>messages.getMessages().some(message=>message.meta?.briefKey===briefKey);
@@ -2424,16 +2472,32 @@ export async function bootEngine({ bus } = {}) {
       if(!game?.date)return;
       addCalendarCompetitionTag(new Date(game.date),resolveFixtureCompetitionCode(game));
     });
+    worldCupFixtures.forEach(game=>{
+      if(!game?.date)return;
+      addCalendarCompetitionTag(new Date(game.date),WORLD_CUP_CALENDAR_CODE);
+    });
   };
   const rebuildCalendarGames=()=>{
     invalidateUserScheduleCache();
-    seasonCalendarFixtures=[...championshipFixtures.flat(),...userKnockoutFixtures(),...copaDoBrasilFixtures].sort((a,b)=>fixtureDetails(a).date-fixtureDetails(b).date);
+    seasonCalendarFixtures=[...championshipFixtures.flat(),...userKnockoutFixtures(),...copaDoBrasilFixtures,...worldCupFixtures].sort((a,b)=>fixtureDetails(a).date-fixtureDetails(b).date);
     calendarGames.clear();
     seasonCalendarFixtures.forEach(game=>{const key=calendarKey(fixtureDetails(game).date);if(!calendarGames.has(key))calendarGames.set(key,[]);calendarGames.get(key).push(game);});
     rebuildCalendarCompetitionTags();
     restConflictCount=calculateRestConflicts();
   };
   rebuildCalendarGames();
+  advanceWorldCupThroughDateLocal=date=>{
+    if(!worldCupCompetition||!date)return false;
+    const changed=advanceWorldCupThroughDate(worldCupCompetition,date,{
+      random:gameRandom,
+      isUserTeam:game=>game.competition===WORLD_CUP_COMPETITION&&isUserFixture(game),
+    });
+    if(changed){
+      refreshWorldCupFixtures();
+      rebuildCalendarGames();
+    }
+    return changed;
+  };
   const initialCalendarDate=validSavedSeason?careerCalendarDate:seasonStartDate();
   const trainingOptions={before:['Preparação tática','Treino leve','Descanso'],after:['Recuperação','Descanso total','Análise do jogo'],free:['Treino equilibrado','Treino técnico','Descanso intermitente']};
   let trainingRules={before:'Preparação tática',after:'Recuperação',free:'Treino equilibrado'};
@@ -2485,6 +2549,8 @@ export async function bootEngine({ bus } = {}) {
     getCareerCalendarDate:()=>careerCalendarDate,
     getChampionshipFixtures:()=>championshipFixtures,
     getCopaFixtures:()=>copaDoBrasilFixtures,
+    getWorldCupFixtures:()=>worldCupFixtures,
+    getWorldCupSummary:()=>worldCupCalendarSummary(worldCupCompetition),
     getCalendarGames:()=>calendarGames,
     getCalendarCompetitionTags:()=>calendarCompetitionTagsByDate,
     rebuildCalendarGames,
@@ -3010,6 +3076,7 @@ export async function bootEngine({ bus } = {}) {
           applyTrainingDay(trainingTypeForDate(nextDay));
           advanceCareerCalendarTo(nextDay);
           advanceCupThroughDate(nextDay);
+          advanceWorldCupThroughDateLocal(nextDay);
           simulatedDays+=1;
           stoppedMatch=pendingMatch;
           if(!batch)pushMatchDayBrief(pendingMatch);
@@ -3018,6 +3085,7 @@ export async function bootEngine({ bus } = {}) {
         applyTrainingDay(trainingTypeForDate(nextDay));
         advanceCareerCalendarTo(nextDay);
         advanceCupThroughDate(nextDay);
+        advanceWorldCupThroughDateLocal(nextDay);
         simulatedDays+=1;
         // Mercado: 1 tick no fim da semana (modo semana) ou 1/dia no Deadline — não a cada dia intermediário.
         if(!batch){
@@ -5216,7 +5284,7 @@ export async function bootEngine({ bus } = {}) {
         pickWinner:cupPenaltyWinner,
         int,
         allowAutoShootout:!involvesUser,
-        random,
+        random:gameRandom,
         getKickPair:knockoutShootoutKickPair,
       });
     }else games.forEach(clearStaleKnockoutShootout);
@@ -5641,6 +5709,7 @@ export async function bootEngine({ bus } = {}) {
       dFixtures:slimSerieDFixturesForSave(nationalCompetitions.D.fixtures),
       dKnockout:nationalCompetitions.D.knockout,
       cupCompetition:compactCup,
+      worldCupCompetition:serializeWorldCupCompetition(worldCupCompetition),
       nationalRanking:{formulaVersion:nationalRankingFormulaVersion,entries:rankingEntries,finalizedSeasons:[...nationalRankingFinalizedSeasons]},
       managerRanking:(()=>{
         managerRanking.syncSeasonPointsFromClubs(managerRankingHelpers().getClubSeasonPoints);
@@ -5853,6 +5922,7 @@ export async function bootEngine({ bus } = {}) {
         if(pendingMatch){
           advanceCareerCalendarTo(nextDay);
           advanceCupThroughDate(nextDay);
+          advanceWorldCupThroughDateLocal(nextDay);
           setSelectedCalendarDate(nextDay);
           simulatedDays++;
           persistSeason(true);
@@ -5863,6 +5933,7 @@ export async function bootEngine({ bus } = {}) {
         applyTrainingDay(trainingTypeForDate(nextDay));
         advanceCareerCalendarTo(nextDay);
         advanceCupThroughDate(nextDay);
+        advanceWorldCupThroughDateLocal(nextDay);
         simulatedDays++;
       }
     }finally{
@@ -5919,6 +5990,7 @@ export async function bootEngine({ bus } = {}) {
         applyTrainingDay(trainingTypeForDate(nextDay));
         advanceCareerCalendarTo(nextDay);
         advanceCupThroughDate(nextDay);
+        advanceWorldCupThroughDateLocal(nextDay);
         simulatedDays+=1;
         if(transfersEngine?.getWindowPhase?.()?.active)transferWindowTouched=true;
       }
@@ -6133,7 +6205,7 @@ export async function bootEngine({ bus } = {}) {
         pickWinner:cupPenaltyWinner,
         int,
         allowAutoShootout:!involvesUser,
-        random,
+        random:gameRandom,
         getKickPair:knockoutShootoutKickPair,
       });
       if(!winner)return null;
@@ -6717,6 +6789,7 @@ export async function bootEngine({ bus } = {}) {
     applyTrainingDay(trainingTypeForDate(nextDay));
     advanceCareerCalendarTo(nextDay);
     advanceCupThroughDate(nextDay);
+    advanceWorldCupThroughDateLocal(nextDay);
     setSelectedCalendarDate(careerCalendarDate);
   };
   const advanceSeasonRound=({navigateDashboard=true}={})=>{
@@ -7669,7 +7742,7 @@ export async function bootEngine({ bus } = {}) {
       const home=clubNames[index%clubNames.length],away=clubNames[(index*7+3)%clubNames.length];
       if(home===away)continue;
       const getKickPair=(clubName,attemptIndex)=>rosterShootoutKickPair(clubs[clubName],attemptIndex);
-      const result=simulateProbabilisticShootout([home,away],{random,getKickPair});
+      const result=simulateProbabilisticShootout([home,away],{random:gameRandom,getKickPair});
       if(!result?.winner)continue;
       const g0=result.scores[home]||0,g1=result.scores[away]||0,tg=g0+g1;
       const kicks=result.totalKicks||((result.results[home]?.length||0)+(result.results[away]?.length||0));

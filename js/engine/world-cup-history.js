@@ -10,6 +10,7 @@ import {
   nationalTeamByCode,
   nationalTeamPower,
 } from './national-teams.js';
+import { buildWorldCup2026FixedDraw } from './world-cup-2026-groups.js';
 
 /** Mesmo JSON de elencos para todas as edições até nova curadoria manual. */
 export const WORLD_CUP_SQUADS_ASSET = './data/world-cup-2026-squads.json';
@@ -246,20 +247,29 @@ export function drawWorldCupGroups(ranking, random = Math.random) {
   };
 }
 
+/** Copa 2026 usa grupos oficiais FIFA; sorteio aleatório só a partir de 2030. */
+export function usesWorldCupGroupDraw(year) {
+  return Number(year) > WORLD_CUP_ANCHOR_YEAR;
+}
+
 /** Pacote completo para iniciar uma edição (2030+ reutiliza elenco 2026). */
 export function prepareWorldCupEdition(history, year, random = Math.random) {
-  const seedRanking = getSeedRankingForEdition(history, year);
-  const draw = drawWorldCupGroups(seedRanking, random);
-  const teamStrength = buildEditionTeamStrengthMap(history, year);
+  const y = Number(year);
+  const seedRanking = getSeedRankingForEdition(history, y);
+  const draw = usesWorldCupGroupDraw(y)
+    ? drawWorldCupGroups(seedRanking, random)
+    : buildWorldCup2026FixedDraw(seedRanking);
+  const teamStrength = buildEditionTeamStrengthMap(history, y);
 
   return {
-    year: Number(year),
-    edition: worldCupEditionForYear(year),
+    year: y,
+    edition: worldCupEditionForYear(y),
     squadsAsset: WORLD_CUP_SQUADS_ASSET,
     squadsSourceEdition: WORLD_CUP_SQUADS_SOURCE_EDITION,
     squadsFrozen: true,
     seedRanking,
     teamStrength,
     draw,
+    groupDrawMode: usesWorldCupGroupDraw(y) ? 'random' : 'fixed-2026',
   };
 }

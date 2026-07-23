@@ -837,7 +837,17 @@ export function createMatchLiveUiFeature(deps) {
   const bindLiveActions = () => {
     const pauseButton = $('#pauseMatch'),
       statsButton = $('#liveStats'),
-      opponentButton = $('#liveOpponent');
+      opponentButton = $('#liveOpponent'),
+      audioMuteButton = $('#liveMatchAudioMute');
+    matchLiveAudio?.syncControls?.();
+    if (audioMuteButton && !audioMuteButton.dataset.bound) {
+      audioMuteButton.dataset.bound = '1';
+      audioMuteButton.addEventListener('click', () => {
+        const next = !matchLiveAudio?.isEnabled?.();
+        matchLiveAudio?.setEnabled?.(next);
+        if (next && !liveClockBlockedByUi()) matchLiveAudio?.startStadiumAmbient?.();
+      });
+    }
     if (pauseButton)
       pauseButton.onclick = () => {
         if (getPauses() >= 3) return;

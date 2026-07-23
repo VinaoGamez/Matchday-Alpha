@@ -66,10 +66,10 @@ export const TICKET_PRICE_RANGE = {
 };
 
 /**
- * Escala final da bilheteria (após público × preço).
- * v4: aperta ops para cobertura baseline ~0,95–1,10× (A ~1,00–1,05×).
+ * Multiplicador da bilheteria (público × preço × escala).
+ * 1.0 = crédito igual ao preço de ingresso exibido na UI (sem desconto oculto).
  */
-export const GATE_REVENUE_SCALE = 0.28;
+export const GATE_REVENUE_SCALE = 1;
 
 /**
  * Premiação de fim de temporada — calibrada vs INITIAL_BUDGET:

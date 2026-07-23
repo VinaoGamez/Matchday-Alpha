@@ -17,6 +17,9 @@ export function resolveCompetitionBadge(game, { userDivision = 'A' } = {}) {
   if (game.competition === KNOCKOUT_COMPETITIONS.COPA || game.competition === 'COPA DO BRASIL') {
     return { name: 'Copa do Brasil', kind: 'cup' };
   }
+  if (game.competition === 'COPA DO MUNDO') {
+    return { name: 'Copa do Mundo', kind: 'world-cup' };
+  }
   if (isKnockoutShootoutCompetition(game)) {
     if (
       game.competition === KNOCKOUT_COMPETITIONS.SERIE_D ||

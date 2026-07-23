@@ -6,7 +6,8 @@ import { teamCrestWithHumanHtml } from '../../ui/team-crest.js';
 import { formatMatchRating as defaultFormatMatchRating } from '../../engine/player-match-stats.js';
 import { formatMatchMinuteLabel } from '../../engine/match-clock.js';
 import { isDateInTransferWindow, getTransferWindowPhase } from '../../engine/transfers.js';
-import { sortCalendarCompetitionCodes, calendarCompetitionLabel } from '../../engine/season-calendar-mold.js';
+import { sortCalendarCompetitionCodes, calendarCompetitionLabel, isWorldCupYear } from '../../engine/season-calendar-mold.js';
+import { isWorldCupFixture } from '../../engine/world-cup-calendar.js';
 import { tipKey, buildPlayerTipIndex, ownGoalTipCount } from './match-report-tips.js';
 import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
 import ownGoalBallUrl from '../../../assets/ui/goal-ball-own.png?url';
@@ -28,6 +29,8 @@ export function createCalendarViewFeature(deps) {
     getCareerCalendarDate,
     getChampionshipFixtures,
     getCopaFixtures,
+    getWorldCupFixtures,
+    getWorldCupSummary,
     getCalendarGames,
     getCalendarCompetitionTags,
     getSeasonCalendarFixtures,
@@ -108,8 +111,18 @@ export function createCalendarViewFeature(deps) {
   const syncCalendarSubtitle = () => {
     const championshipFixtures = getChampionshipFixtures();
     const copaDoBrasilFixtures = getCopaFixtures();
+    const wcSummary = typeof getWorldCupSummary === 'function' ? getWorldCupSummary() : null;
+    const worldCupCount = wcSummary?.totalScheduled ?? getWorldCupFixtures?.()?.length ?? 0;
     const restConflictCount = getRestConflictCount();
-    $('#calendar .title span').textContent = `Agenda nacional de janeiro a dezembro · ${championshipFixtures.flat().length} jogos do Brasileiro · ${copaDoBrasilFixtures.length} jogos confirmados da Copa do Brasil · ${calendarIntervalLabel(restConflictCount)}.`;
+    let worldCupBit = '';
+    if (worldCupCount) {
+      if (wcSummary && !wcSummary.knockoutGenerated) {
+        worldCupBit = ` · ${wcSummary.groupCount || worldCupCount} jogos da Copa (fase de grupos — mata-mata após resultados)`;
+      } else {
+        worldCupBit = ` · ${worldCupCount} jogos da Copa do Mundo`;
+      }
+    }
+    $('#calendar .title span').textContent = `Agenda nacional de janeiro a dezembro · ${championshipFixtures.flat().length} jogos do Brasileiro · ${copaDoBrasilFixtures.length} jogos confirmados da Copa do Brasil${worldCupBit} · ${calendarIntervalLabel(restConflictCount)}.`;
   };
 
   const calendarGameResult = game => {
@@ -118,6 +131,11 @@ export function createCalendarViewFeature(deps) {
     const seasonRoundHistory = getSeasonRoundHistory();
     if (game.competition === 'COPA DO BRASIL') {
       return game.completed ? { game, result: game, data: game.data || null, goals: game.goals || null } : null;
+    }
+    if (isWorldCupFixture(game)) {
+      return game.completed || game.homeGoals != null
+        ? { game, result: game, data: game.data || null, goals: game.goals || null }
+        : null;
     }
     const roundRecord = seasonRoundHistory.find(item => item.round === game.round);
     const result = roundRecord?.games?.find(item => item.home === game.home && item.away === game.away);
@@ -694,13 +712,18 @@ export function createCalendarViewFeature(deps) {
     calendarReportGames.clear();
     $('#calendarSelectedDay').textContent = dateLabel;
     const cupGames = games.filter(game => game.competition === 'COPA DO BRASIL');
+    const worldCupGames = games.filter(isWorldCupFixture);
     const phase = getTransferWindowPhase(selectedCalendarDate);
     const marketBits = [];
     if (phase.active) marketBits.push(phase.isDeadlineDay ? 'Deadline Day' : phase.label || 'Janela aberta');
     if (games.length) {
-      marketBits.unshift(
-        `${games.length} ${games.length === 1 ? 'jogo programado' : 'jogos programados'}${cupGames.length ? ` · ${cupGames[0].phase}` : ''}`,
-      );
+      const summary = `${games.length} ${games.length === 1 ? 'jogo programado' : 'jogos programados'}`;
+      const compHint = worldCupGames.length
+        ? `${worldCupGames.length} Copa do Mundo`
+        : cupGames.length
+          ? cupGames[0].phase
+          : '';
+      marketBits.unshift(compHint ? `${summary} · ${compHint}` : summary);
     }
     $('#calendarSelectedMeta').textContent = marketBits.length
       ? marketBits.join(' · ')
@@ -711,13 +734,18 @@ export function createCalendarViewFeature(deps) {
         const userGame = isUserFixture(game);
         const atHome = game.home === userClub;
         const isCup = game.competition === 'COPA DO BRASIL';
+        const isWorldCup = isWorldCupFixture(game);
         const completed = isFixtureCompleted(game);
         const scoreLabel = fixtureResultLabel(game);
-        const eventLabel = isCup ? `COPA DO BRASIL · ${game.phase} · ${game.leg}` : `BRASILEIRÃO · RODADA ${game.round}`;
+        const eventLabel = isWorldCup
+          ? `COPA DO MUNDO · ${game.phase}${game.knockout ? '' : ` · R${game.round}`}`
+          : isCup
+            ? `COPA DO BRASIL · ${game.phase} · ${game.leg}`
+            : `BRASILEIRÃO · RODADA ${game.round}`;
         const report = calendarGameResult(game);
         const reportKey = `${key}-${index}`;
         if (report) calendarReportGames.set(reportKey, report);
-        return `<div class="agenda-item ${report ? 'has-report' : ''} ${userGame ? 'user-game' : ''} ${isCup ? 'cup' : ''} ${completed ? 'completed' : ''}"><time>${detail.time}</time><div><small>${userGame ? `SEU JOGO · ${eventLabel} · ${atHome ? 'EM CASA' : 'FORA'}${completed ? ' · ENCERRADO' : ''}` : eventLabel}</small><strong><span class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</span> × <span class="club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</span>${scoreLabel ? ` <em>· ${scoreLabel}</em>` : ''}</strong></div>${report ? `<button type="button" class="agenda-match-report" data-match-report="${reportKey}" title="Ver estatísticas finais" aria-label="Ver estatísticas de ${game.home} contra ${game.away}">▤</button>` : ''}</div>`;
+        return `<div class="agenda-item ${report ? 'has-report' : ''} ${userGame ? 'user-game' : ''} ${isWorldCup ? 'world-cup' : isCup ? 'cup' : ''} ${completed ? 'completed' : ''}"><time>${detail.time}</time><div><small>${userGame ? `SEU JOGO · ${eventLabel} · ${atHome ? 'EM CASA' : 'FORA'}${completed ? ' · ENCERRADO' : ''}` : eventLabel}</small><strong><span class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</span> × <span class="club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</span>${scoreLabel ? ` <em>· ${scoreLabel}</em>` : ''}</strong></div>${report ? `<button type="button" class="agenda-match-report" data-match-report="${reportKey}" title="Ver estatísticas finais" aria-label="Ver estatísticas de ${game.home} contra ${game.away}">▤</button>` : ''}</div>`;
       })
       .join('');
     const trainingRows = activities
@@ -845,6 +873,9 @@ export function createCalendarViewFeature(deps) {
     const championshipFixtures = getChampionshipFixtures();
     const copaDoBrasilFixtures = getCopaFixtures();
     const restConflictCount = getRestConflictCount();
+    const worldCupLegend = isWorldCupYear(careerSeason)
+      ? '<span><i class="comp-cmu"></i>CMU · COPA DO MUNDO</span>'
+      : '';
 
     $('#calendar .title p').textContent = `TEMPORADA ${careerSeason} · BRASILEIRÃO SÉRIE ${userDivision} + COPA DO BRASIL`;
     syncCalendarSubtitle();
@@ -854,7 +885,7 @@ export function createCalendarViewFeature(deps) {
     );
     $('.calendar-legend').insertAdjacentHTML(
       'beforeend',
-      '<span><i class="comp-bsa"></i>BSA · SÉRIE A</span><span><i class="comp-bsb"></i>BSB · SÉRIE B</span><span><i class="comp-bsc"></i>BSC · SÉRIE C</span><span><i class="comp-bsd"></i>BSD · SÉRIE D</span><span><i class="cup"></i>CBR · COPA</span><span><i class="transfer-window"></i>JANELA</span><span><i class="transfer-deadline"></i>DEADLINE</span>',
+      `<span><i class="comp-bsa"></i>BSA · SÉRIE A</span><span><i class="comp-bsb"></i>BSB · SÉRIE B</span><span><i class="comp-bsc"></i>BSC · SÉRIE C</span><span><i class="comp-bsd"></i>BSD · SÉRIE D</span><span><i class="cup"></i>CBR · COPA</span>${worldCupLegend}<span><i class="transfer-window"></i>JANELA</span><span><i class="transfer-deadline"></i>DEADLINE</span>`,
     );
     $('.calendar-sidebar').insertAdjacentHTML(
       'beforeend',

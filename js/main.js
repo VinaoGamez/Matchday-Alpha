@@ -1,5 +1,6 @@
 import './security/tester-hardening.js';
 import '../css/release-notes-viewer.css';
+import '../css/live-volume.css';
 import { BUILD_VERSION, FEATURES } from './core/constants.js';
 import { createEventBus } from './core/event-bus.js';
 import { bootEngine } from './legacy/engine.js';

@@ -11,8 +11,11 @@ import {
   prepareWorldCupEdition,
   recordWorldCupResult,
   teamPowerFromSeedRank,
+  usesWorldCupGroupDraw,
   WORLD_CUP_GROUP_LETTERS,
 } from '../js/engine/world-cup-history.js';
+import { WORLD_CUP_2026_FIXED_GROUPS } from '../js/engine/world-cup-2026-groups.js';
+import { buildWorldCupGroupFixtures } from '../js/engine/world-cup-calendar.js';
 import { NATIONAL_TEAM_CODES } from '../js/engine/national-teams.js';
 
 let passed = 0;
@@ -95,6 +98,41 @@ check('força da edição segue ranking anterior', () => {
   const strength = buildEditionTeamStrengthMap(history, 2030);
   assert(strength.FRA.seedRank === 40);
   assert(strength.FRA.teamPower === 84);
+});
+
+check('2026 não usa sorteio aleatório de grupos', () => {
+  assert(usesWorldCupGroupDraw(2026) === false);
+  assert(usesWorldCupGroupDraw(2030) === true);
+});
+
+check('2026 usa grupos oficiais FIFA', () => {
+  const edition = prepareWorldCupEdition([], 2026, () => 0.99);
+  assert(edition.groupDrawMode === 'fixed-2026');
+  assert(edition.draw.fixedDraw === true);
+
+  WORLD_CUP_GROUP_LETTERS.forEach(letter => {
+    const expected = WORLD_CUP_2026_FIXED_GROUPS[letter];
+    const actual = edition.draw.groups[letter].map(t => t.code);
+    assert(actual.length === 4, `grupo ${letter}`);
+    expected.forEach((code, index) => {
+      assert(actual[index] === code, `grupo ${letter} pos ${index + 1}: esperado ${code}, veio ${actual[index]}`);
+    });
+  });
+
+  const groupC = edition.draw.groups.C.map(t => t.code);
+  assert(groupC.join(',') === 'BRA,MAR,SCO,HAI');
+});
+
+check('2030 sorteia grupos (não fixo)', () => {
+  const edition = prepareWorldCupEdition([], 2030, () => 0.5);
+  assert(edition.groupDrawMode === 'random');
+  assert(edition.draw.fixedDraw !== true);
+});
+
+check('calendário inicial só fase de grupos (72 jogos)', () => {
+  const fixtures = buildWorldCupGroupFixtures(2026);
+  assert(fixtures.length === 72);
+  assert(!fixtures.some(g => g.knockout));
 });
 
 check('prepareWorldCupEdition congela elenco 2026', () => {

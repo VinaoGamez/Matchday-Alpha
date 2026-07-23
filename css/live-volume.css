@@ -8,14 +8,75 @@
   flex-shrink:0;
 }
 .live-volume.hidden{display:none!important}
-.live-volume>header{
-  padding:5px 10px;
+.live-volume>header,
+.live-volume-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:6px 12px;
+  min-height:34px;
   background:#0f2430;
   border-bottom:1px solid #1e4a5c;
   color:#edf8f5;
   font:800 10px 'Barlow Condensed',sans-serif;
   letter-spacing:1.2px;
 }
+.live-volume-header>span{flex:1;min-width:0;line-height:1}
+.live-volume-audio-btn{
+  flex:0 0 auto;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:36px;
+  height:32px;
+  margin:0;
+  padding:0!important;
+  border:1px solid #2a6074!important;
+  border-radius:6px!important;
+  background:#132a36!important;
+  color:#9fd4e8!important;
+  font-size:0!important;
+  line-height:0!important;
+  letter-spacing:0!important;
+  box-shadow:none!important;
+  transform:none!important;
+  cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.live-volume-audio-btn:hover{
+  background:#1a3847!important;
+  border-color:#3a8fad!important;
+  color:#d7f3ff!important;
+  box-shadow:none!important;
+  transform:none!important;
+}
+.live-volume-audio-btn:focus-visible{
+  outline:2px solid #63d9ff;
+  outline-offset:1px;
+}
+.live-volume-audio-btn .live-audio-icon-slot{
+  position:relative;
+  width:20px;
+  height:20px;
+  display:block;
+  flex:0 0 auto;
+}
+.live-volume-audio-btn .live-audio-icon{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  display:block;
+}
+.live-volume-audio-btn .live-audio-icon-off{display:none}
+.live-volume-audio-btn.is-muted{
+  color:#8aa3ad!important;
+  border-color:#3a4f58!important;
+  background:#101f28!important;
+}
+.live-volume-audio-btn.is-muted .live-audio-icon-on{display:none}
+.live-volume-audio-btn.is-muted .live-audio-icon-off{display:block}
 .live-volume-body{
   display:grid;
   grid-template-columns:32px 1fr;

@@ -303,6 +303,11 @@
   color: #7ab8ff;
 }
 
+.calendar-comp-tag[data-code='CMU'] {
+  background: #1a4a28;
+  color: #ffd966;
+}
+
 .calendar-comp-tag[data-code='FIF'] {
   background: #3a2838;
   color: #e8b8ff;
@@ -342,6 +347,7 @@
 .calendar-legend .comp-bsb { background: #8ed4ff; }
 .calendar-legend .comp-bsc { background: #c4b8ff; }
 .calendar-legend .comp-bsd { background: #ffb8e8; }
+.calendar-legend .comp-cmu { background: #ffd966; }
 .calendar-legend .transfer-window { background: #3d9a58; }
 .calendar-legend .transfer-deadline { background: #e8a020; }
 
@@ -465,6 +471,11 @@
 .agenda-item.user-game > time {
   background: #b6ff38;
   color: #06131b;
+}
+
+.agenda-item.world-cup > time {
+  background: #ffd966;
+  color: #1a2a10;
 }
 
 .agenda-item.training > i {

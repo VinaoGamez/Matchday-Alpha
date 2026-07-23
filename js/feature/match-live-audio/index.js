@@ -61,6 +61,19 @@ export function createMatchLiveAudioFeature() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   };
 
+  const syncControls = () => {
+    if (typeof document === 'undefined') return;
+    document.querySelectorAll('[data-live-audio-mute]').forEach(btn => {
+      const on = settings.enabled;
+      btn.classList.toggle('is-muted', !on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.setAttribute('aria-label', on ? 'Silenciar sons da partida' : 'Ativar sons da partida');
+      btn.title = on ? 'Silenciar sons' : 'Ativar sons';
+    });
+    const optionsToggle = document.querySelector('#liveAudioEnabled');
+    if (optionsToggle) optionsToggle.checked = settings.enabled;
+  };
+
   const clipVolume = clipKey => settings.volume * (CLIP_GAIN[clipKey] ?? 1);
 
   const ensureAmbient = () => {
@@ -323,6 +336,7 @@ export function createMatchLiveAudioFeature() {
         stopStadiumAmbient();
       }
       persistSettings();
+      syncControls();
     },
     setVolume: volume => {
       settings.volume = clampVolume(volume);
@@ -354,6 +368,7 @@ export function createMatchLiveAudioFeature() {
           stopStadiumAmbient();
         }
         persistSettings();
+        syncControls();
       });
       root.querySelector('#liveAudioVolume')?.addEventListener('input', event => {
         settings.volume = clampVolume(Number(event.target.value) / 100);
@@ -365,7 +380,9 @@ export function createMatchLiveAudioFeature() {
         syncAmbientVolume();
         persistSettings();
       });
+      syncControls();
     },
+    syncControls,
     playKickoff,
     playSecondHalf,
     playStopWhistle,

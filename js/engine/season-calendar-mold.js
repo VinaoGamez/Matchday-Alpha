@@ -111,7 +111,7 @@ export function getSeasonBlackouts(seasonYear) {
   if (isWorldCupYear(year)) {
     list.push({
       id: 'world_cup',
-      code: 'FIF',
+      code: 'CMU',
       label: 'Copa do Mundo de Seleções',
       start: [...WORLD_CUP_WINDOW.start],
       end: [...WORLD_CUP_WINDOW.end],
@@ -283,7 +283,7 @@ export const FUTURE_COMPETITION_MOLD = Object.freeze({
   }),
   /** Copa do Mundo — a cada 4 anos; bloqueia clubes em jun/jul. */
   world_cup: Object.freeze({
-    code: 'FIF',
+    code: 'CMU',
     competitionId: 'world_cup',
     label: 'Copa do Mundo de Seleções',
     category: 'international_tournament',
@@ -450,6 +450,7 @@ export const CALENDAR_COMPETITION_TAG_ORDER = Object.freeze([
   'CSU',
   'REC',
   'REG',
+  'CMU',
   'FIF',
 ]);
 
@@ -466,6 +467,7 @@ export function resolveFixtureCompetitionCode(game, { division = null } = {}) {
   if (!game) return null;
   const comp = String(game.competition || '');
   if (comp === 'COPA DO BRASIL' || comp === 'COPA') return COMPETITION_CALENDAR_MOLD.cup.code;
+  if (comp === 'COPA DO MUNDO') return 'CMU';
   if (comp === 'SÉRIE D ELIMINATÓRIAS' || (game.tieId && game.knockoutRound != null)) {
     return LEAGUE_CODE_BY_DIVISION.D || 'BSD';
   }
@@ -492,6 +494,7 @@ const CALENDAR_COMPETITION_LABEL_BY_CODE = (() => {
   Object.values(LEAGUE_DIVISION_MOLD).forEach(spec => map.set(spec.code, spec.label));
   map.set(COMPETITION_CALENDAR_MOLD.cup.code, COMPETITION_CALENDAR_MOLD.cup.label);
   Object.values(FUTURE_COMPETITION_MOLD).forEach(spec => map.set(spec.code, spec.label));
+  map.set('CMU', 'Copa do Mundo');
   map.set('FIF', 'Datas FIFA');
   return map;
 })();

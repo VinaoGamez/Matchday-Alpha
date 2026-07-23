@@ -480,7 +480,7 @@ export function estimateGateReceiptSectors(
     channel = 'national',
     division = 'A',
     game = null,
-    gateScale = 0.28,
+    gateScale = 1,
     ticketPrices = null,
     environment = 60,
     support = 60,

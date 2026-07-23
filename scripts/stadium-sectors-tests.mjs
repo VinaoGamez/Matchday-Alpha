@@ -56,10 +56,28 @@ check('estimateGateReceiptSectors usa preço por setor', () => {
     ticketPrices: normalizeTicketPrices({ national: 22, cups: 36 }),
   };
   ensureStadiumSectors(club, 'A');
-  const est = estimateGateReceiptSectors(club, { channel: 'national', gateScale: 0.28 });
+  const est = estimateGateReceiptSectors(club, { channel: 'national', gateScale: 1 });
   assert(est.revenue > 0, 'revenue');
   assert(est.sectors.length >= 2, 'sectors');
   assert(est.sectors.some(s => s.id === 'stands' && s.price > est.sectors.find(x => x.id === 'popular').price), 'stands price');
+});
+
+check('bilheteria = público × preço (sem escala oculta)', () => {
+  const club = {
+    division: 'D',
+    environment: 70,
+    support: 70,
+    stadiumStructure: 0,
+    stadiumSectors: { popular: 1, stands: 0, seats: 0, boxes: 0, vip: 0 },
+    stadiumSectorModel: STADIUM_SECTOR_MODEL,
+    ticketPrices: normalizeTicketPrices({ national: 24, cups: 32 }),
+  };
+  ensureStadiumSectors(club, 'D');
+  const attendance = 4354;
+  const price = 24;
+  const est = estimateGateReceiptSectors(club, { channel: 'national', division: 'D', gateScale: 1 });
+  const scaled = Math.round(est.revenue * (attendance / Math.max(1, est.attendance)));
+  assert(Math.abs(scaled - attendance * price) <= est.sectors.length + 1, `expected ~${attendance * price}, got ${scaled}`);
 });
 
 check('novo jogo: estrutura 0, popular 1, capacidade inicial A na faixa', () => {
