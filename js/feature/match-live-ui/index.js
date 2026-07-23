@@ -57,6 +57,9 @@ import subArrowsUrl from '../../../assets/ui/sub-arrows.png?url';
  * @param {Function} deps.incrementPauses
  * @param {Function} deps.openPreparation
  * @param {Function} deps.renderStats
+ * @param {Function} [deps.stopMatchClock]
+ * @param {Function} [deps.startMatchClock]
+ * @param {object} [deps.matchLiveAudio]
  */
 export function createMatchLiveUiFeature(deps) {
   const {
@@ -102,7 +105,12 @@ export function createMatchLiveUiFeature(deps) {
     incrementPauses,
     openPreparation,
     renderStats,
+    stopMatchClock,
+    startMatchClock,
+    matchLiveAudio,
   } = deps;
+
+  let opponentAnalysisPausedClock = false;
 
   /** Tipos que merecem linha na timeline (o resto é ruído de narração). */
   const TIMELINE_IMPORTANT = new Set([
@@ -168,12 +176,57 @@ export function createMatchLiveUiFeature(deps) {
   let liveClockSeconds = 0;
   let liveClockSecondTimer = null;
 
+  const isLiveOpponentModalOpen = () => !$('#liveOpponentModal')?.classList.contains('hidden');
+
+  const liveClockBlockedByUi = () => {
+    if (!getMatchStarted?.() || getMatchFinished?.() || getPreMatchPreparation?.()) return true;
+    if (!$('#pausePanel')?.classList.contains('hidden')) return true;
+    if (getShootoutState?.()) return true;
+    const penaltyClosed = $('#penaltyDuelModal')
+      ? $('#penaltyDuelModal').classList.contains('hidden')
+      : $('#penaltyChoice')?.classList.contains('hidden');
+    if (!penaltyClosed) return true;
+    if (isLiveOpponentModalOpen()) return true;
+    return false;
+  };
+
+  const tryResumeLiveClock = () => {
+    if (liveClockBlockedByUi()) return;
+    startMatchClock?.();
+    matchLiveAudio?.startStadiumAmbient?.();
+  };
+
+  const closeLiveOpponentAnalysis = () => {
+    if (!$('#liveOpponentModal')) return;
+    $('#liveOpponentModal').classList.add('hidden');
+    if (opponentAnalysisPausedClock) {
+      opponentAnalysisPausedClock = false;
+      if (!liveClockBlockedByUi()) {
+        $('#matchStatus').textContent = 'A partida está em andamento…';
+        tryResumeLiveClock();
+      }
+    }
+  };
+
+  const openLiveOpponentAnalysis = () => {
+    const liveActive =
+      getMatchStarted?.() && !getMatchFinished?.() && !getPreMatchPreparation?.();
+    if (liveActive && !isLiveOpponentModalOpen()) {
+      stopMatchClock?.();
+      matchLiveAudio?.pauseStadiumAmbient?.();
+      opponentAnalysisPausedClock = true;
+      $('#matchStatus').textContent = 'Consulta ao adversário — partida pausada.';
+    }
+    $('#liveOpponentModal')?.classList.remove('hidden');
+    renderLiveOpponent();
+  };
+
   const injectOpponentModal = () => {
     document.body.insertAdjacentHTML(
       'beforeend',
       `<div id="liveOpponentModal" class="modal hidden"><div class="modal-card live-opponent-modal"><button id="closeLiveOpponent" class="close">×</button><label>ANÁLISE DO ADVERSÁRIO · AO VIVO</label><h2 id="liveOpponentName"></h2><p id="liveOpponentMeta" class="live-opponent-meta"></p><div class="live-opponent-layout"><section><div id="liveOpponentRoster" class="live-opponent-roster"></div></section><aside class="live-opponent-side"><div class="pause-pitch tactical-board live-opponent-pitch">${fieldMarkup}<div id="liveOpponentPitch"></div></div><p class="scout-manager" id="liveOpponentManager"><small>TÉCNICO</small><strong>—</strong></p></aside></div></div></div>`,
     );
-    onClick('#closeLiveOpponent', () => $('#liveOpponentModal').classList.add('hidden'));
+    onClick('#closeLiveOpponent', closeLiveOpponentAnalysis);
   };
 
   const clockPhase = () => {
@@ -739,7 +792,7 @@ export function createMatchLiveUiFeature(deps) {
         : null;
       const liveState =
         overlay && (overlay.yellow || overlay.red || overlay.injured || overlay.playThroughRisk) ? overlay : null;
-      return `<div class="live-opponent-player" data-slot="${index}" tabindex="0">${playerNameCell(player.name, player, { prefix: isStarter ? `${index + 1}. ` : '', liveState })}<span>${player.pos}</span><span>${player.overall}</span>${fatigueCell(player)}</div>`;
+      return `<div class="live-opponent-player" data-slot="${index}" tabindex="0">${playerNameCell(player.name, player, { prefix: isStarter ? `${index + 1}. ` : '', liveState, openCard: true, clubName: club.name })}<span>${player.pos}</span><span>${player.overall}</span>${fatigueCell(player)}</div>`;
     };
     $('#liveOpponentRoster').innerHTML = `<h3>TITULARES</h3>${headers}${club.roster
       .slice(0, 11)
@@ -800,11 +853,7 @@ export function createMatchLiveUiFeature(deps) {
         $('#stats').classList.toggle('hidden');
         renderStats();
       };
-    if (opponentButton)
-      opponentButton.onclick = () => {
-        $('#liveOpponentModal').classList.remove('hidden');
-        renderLiveOpponent();
-      };
+    if (opponentButton) opponentButton.onclick = () => openLiveOpponentAnalysis();
   };
 
   return {
@@ -823,6 +872,8 @@ export function createMatchLiveUiFeature(deps) {
     renderVolume,
     log,
     renderLiveOpponent,
+    openLiveOpponentAnalysis,
+    closeLiveOpponentAnalysis,
     bindLiveActions,
     clockPhase,
   };

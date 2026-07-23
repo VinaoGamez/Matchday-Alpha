@@ -2,7 +2,7 @@
  * Build pública para testers.
  * Nomenclatura: Alpha V.X.YY — sobe +0.05 a cada publicação (1.00 → 1.05 → …).
  */
-export const BUILD_VERSION = 'Alpha V.1.85';
+export const BUILD_VERSION = 'Alpha V.1.90';
 
 /** Rodadas da fase de grupos da Série D (1ª fase). */
 export const SERIE_D_GROUP_ROUNDS = 10;
@@ -43,6 +43,8 @@ export const MODULE_VERSIONS = {
   liveDayMatches: 1,
   fatigue: 1,
   matchLiveUi: 9,
+  matchLiveAudio: 6,
+  playerRename: 1,
   testerHub: 1,
   matchAvailability: 1,
   matchLiveAwaySubs: 1,

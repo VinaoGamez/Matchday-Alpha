@@ -1,0 +1,127 @@
+.cp-shell {
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+  max-width: 960px;
+  color: #e2e8f0;
+  background: #070b12;
+}
+
+.cp-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 28px;
+}
+
+.cp-kicker {
+  margin: 0 0 6px;
+  font: 600 0.65rem/1 'DM Sans', sans-serif;
+  letter-spacing: 0.14em;
+  color: #2abee9;
+}
+
+.cp-header h1 {
+  margin: 0 0 8px;
+  font: 800 1.75rem/1.1 'Barlow Condensed', sans-serif;
+}
+
+.cp-lead {
+  margin: 0;
+  max-width: 48ch;
+  color: #94a3b8;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.cp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #2abee988;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 600 0.82rem/1 'DM Sans', sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cp-btn:hover {
+  border-color: #2abee9;
+  background: #132033;
+}
+
+.cp-role-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.cp-role-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 1px solid #ffffff22;
+  border-radius: 999px;
+  background: #0f172a;
+  color: #94a3b8;
+  font: 700 0.72rem/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+}
+
+.cp-role-tab:hover {
+  border-color: #2abee988;
+  color: #e2e8f0;
+}
+
+.cp-role-tab.is-active {
+  border-color: #2abee9;
+  background: #132033;
+  color: #e2e8f0;
+  box-shadow: 0 0 0 1px #2abee944;
+}
+
+.cp-gallery {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid #ffffff12;
+  border-radius: 12px;
+  background: #0a1018;
+}
+
+.cp-stage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: min(72vh, 720px);
+  padding: 24px;
+  border: 1px solid #ffffff14;
+  border-radius: 16px;
+  background: radial-gradient(ellipse at 50% 20%, #132033 0%, #0a1018 55%, #070b12 100%);
+}
+
+.cp-stage .md-card {
+  --md-w: min(480px, calc((min(72vh, 720px) - 48px) * 693 / 1024), 94vw);
+  width: var(--md-w);
+  height: calc(var(--md-w) * 1024 / 693);
+  flex-shrink: 0;
+}
+
+body {
+  margin: 0;
+}

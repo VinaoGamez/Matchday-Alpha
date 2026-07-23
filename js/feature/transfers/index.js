@@ -42,6 +42,17 @@ const listedMark = listed =>
     ? '<span class="transfers-listed-yes" aria-label="À venda" title="À venda"></span>'
     : '<span class="transfers-listed-no" aria-label="Não listado" title="Não listado">✕</span>';
 
+/** Nome clicável → card (Mercado). Fallback HTML se playerNameCell indisponível. */
+const renderMarketPlayerName = (playerNameCellFn, name, player, { clubName = '', suffixHtml = '' } = {}) => {
+  if (typeof playerNameCellFn === 'function') {
+    return `${playerNameCellFn(name, player, { openCard: true, clubName })}${suffixHtml}`;
+  }
+  const star = player?.setPieceSpecialist
+    ? ' <span class="player-specialist-star" title="Especialista em bola parada" aria-label="Especialista">★</span>'
+    : '';
+  return `${escapeHtml(name)}${star}${suffixHtml}`;
+};
+
 const COL_STORAGE = {
   buy: 'matchday-transfers-col-widths-buy',
   sell: 'matchday-transfers-col-widths-sell-v2',
@@ -118,6 +129,7 @@ export function createTransfersFeature(deps) {
     onDealComplete,
     getCurrentRound,
     openOfferMessage,
+    playerNameCell,
   } = deps;
 
   let tab = 'buy';
@@ -133,6 +145,7 @@ export function createTransfersFeature(deps) {
     maxWage: 0,
     listedOnly: false,
     loanOnly: false,
+    specialistOnly: false,
     sortBy: 'ovr',
     sortDir: 'desc',
   };
@@ -596,6 +609,7 @@ export function createTransfersFeature(deps) {
     maxWage: Number($('#transfersFilterMaxWage')?.value) || 0,
     listedOnly: Boolean($('#transfersFilterListed')?.checked),
     loanOnly: Boolean($('#transfersFilterLoan')?.checked),
+    specialistOnly: Boolean($('#transfersFilterSpecialist')?.checked),
     sortBy: filters.sortBy || 'ovr',
     sortDir: filters.sortDir || 'desc',
   });
@@ -635,6 +649,8 @@ export function createTransfersFeature(deps) {
     if (listed) listed.checked = !!filters.listedOnly;
     const loan = $('#transfersFilterLoan');
     if (loan) loan.checked = !!filters.loanOnly;
+    const specialist = $('#transfersFilterSpecialist');
+    if (specialist) specialist.checked = !!filters.specialistOnly;
   };
 
   const renderLoanSlots = () => {
@@ -920,6 +936,7 @@ export function createTransfersFeature(deps) {
       maxWage: Number(filters.maxWage) || 0,
       listedOnly: !!filters.listedOnly,
       loanOnly: !!filters.loanOnly,
+      specialistOnly: !!filters.specialistOnly,
       sortBy: filters.sortBy || 'ovr',
       sortDir: filters.sortDir || 'desc',
     });
@@ -940,9 +957,12 @@ export function createTransfersFeature(deps) {
           const p = row.player;
           const wage = Number(p.wage || row.wage) || 0;
           const canLoan = !!p.loanListed;
+          const loanTag = canLoan
+            ? ' <small class="transfers-loan-tag transfers-loan-tag--offer" title="Disponível para empréstimo">EMPR.</small>'
+            : '';
           const wageCell = escapeHtml(formatMoney(wage));
           return `<tr>
-          <td class="col-name">${escapeHtml(p.name)}${p.setPieceSpecialist ? ' <span class="player-specialist-star" title="Especialista em bola parada" aria-label="Especialista">★</span>' : ''}${canLoan ? ' <small class="transfers-loan-tag transfers-loan-tag--offer" title="Disponível para empréstimo">EMPR.</small>' : ''}</td>
+          <td class="col-name">${renderMarketPlayerName(playerNameCell, p.name, p, { clubName: row.clubName, suffixHtml: loanTag })}</td>
           <td class="col-club" title="${escapeHtml(row.clubName)}"><span class="club-link" data-club="${escapeHtml(row.clubName)}" role="button" tabindex="0">${escapeHtml(row.clubName)}</span></td>
           <td>${escapeHtml(p.pos)}</td>
           <td>${escapeHtml(sideLetter(p))}</td>
@@ -1029,7 +1049,9 @@ export function createTransfersFeature(deps) {
           const loanLine = loanBits.length
             ? `<span class="transfers-name-loan">${loanBits.join('')}</span>`
             : '';
-          const nameMain = `${escapeHtml(p.name)}${p.setPieceSpecialist ? ' <span class="player-specialist-star" title="Especialista em bola parada" aria-label="Especialista">★</span>' : ''}`;
+          const nameMain = renderMarketPlayerName(playerNameCell, p.name, p, {
+            clubName: getUserClub?.() || '',
+          });
           const nameCell = loanLine
             ? `<span class="transfers-name-stack"><span class="transfers-name-main">${nameMain}</span>${loanLine}</span>`
             : nameMain;
@@ -2114,5 +2136,14 @@ export function createTransfersFeature(deps) {
     showWindowReport,
     showActionAlert,
     closeActionAlert,
+    openBuyFromCard: confirmBuy,
+    openSellFromCard: confirmSell,
+    openLoanInFromCard: confirmLoanIn,
+    openLoanOutFromCard: playerId => {
+      const api = engine();
+      if (!api) return;
+      const row = api.listSellCandidates().find(item => item.playerId === playerId);
+      toggleLoanList(playerId, !!row?.loanListed);
+    },
   };
 }

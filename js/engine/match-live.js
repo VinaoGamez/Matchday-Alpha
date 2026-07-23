@@ -1,6 +1,6 @@
 import { MODULE_VERSIONS } from '../core/constants.js';
 import { ownGoalChance } from './match-clock.js';
-import { isFreeKickSpecialist, isPenaltySpecialist } from './player-generation.js';
+import { isFreeKickSpecialist, isPenaltySpecialist, penaltyGoalChanceRate, SPECIALIST_BONUS } from './player-generation.js';
 
 /**
  * Ações de partida ao vivo — passes, finalização e construção de jogadas.
@@ -36,6 +36,7 @@ export function createLiveMatchActions(deps) {
     foul,
     pickInjuryVictim,
     pushLiveVolumeIncident,
+    matchLiveAudio,
   } = deps;
 
   const goalClock = () => {
@@ -70,8 +71,8 @@ export function createLiveMatchActions(deps) {
     influencePossession(side, accuracy > 0.79 ? 0.8 : -0.25);
     return accuracy;
   };
-  const penaltyGoalChance = (penaltySkill, keeperSaving, specialist) =>
-    clamp(.69 + (penaltySkill - keeperSaving) / 95 + (penaltySkill - 70) / 260 + (specialist ? .035 : 0), .56, .94);
+  const penaltyGoalChance = (penaltySkill, keeperSaving, taker = null, keeper = null) =>
+    penaltyGoalChanceRate(penaltySkill, keeperSaving, taker, keeper);
 
   /** Planeja resultado/canto da cobrança (para animação + motor usarem o mesmo desfecho). */
   const planPenaltyOutcome = (side, current, other, options = {}) => {
@@ -86,7 +87,7 @@ export function createLiveMatchActions(deps) {
     if (!outcome) {
       const onTargetChance = clamp(.9 + (penaltySkill - 70) / 350, .8, .96);
       if (random() >= onTargetChance) outcome = 'wide';
-      else outcome = random() < penaltyGoalChance(penaltySkill, keeperData.penaltySaving, specialist) ? 'goal' : 'save';
+      else outcome = random() < penaltyGoalChance(penaltySkill, keeperData.penaltySaving, { ...takerData, penaltyTaking: penaltySkill }, keeperData) ? 'goal' : 'save';
     }
     let corner = options.forcedCorner;
     if (!corner) {
@@ -126,11 +127,16 @@ export function createLiveMatchActions(deps) {
         : random()<clamp(options.freeKick ? (freeKickSpecialist ? clamp(.50+(finishing-keeperData.positioning)/170+(current.attack-other.defense)/600,.42,.58) : clamp(.30+(finishing-keeperData.positioning)/220,.25,.42)) : options.corner ? clamp(.30+(attackerData.heading-keeperData.positioning)/165,.22,.57) : clamp(.37+(finishing-keeperData.positioning)/158+(current.attack-other.defense)/175,.25,.76),.18,.76);
     if(!onTarget){
       if(!options.shootout){s.off++;}
-      if(options.penalty && !options.shootout){
-        pushLiveVolumeIncident?.(side, 'penalty-miss', { name: attacker });
-        writeLog(`${attacker} finaliza ${label}, mas a bola sai para fora.`, 'penalty-miss', side);
+      if ((options.penalty && !options.shootout) || options.shootout) {
+        matchLiveAudio?.playPenaltyMiss?.();
+        if (options.penalty && !options.shootout) {
+          pushLiveVolumeIncident?.(side, 'penalty-miss', { name: attacker });
+          writeLog(`${attacker} finaliza ${label}, mas a bola sai para fora.`, 'penalty-miss', side);
+        } else {
+          writeLog(`${attacker} finaliza ${label}, mas a bola sai para fora.`, 'shootout-miss', side);
+        }
       } else {
-        writeLog(`${attacker} finaliza ${label}, mas a bola sai para fora.`, options.shootout ? 'shootout-miss' : undefined, side);
+        writeLog(`${attacker} finaliza ${label}, mas a bola sai para fora.`, undefined, side);
       }
       return options.shootout ? false : undefined;
     }
@@ -154,9 +160,10 @@ export function createLiveMatchActions(deps) {
         'goal own',
         side,
       );
+      matchLiveAudio?.playGoal?.();
       return;
     }
-    let goalChance=options.penalty || options.shootout ? penaltyGoalChance(options.penaltySkill, keeperData.penaltySaving, penaltySpecialist) : options.freeKick ? (freeKickSpecialist ? clamp(.20+(attackerData.freeKick-60)/220+(attackerData.freeKick-keeperData.positioning)/500+(current.attack-other.defense)/900,.18,.34) : clamp(.11+(attackerData.freeKick-65)/600+(attackerData.freeKick-keeperData.positioning)/650,.115,.15)) : (()=>{const xgBase=engineTuning.xgOpenBase??.118,xgDiv=engineTuning.xgOpenDivisor??210,xgCeil=engineTuning.xgOpenCeil??.27,xgFloor=engineTuning.xgOpenFloor??.062,ovrDiv=engineTuning.xgOverallGapDivisor??720;const xg=clamp(xgBase+(finishing+current.attack-keeperData.reflexes-other.defense)/xgDiv+(current.overall-other.overall)/ovrDiv+rnd(-.028,.028),xgFloor,xgCeil);return clamp(xg/(onTarget?1:.45),.15,.55);})();
+    let goalChance=options.penalty || options.shootout ? penaltyGoalChance(options.penaltySkill ?? attackerData.penaltyTaking, keeperData.penaltySaving, { ...attackerData, penaltyTaking: options.penaltySkill ?? attackerData.penaltyTaking }, keeperData) : options.freeKick ? (freeKickSpecialist ? clamp(.20+(attackerData.freeKick-60)/220+(attackerData.freeKick-keeperData.positioning)/500+(current.attack-other.defense)/900+SPECIALIST_BONUS.freeKick,.18,.34) : clamp(.11+(attackerData.freeKick-65)/600+(attackerData.freeKick-keeperData.positioning)/650,.115,.15)) : (()=>{const xgBase=engineTuning.xgOpenBase??.118,xgDiv=engineTuning.xgOpenDivisor??210,xgCeil=engineTuning.xgOpenCeil??.27,xgFloor=engineTuning.xgOpenFloor??.062,ovrDiv=engineTuning.xgOverallGapDivisor??720;const xg=clamp(xgBase+(finishing+current.attack-keeperData.reflexes-other.defense)/xgDiv+(current.overall-other.overall)/ovrDiv+rnd(-.028,.028),xgFloor,xgCeil);return clamp(xg/(onTarget?1:.45),.15,.55);})();
     if(!options.penalty&&!options.freeKick&&!options.corner&&!options.shootout){
       const gap=current.overall-other.overall;
       const hg=(getGoals()?.home||[]).length, ag=(getGoals()?.away||[]).length;
@@ -169,22 +176,28 @@ export function createLiveMatchActions(deps) {
     if(scores){
       if(options.shootout){
         const goalType=`goal shootout-${penaltySpecialist?'specialist':'standard'}`;
+        matchLiveAudio?.playGoal?.();
         writeLog(`GOL! ${attacker} converte ${label} para o ${team}.`, goalType, side);
         return true;
       }
       const clock = goalClock();
       const goalKind = options.penalty ? 'penalty' : options.freeKick ? 'freeKick' : options.corner ? 'corner' : 'normal';
-      incrementScore(side);const suggestedAssist=options.penalty||options.freeKick?null:playerFor(side,'pass'),assist=suggestedAssist&&suggestedAssist!==attacker?suggestedAssist:null;getGoals()?.[side].push({name:attacker,minute:clock.minute,stoppage:clock.stoppage,assist,type:goalKind});updateScoreboard();influencePossession(side,3.8);const goalType=options.freeKick ? `goal free-kick-${freeKickSpecialist?'specialist':'standard'}` : options.penalty ? `goal penalty-${penaltySpecialist?'specialist':'standard'}` : 'goal';writeLog(`GOOOL! ${attacker} marca ${label} para o ${team}${assist?`, assistência de ${assist}`:''}.`,goalType,side);
+      incrementScore(side);const suggestedAssist=options.penalty||options.freeKick?null:playerFor(side,'pass'),assist=suggestedAssist&&suggestedAssist!==attacker?suggestedAssist:null;getGoals()?.[side].push({name:attacker,minute:clock.minute,stoppage:clock.stoppage,assist,type:goalKind});updateScoreboard();influencePossession(side,3.8);const goalType=options.freeKick ? `goal free-kick-${freeKickSpecialist?'specialist':'standard'}` : options.penalty ? `goal penalty-${penaltySpecialist?'specialist':'standard'}` : 'goal';writeLog(`GOOOL! ${attacker} marca ${label} para o ${team}${assist?`, assistência de ${assist}`:''}.`,goalType,side);matchLiveAudio?.playGoal?.();
       if(options.shootout) return true;
     }
     else{
       if(!options.shootout){s.saved++;otherStats.keeperSaves++;}
       influencePossession(side === 'home'?'away':'home', options.shootout ? 0 : 1.4);
-      if(options.penalty && !options.shootout){
-        pushLiveVolumeIncident?.(side, 'penalty-miss', { name: attacker });
-        writeLog(`${attacker} finaliza ${label}, mas ${goalkeeper} faz a defesa.`, 'penalty-miss', side);
+      if ((options.penalty && !options.shootout) || options.shootout) {
+        matchLiveAudio?.playPenaltyMiss?.();
+        if (options.penalty && !options.shootout) {
+          pushLiveVolumeIncident?.(side, 'penalty-miss', { name: attacker });
+          writeLog(`${attacker} finaliza ${label}, mas ${goalkeeper} faz a defesa.`, 'penalty-miss', side);
+        } else {
+          writeLog(`${attacker} finaliza ${label}, mas ${goalkeeper} faz a defesa.`, 'shootout-miss', side);
+        }
       } else {
-        writeLog(`${attacker} finaliza ${label}, mas ${goalkeeper} faz a defesa.`, options.shootout ? 'shootout-miss' : undefined, side);
+        writeLog(`${attacker} finaliza ${label}, mas ${goalkeeper} faz a defesa.`, undefined, side);
       }
       if(options.shootout) return false;
     }

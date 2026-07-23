@@ -8,7 +8,7 @@ import {
   decideShootoutWinner,
   shootoutChoiceOptions,
 } from './shootout-takers.js';
-import { isPenaltySpecialist } from './player-generation.js';
+import { isPenaltySpecialist, isPenaltySavingSpecialist, penaltyGoalChanceRate } from './player-generation.js';
 
 const SPONSOR_LOGO_URLS = Object.fromEntries(
   Object.entries(
@@ -108,6 +108,7 @@ export function createLiveMatchOrchestration(deps) {
     optionsUi,
     knockoutCompetitionLabel,
     getKnockoutTieGames,
+    matchLiveAudio,
     shot,
     planPenaltyOutcome,
     takeFreeKick,
@@ -213,7 +214,13 @@ export function createLiveMatchOrchestration(deps) {
     setStoppageActive?.(null);
   };
 
-  const finishRegulation = () => {
+  /** Apito de fim de etapa dispara um instante antes de congelar o relógio. */
+  const REGULATION_WHISTLE_LEAD_MS = 280;
+  let halftimeEndPending = false;
+  let fulltimeEndPending = false;
+
+  const finishRegulation = ({ skipWhistle = false } = {}) => {
+    fulltimeEndPending = false;
     freezeStoppageDisplay('second');
     if (cupLiveMatchNeedsShootout()) {
       stopMatchClock();
@@ -221,10 +228,19 @@ export function createLiveMatchOrchestration(deps) {
       // Pode ser empate no jogo OU só no agregado (ida+volta) — pênaltis obrigatórios
       $('#matchStatus').textContent = 'Empate no agregado — disputa de pênaltis.';
       updateLiveMatchClock();
-      startPenaltyShootout();
+      const beginShootout = () => startPenaltyShootout();
+      if (!skipWhistle) {
+        const fulltimeCue = matchLiveAudio?.playFulltime?.();
+        if (fulltimeCue?.then) fulltimeCue.then(beginShootout);
+        else beginShootout();
+      } else {
+        beginShootout();
+      }
       return;
     }
     setMatchFinished(true);
+    if (!skipWhistle) matchLiveAudio?.playFulltime?.();
+    matchLiveAudio?.stopStadiumAmbient?.();
     log('Fim de jogo.');
     $('#matchStatus').textContent = 'Partida encerrada.';
     stopMatchClock();
@@ -234,13 +250,29 @@ export function createLiveMatchOrchestration(deps) {
     showFinalActions();
   };
 
-  const openFirstHalfInterval = () => {
+  const triggerFulltimeEnd = () => {
+    if (fulltimeEndPending) return;
+    fulltimeEndPending = true;
+    matchLiveAudio?.playFulltime?.();
+    setTimeout(() => finishRegulation({ skipWhistle: true }), REGULATION_WHISTLE_LEAD_MS);
+  };
+
+  const openFirstHalfInterval = ({ skipWhistle = false } = {}) => {
+    halftimeEndPending = false;
     freezeStoppageDisplay('first');
     setHalftimeShown(true);
+    if (!skipWhistle) matchLiveAudio?.playHalftime?.();
     log('Intervalo de jogo.');
     $('#matchStatus').textContent = 'Intervalo: faça os ajustes que considerar necessários.';
     updateLiveMatchClock();
     openPreparation('INTERVALO');
+  };
+
+  const triggerHalftimeEnd = () => {
+    if (halftimeEndPending) return;
+    halftimeEndPending = true;
+    matchLiveAudio?.playHalftime?.();
+    setTimeout(() => openFirstHalfInterval({ skipWhistle: true }), REGULATION_WHISTLE_LEAD_MS);
   };
 
   // --- Lesões ao vivo (evento, play-through, rehab) --------------------------
@@ -731,15 +763,9 @@ export function createLiveMatchOrchestration(deps) {
     } = {},
   ) => {
     const specialist = isPenaltySpecialist(taker);
+    const keeperSpec = isPenaltySavingSpecialist(keeper);
     const goalChance = Math.round(
-      clamp(
-        0.69 +
-          ((taker?.penaltyTaking || 70) - (keeper?.penaltySaving || 70)) / 95 +
-          ((taker?.penaltyTaking || 70) - 70) / 260 +
-          (specialist ? 0.035 : 0),
-        0.56,
-        0.94,
-      ) * 100,
+      penaltyGoalChanceRate(taker?.penaltyTaking, keeper?.penaltySaving, taker, keeper) * 100,
     );
     const root = $('#penaltyCompare');
     if (!root) return;
@@ -768,6 +794,7 @@ export function createLiveMatchOrchestration(deps) {
           <small>${defendLabel}</small>
           <b>${keeper.name}</b>
           <em>GOL · OVR ${keeper.overall}</em>
+          ${keeperSpec ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}
           <dl>
             <div><dt>Def. pênalti</dt><dd>${keeper.penaltySaving ?? '—'}</dd></div>
             <div><dt>Reflexos</dt><dd>${keeper.reflexes ?? '—'}</dd></div>
@@ -786,7 +813,10 @@ export function createLiveMatchOrchestration(deps) {
       if (btn.disabled) return;
       btn.disabled = true;
       btn.textContent = 'ASSISTINDO…';
-      onWatch();
+      const run = () => onWatch();
+      const cue = matchLiveAudio?.playPenaltyKick?.();
+      if (cue?.then) cue.then(run);
+      else run();
     };
   };
 
@@ -909,7 +939,8 @@ export function createLiveMatchOrchestration(deps) {
     const kickNo = shootoutAttemptsCount(kickingClub) + 1;
     heading.innerHTML = `<div><strong>Cobrança ${kickNo} — escolha o batedor</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
     const takers = shootoutChoiceOptions(shootoutTakersFor(kickingClub), 5);
-    const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (isPenaltySpecialist(player) ? .035 : 0), .56, .94) * 100);
+    const chanceFor = player =>
+      Math.round(penaltyGoalChanceRate(player.penaltyTaking, keeper.penaltySaving, player, keeper) * 100);
     $('#penaltyTakers').innerHTML = takers.length ? takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR OPÇÃO</i>' : isPenaltySpecialist(player) ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('') : '<p class="shootout-empty">Sem cobradores disponíveis.</p>';
     openPenaltyDuel(
       'Disputa de pênaltis',
@@ -1022,6 +1053,7 @@ export function createLiveMatchOrchestration(deps) {
     closePenaltyDuel();
     setShootoutState(null);
     setMatchFinished(true);
+    matchLiveAudio?.stopStadiumAmbient?.();
     simulateRoundResults();
     renderFinalSummary();
     showFinalActions();
@@ -1050,7 +1082,8 @@ export function createLiveMatchOrchestration(deps) {
     if (!heading) { heading = document.createElement('div'); heading.className = 'penalty-choice-heading'; section.prepend(heading); }
     heading.innerHTML = `<div><strong>Escolha o cobrador</strong></div><span class="penalty-goalkeeper"><small>GOLEIRO ADVERSÁRIO</small><b>${keeper.name}</b><em>DEF. PÊNALTI ${keeper.penaltySaving}</em></span>`;
     const takers = getActiveStarters().filter(player => player.pos !== 'GOL').sort((a, b) => b.penaltyTaking - a.penaltyTaking || b.overall - a.overall).slice(0, 3);
-    const chanceFor = player => Math.round(clamp(.69 + (player.penaltyTaking - keeper.penaltySaving) / 95 + (player.penaltyTaking - 70) / 260 + (isPenaltySpecialist(player) ? .035 : 0), .56, .94) * 100);
+    const chanceFor = player =>
+      Math.round(penaltyGoalChanceRate(player.penaltyTaking, keeper.penaltySaving, player, keeper) * 100);
     $('#penaltyTakers').innerHTML = takers.map((player, index) => `<button class="${index === 0 ? 'best-option' : ''}" data-taker="${player.name}"><span class="penalty-taker-title"><b>${player.name} · ${player.pos}</b>${index === 0 ? '<i class="penalty-best-badge">MELHOR BATEDOR</i>' : isPenaltySpecialist(player) ? '<i class="penalty-specialist">ESPECIALISTA</i>' : ''}</span><span class="penalty-metric"><small>OVERALL</small><strong>${player.overall}</strong></span><span class="penalty-metric chance"><small>CHANCE ESTIMADA</small><strong>${chanceFor(player)}%</strong></span></button>`).join('');
     openPenaltyDuel('Pênalti!', 'O juiz aponta a marca da cal. Escolha o cobrador.');
     $('#matchStatus').textContent = 'Pênalti: escolha o cobrador na janela da disputa.';
@@ -1070,13 +1103,18 @@ export function createLiveMatchOrchestration(deps) {
       starters[0];
     if (!taker || !keeper) {
       if (taker) {
-        shot(
-          'away',
-          { ...current, attack: current.attack + 35 },
-          other,
-          { penalty: true, taker: taker.name, penaltySkill: taker.penaltyTaking },
-        );
-        renderStats();
+        const kickCue = matchLiveAudio?.playPenaltyKick?.();
+        const fire = () => {
+          shot(
+            'away',
+            { ...current, attack: current.attack + 35 },
+            other,
+            { penalty: true, taker: taker.name, penaltySkill: taker.penaltyTaking },
+          );
+          renderStats();
+        };
+        if (kickCue?.then) kickCue.then(fire);
+        else fire();
       }
       return;
     }
@@ -1163,7 +1201,7 @@ export function createLiveMatchOrchestration(deps) {
       const allowance = Math.max(1, Number(getStoppageFirst?.() || 1));
       const cur = Number(getStoppageElapsed?.() || 0);
       if (cur >= allowance) {
-        openFirstHalfInterval();
+        triggerHalftimeEnd();
         return;
       }
       setStoppageElapsed?.(cur + 1);
@@ -1175,7 +1213,7 @@ export function createLiveMatchOrchestration(deps) {
       const allowance = Math.max(1, Number(getStoppageSecond?.() || 1));
       const cur = Number(getStoppageElapsed?.() || 0);
       if (cur >= allowance) {
-        finishRegulation();
+        triggerFulltimeEnd();
         return;
       }
       setStoppageElapsed?.(cur + 1);
@@ -1225,11 +1263,11 @@ export function createLiveMatchOrchestration(deps) {
         minute = 90;
       } else if (!getHalftimeShown() && minute >= 45) {
         setMinute(45);
-        openFirstHalfInterval();
+        triggerHalftimeEnd();
         return;
       } else if (getHalftimeShown() && minute >= 90) {
         setMinute(90);
-        finishRegulation();
+        triggerFulltimeEnd();
         return;
       } else {
         setMinute(minute);

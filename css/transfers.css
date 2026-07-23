@@ -483,6 +483,23 @@ body.transfers-col-resizing * {
   white-space: normal;
 }
 
+.transfers-table .col-name .player-name-cell {
+  font: inherit;
+  color: inherit;
+  font-weight: inherit;
+}
+
+.transfers-table .col-name .player-name-text.is-card-trigger {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: #2abee966;
+  text-underline-offset: 2px;
+}
+
+.transfers-table .col-name .player-name-text.is-card-trigger:hover {
+  color: #2abee9;
+}
+
 .transfers-table .col-club {
   color: #a8c9cd;
 }

@@ -3,6 +3,8 @@
  * Plantel genérico 25; OVR baixo por divisão; GOL com attrs de meta.
  */
 import { rollSquadAge, rollPotential, POT_CAPS } from './player-development.js';
+import { assignRosterNationalities } from './player-nationality.js';
+import { ensureCardVariantId } from './player-card-art.js';
 
 export const GENERIC_SQUAD_ROLES = [
   'GOL', 'GOL', 'GOL',
@@ -40,10 +42,17 @@ export const GENERATION_POT_CAPS = POT_CAPS;
  * Campanha Longa: valor = OVR + bônus, com teto por série.
  */
 export const SPECIALIST_CHANCE = {
-  A: { freeKick: 0.024, penalty: 0.03 },
-  B: { freeKick: 0.017, penalty: 0.022 },
-  C: { freeKick: 0.0085, penalty: 0.0115 },
-  D: { freeKick: 0.003, penalty: 0.005 },
+  A: { freeKick: 0.04, penalty: 0.05, penaltySaving: 0.05 },
+  B: { freeKick: 0.028, penalty: 0.035, penaltySaving: 0.035 },
+  C: { freeKick: 0.014, penalty: 0.018, penaltySaving: 0.018 },
+  D: { freeKick: 0.005, penalty: 0.008, penaltySaving: 0.008 },
+};
+
+/** Bônus flat na chance de conversão/defesa (especialista). */
+export const SPECIALIST_BONUS = {
+  penaltyTaking: 0.05,
+  freeKick: 0.035,
+  penaltySaving: 0.035,
 };
 
 /** Bônus sobre OVR e teto absoluto — D ~28–34 tipicamente, não 96. */
@@ -54,7 +63,40 @@ export const SPECIALIST_ROLL = {
   D: { bonus: [10, 16], cap: 36 },
 };
 
-const SET_PIECE_ROLES = ['MC', 'MEI', 'PE', 'PD', 'ATA'];
+const FREE_KICK_ROLES = ['LAT', 'VOL', 'MC', 'MEI', 'PE', 'PD', 'ATA'];
+const PENALTY_ROLES = ['MC', 'MEI', 'PE', 'PD', 'ATA'];
+
+/** Atributos de campo usados para o piso do especialista (exclui falta/pênalti/defesa). */
+const OUTFIELD_FIELD_KEYS = [
+  'dribble', 'speed', 'marking', 'tackling', 'finishing', 'passing', 'heading', 'playmaking',
+];
+const KEEPER_FIELD_KEYS = [
+  'reflexes', 'positioning', 'passing', 'speed', 'playmaking',
+  'dribble', 'marking', 'tackling', 'finishing', 'heading',
+];
+
+function specialistStatCap(division) {
+  return (SPECIALIST_ROLL[division] || SPECIALIST_ROLL.D).cap;
+}
+
+function maxFieldStat(player, keys) {
+  let max = 0;
+  for (const key of keys) {
+    const v = Number(player?.[key]) || 0;
+    if (v > max) max = v;
+  }
+  return max;
+}
+
+/** Garante que o atributo de especialista supere o melhor atributo de campo (+margin). */
+function ensureSpecialistAboveField(player, attrKey, division, margin = 2) {
+  if (!player || !attrKey) return;
+  const keys = player.pos === 'GOL' ? KEEPER_FIELD_KEYS : OUTFIELD_FIELD_KEYS;
+  const floor = maxFieldStat(player, keys) + margin;
+  const cap = specialistStatCap(division);
+  const next = Math.max(Number(player[attrKey]) || 0, floor);
+  player[attrKey] = Math.max(0, Math.min(cap, next));
+}
 
 export function rollSpecialistAttr(overall, division = 'A', random = Math.random) {
   const ovr = Math.round(Number(overall) || 50);
@@ -65,24 +107,41 @@ export function rollSpecialistAttr(overall, division = 'A', random = Math.random
 }
 
 export function applySetPieceSpecialists(player, division = 'A', random = Math.random) {
-  if (!player || !SET_PIECE_ROLES.includes(player.pos)) return player;
+  if (!player || player.pos === 'GOL') return player;
   const chance = SPECIALIST_CHANCE[division] || SPECIALIST_CHANCE.D;
   let freeKickSpec = false;
   let penaltySpec = false;
-  if (random() < chance.freeKick) {
+  if (FREE_KICK_ROLES.includes(player.pos) && random() < chance.freeKick) {
     player.freeKick = Math.max(Number(player.freeKick) || 0, rollSpecialistAttr(player.overall, division, random));
+    ensureSpecialistAboveField(player, 'freeKick', division);
     freeKickSpec = true;
   }
-  if (random() < chance.penalty) {
+  if (PENALTY_ROLES.includes(player.pos) && random() < chance.penalty) {
     player.penaltyTaking = Math.max(
       Number(player.penaltyTaking) || 0,
       rollSpecialistAttr(player.overall, division, random),
     );
+    ensureSpecialistAboveField(player, 'penaltyTaking', division);
     penaltySpec = true;
   }
   if (freeKickSpec && penaltySpec) player.setPieceSpecialist = 'both';
   else if (freeKickSpec) player.setPieceSpecialist = 'freeKick';
   else if (penaltySpec) player.setPieceSpecialist = 'penalty';
+  return player;
+}
+
+export function applyPenaltySavingSpecialist(player, division = 'A', random = Math.random) {
+  if (!player || player.pos !== 'GOL') return player;
+  const chance = SPECIALIST_CHANCE[division] || SPECIALIST_CHANCE.D;
+  const rollChance = chance.penaltySaving ?? chance.penalty;
+  if (random() < rollChance) {
+    player.penaltySaving = Math.max(
+      Number(player.penaltySaving) || 0,
+      rollSpecialistAttr(player.overall, division, random),
+    );
+    ensureSpecialistAboveField(player, 'penaltySaving', division);
+    player.penaltySavingSpecialist = true;
+  }
   return player;
 }
 
@@ -100,6 +159,42 @@ export function isFreeKickSpecialist(player) {
 export function isPenaltySpecialist(player) {
   const flag = player?.setPieceSpecialist;
   return flag === 'penalty' || flag === 'both' || flag === true || Number(player?.penaltyTaking) > 85;
+}
+
+/** GOL — defesa de pênalti (atributo ou flag na geração). */
+export function isPenaltySavingSpecialist(player) {
+  if (!player || player.pos !== 'GOL') return false;
+  if (player.penaltySavingSpecialist === true) return true;
+  return Number(player.penaltySaving) > 85;
+}
+
+/** Qualquer especialista (falta, pênalti ou defesa de pênalti). */
+export function isPlayerSpecialist(player) {
+  if (!player) return false;
+  if (player.pos === 'GOL') return isPenaltySavingSpecialist(player);
+  return isFreeKickSpecialist(player) || isPenaltySpecialist(player);
+}
+
+/** Chance base de gol em pênalti (0–1), com bônus de especialista cobrador/goleiro. */
+export function penaltyGoalChanceRate(penaltySkill, keeperSaving, taker = null, keeper = null) {
+  const takerSpec = taker ? isPenaltySpecialist(taker) : false;
+  const keeperSpec = keeper ? isPenaltySavingSpecialist(keeper) : false;
+  const skill = Number(penaltySkill) || 70;
+  const saving = Number(keeperSaving) || 70;
+  return clamp(
+    0.69 +
+      (skill - saving) / 95 +
+      (skill - 70) / 260 +
+      (takerSpec ? SPECIALIST_BONUS.penaltyTaking : 0) -
+      (keeperSpec ? SPECIALIST_BONUS.penaltySaving : 0),
+    0.56,
+    0.94,
+  );
+}
+
+/** Craque — regras de elegibilidade a definir. */
+export function isCraque(_player) {
+  return false;
 }
 
 export function setPieceSpecialistTitle(player) {
@@ -157,6 +252,26 @@ export function sanitizeSetPieceForDivision(player, division = 'D') {
     player.setPieceSpecialist = nextFlag;
     changed = true;
   }
+
+  if (player.pos === 'GOL') {
+    const saveWas =
+      player.penaltySavingSpecialist === true || Number(player.penaltySaving) >= 80;
+    const nextSave = remap(player.penaltySaving, saveWas);
+    if (nextSave !== Math.round(Number(player.penaltySaving) || 0)) {
+      player.penaltySaving = nextSave;
+      changed = true;
+    }
+    const shouldFlag = saveWas && nextSave >= ovr + 8;
+    if (shouldFlag && !player.penaltySavingSpecialist) {
+      player.penaltySavingSpecialist = true;
+      changed = true;
+    }
+    if (!shouldFlag && player.penaltySavingSpecialist) {
+      delete player.penaltySavingSpecialist;
+      changed = true;
+    }
+  }
+
   return changed;
 }
 
@@ -554,7 +669,7 @@ export function generatePlayer({
     reflexes: attributes.reflexes,
     freeKick: Math.min(
       85,
-      value(['MC', 'MEI', 'PE', 'PD'].includes(role) ? -6 : -10, 5),
+      value(['LAT', 'VOL', 'MC', 'MEI', 'PE', 'PD'].includes(role) ? -6 : -10, 5),
     ),
     penaltyTaking: Math.min(
       85,
@@ -566,7 +681,9 @@ export function generatePlayer({
     peakStart: peak.peakStart,
     plateauYears,
   };
-  return applySetPieceSpecialists(player, division, random);
+  if (keeper) applyPenaltySavingSpecialist(player, division, random);
+  else applySetPieceSpecialists(player, division, random);
+  return player;
 }
 
 /** Marca 11 slots aleatórios do plantel como titulares (+1 vs −3). */
@@ -617,7 +734,9 @@ export function generateSquad({
   const starterSet = new Set(byOvr.slice(0, 11));
   roster.forEach(player => {
     player._isLogicalStarter = starterSet.has(player);
+    ensureCardVariantId(player, random);
   });
+  assignRosterNationalities(roster, division, random);
   return { power, roster, division };
 }
 

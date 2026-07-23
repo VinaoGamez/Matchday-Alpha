@@ -53,6 +53,7 @@ import { MODULE_VERSIONS } from '../../core/constants.js';
  * @param {Function} deps.drawBoard
  * @param {Function} deps.renderSubstitutionControls
  * @param {Function} deps.renderTacticalConfrontation
+ * @param {object} [deps.matchLiveAudio]
  */
 export function createMatchLiveSessionFeature(deps) {
   const {
@@ -104,7 +105,16 @@ export function createMatchLiveSessionFeature(deps) {
     drawBoard,
     renderSubstitutionControls,
     renderTacticalConfrontation,
+    matchLiveAudio,
   } = deps;
+
+  const prepStopWhistleTitles = new Set([
+    'CARTÃO VERMELHO',
+    'LESÃO',
+    'ALERTA MÉDICO',
+    'LIMITE MÉDICO',
+    'PAUSA TÉCNICA',
+  ]);
 
   const dismissPostMatchChrome = () => {
     $('#calendarMatchReportModal')?.classList.add('hidden');
@@ -298,8 +308,12 @@ export function createMatchLiveSessionFeature(deps) {
 
   const openPreparation = title => {
     stopMatchClock();
-    setActivePreparationTitle(title);
     const preMatchPreparation = getPreMatchPreparation();
+    if (!preMatchPreparation && prepStopWhistleTitles.has(title)) {
+      matchLiveAudio?.playStopWhistle?.();
+    }
+    matchLiveAudio?.pauseStadiumAmbient?.();
+    setActivePreparationTitle(title);
     onBeginLineupEdit?.();
     const pauseTitle = $('#pauseTitle');
     if (pauseTitle) {

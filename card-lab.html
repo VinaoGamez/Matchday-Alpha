@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <title>Matchday · Cards — Calibrador</title>
+  <link rel="icon" type="image/png" href="./brand/mark.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/player-card-system.css">
+  <link rel="stylesheet" href="css/card-goleiro-gallery.css">
+  <link rel="stylesheet" href="css/card-lab.css">
+</head>
+<body>
+  <div class="cl-shell cl-shell--wide">
+    <header class="cl-header">
+      <div>
+        <p class="cl-kicker">LAB ISOLADO</p>
+        <div class="cp-role-tabs" id="clRoleTabs"></div>
+        <h1 id="clRoleTitle">Calibrador do card</h1>
+        <p class="cl-lead">Ajuste frente (OVR, nomes, país) e verso por blocos (destaques, stats, pés, carreira, botões). Copie o JSON e envie para padronizar no código.</p>
+      </div>
+      <div class="cl-actions">
+        <a class="cl-btn" href="card-preview.html">Preview limpo</a>
+        <button id="flipBtn" class="cl-btn" type="button">Virar card</button>
+        <a class="cl-btn" href="home.html">← Hub</a>
+      </div>
+    </header>
+
+    <div id="cardLabEditor"></div>
+  </div>
+
+  <script type="module" src="./js/lab/card-lab.js"></script>
+</body>
+</html>

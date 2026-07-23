@@ -1,0 +1,333 @@
+.cl-header .cp-role-tabs {
+  margin-bottom: 8px;
+}
+
+.cl-shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+  color: #e2e8f0;
+}
+
+.cl-shell--wide {
+  max-width: 1180px;
+}
+
+.cl-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.cl-kicker {
+  margin: 0 0 6px;
+  font: 600 0.65rem/1 'DM Sans', sans-serif;
+  letter-spacing: 0.14em;
+  color: #2abee9;
+}
+
+.cl-header h1 {
+  margin: 0 0 8px;
+  font: 800 1.75rem/1.1 'Barlow Condensed', sans-serif;
+}
+
+.cl-lead {
+  margin: 0;
+  max-width: 58ch;
+  color: #94a3b8;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.cl-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #2abee988;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 600 0.82rem/1 'DM Sans', sans-serif;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cl-btn:hover {
+  border-color: #2abee9;
+  background: #132033;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: #070b12;
+}
+
+/* Editor */
+.cle-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .cle-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cle-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #ffffff14;
+  border-radius: 12px;
+  background: #0c1220;
+}
+
+.cle-title {
+  margin: 0;
+  font: 700 1.05rem/1.2 'Barlow Condensed', sans-serif;
+}
+
+.cle-hint {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.cle-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.cle-face-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.cle-face-tab {
+  flex: 1;
+  min-height: 34px;
+  border: 1px solid #ffffff22;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #94a3b8;
+  font: 700 0.78rem/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.cle-face-tab.is-active {
+  border-color: #2abee9;
+  background: #132033;
+  color: #e2e8f0;
+  box-shadow: 0 0 0 1px #2abee988;
+}
+
+.cle-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.cle-zone-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cle-zone-btn {
+  border: 1px solid color-mix(in srgb, var(--zcolor) 55%, #ffffff22);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: color-mix(in srgb, var(--zcolor) 12%, #0f172a);
+  color: #e2e8f0;
+  font: 600 0.72rem/1 'DM Sans', sans-serif;
+  cursor: pointer;
+}
+
+.cle-zone-btn.is-active {
+  border-color: var(--zcolor);
+  box-shadow: 0 0 0 1px var(--zcolor);
+}
+
+.cle-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cle-form-title {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  font: 700 0.88rem/1.2 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cle-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.cle-field input[type='number'],
+.cle-field input[type='color'] {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid #ffffff22;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 600 0.82rem/1 'DM Sans', sans-serif;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+.cle-json {
+  width: 100%;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #ffffff14;
+  border-radius: 8px;
+  background: #070b12;
+  color: #7dd3fc;
+  font: 500 0.68rem/1.45 ui-monospace, monospace;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.cle-stage-wrap {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  align-content: start;
+  padding: 16px;
+  min-height: min(78vh, 820px);
+  border: 1px solid #ffffff14;
+  border-radius: 12px;
+  background: #0c1220;
+}
+
+.cle-stage-label {
+  font: 600 0.75rem/1 'DM Sans', sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.cle-stage {
+  width: 100%;
+  min-height: min(72vh, 720px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.cle-card-slot {
+  --cle-card-w: min(480px, 94vw);
+  width: var(--cle-card-w);
+  height: calc(var(--cle-card-w) * 1024 / 693);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.cle-card-slot .md-card {
+  --md-w: var(--cle-card-w);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.cle-guide-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+}
+
+.cle-guide {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed var(--gcolor);
+  background: color-mix(in srgb, var(--gcolor) 14%, transparent);
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.cle-guide.is-selected {
+  border-style: solid;
+  background: color-mix(in srgb, var(--gcolor) 24%, transparent);
+  box-shadow: 0 0 0 1px #00000088;
+}
+
+.cle-guide span {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #000000bb;
+  color: #fff;
+  font: 600 9px/1.2 'DM Sans', sans-serif;
+  pointer-events: none;
+}
+
+.md-card.cle-editing .md-card-flipper {
+  cursor: default;
+}
+
+/* Calibrador: troca frente/verso sem flip 3D — mantém tamanho fixo */
+.md-card.cle-editing .md-card-flipper,
+.md-card.cle-editing .md-card-flipper.is-flipped {
+  transform: none !important;
+  transition: none;
+}
+
+.md-card.cle-editing .md-card-front,
+.md-card.cle-editing .md-card-back {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  backface-visibility: visible;
+}
+
+.md-card.cle-editing:not(.is-show-back) .md-card-back {
+  display: none;
+}
+
+.md-card.cle-editing.is-show-back .md-card-front {
+  display: none;
+}
+
+.md-card.cle-editing.is-show-back .md-card-back {
+  display: grid;
+}

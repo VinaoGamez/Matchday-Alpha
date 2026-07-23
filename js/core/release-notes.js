@@ -5,6 +5,67 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.90',
+    date: '2026-07-23',
+    publishedAt: '2026-07-23T03:15:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Cartas de jogador',
+        items: [
+          'Novo sistema para verificação de jogadores.',
+          'Frente do card com OVR, posição, nome e bandeira; verso com atributos, especialistas e carreira na temporada.',
+          'Vire o card para ver stats, pé forte e resumo (média, jogos, gols, cartões).',
+          'Cards não abrem no relatório pós-jogo.',
+        ],
+      },
+      {
+        label: 'Elenco',
+        items: [
+          'Agora é possível renomear jogador.',
+          '1 renomeação por jogador por temporada.',
+        ],
+      },
+      {
+        label: 'Nomes e nacionalidade',
+        items: [
+          'Elencos com possibilidade de estrangeiros.',
+          'Países: Argentina, Uruguai, Paraguai, Colômbia, Venezuela, Equador e Chile.',
+          'Nomes gerados pela nacionalidade; saves antigos migram na carga.',
+        ],
+      },
+      {
+        label: 'Especialistas',
+        items: [
+          'Goleiros especialistas em defesa de pênalti — novo tipo.',
+          'Laterais e volantes agora também podem ser especialistas em falta.',
+        ],
+      },
+      {
+        label: 'Transferências',
+        items: [
+          'Nomes no Mercado são clicáveis e abrem o card.',
+          'Filtro novo: “Só mostrar especialistas”.',
+          'Do card dá para iniciar compra, venda ou empréstimo (com mercado aberto).',
+        ],
+      },
+      {
+        label: 'Ao vivo',
+        items: [
+          'Sons na partida: apito, ambiente de estádio, torcida em gol e reação em pênalti.',
+          'Em Opções → Sons ao vivo: ligar/desligar e ajustar volume (salvo no navegador).',
+          'Análise do adversário durante o jogo pausa o relógio.',
+        ],
+      },
+      {
+        label: 'Opções',
+        items: [
+          'Nova seção “Sons ao vivo” nas configurações.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.85',
     date: '2026-07-22',
     publishedAt: '2026-07-22T14:00:00-03:00',

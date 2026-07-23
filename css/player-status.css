@@ -28,7 +28,23 @@
 .player-badge-injury:before{width:9px;height:2.5px;top:50%;left:50%;transform:translate(-50%,-50%)}
 .player-badge-injury:after{width:2.5px;height:9px;top:50%;left:50%;transform:translate(-50%,-50%)}
 #squad .player-row>span:first-child .player-name-cell{width:100%}
+#squad .player-row .roster-col-ovr{font-variant-numeric:tabular-nums;padding-inline:2px}
 #squad .player-row{min-height:34px}
 .substitution-player-row .sub-name .player-name-cell{display:inline-flex;max-width:100%;font-size:9px;font-weight:400}
 .analysis-player .player-name-cell,.live-opponent-player .player-name-cell{display:flex;width:100%}
 #tactics .tactic-player-row .player-name-cell{width:100%}
+.roster-name-wrap{display:flex;align-items:center;gap:6px;min-width:0;width:100%}
+.roster-name-wrap.is-editing{flex-wrap:wrap;align-items:center}
+.roster-name-wrap .player-name-cell{flex:1;min-width:0}
+.roster-rename-btn{flex:0 0 auto;border:0;background:transparent;color:#7a9470;cursor:pointer;padding:2px 5px;font-size:13px;line-height:1;border-radius:4px;opacity:.85}
+.roster-rename-btn:hover,.roster-rename-btn:focus-visible{color:#b6ff38;background:#1c2f1c;outline:none;opacity:1}
+.roster-name-input{flex:1 1 140px;min-width:0;font:inherit;font-weight:700;background:#0f1810;border:1px solid #63d9ff;border-radius:4px;padding:3px 7px;color:#edf7e6}
+.roster-rename-save,.roster-rename-cancel{flex:0 0 auto;border:1px solid #2f7a4a;background:#143522;color:#b6ff38;cursor:pointer;padding:2px 7px;font-size:12px;line-height:1.2;border-radius:4px}
+.roster-rename-cancel{border-color:#4a3034;background:#2a1518;color:#ff8993}
+.roster-rename-error{flex:1 1 100%;color:#ff8993;font-size:10px;font-weight:600;margin-top:2px}
+.roster-rename-btn.is-disabled{opacity:.35;cursor:not-allowed}
+.roster-nation-cell{display:inline-flex;align-items:center;justify-content:center;min-width:28px}
+.roster-nation-cell .md-card-flag{display:block;width:22px;height:16px;object-fit:cover;border-radius:2px;box-shadow:0 0 0 1px #234650}
+.roster-nation-fallback{font:700 9px 'DM Sans',sans-serif;color:#75cde3;letter-spacing:.3px}
+#tactics .tactic-player-row .roster-name-wrap{width:100%}
+#tactics .tactic-player-row .roster-rename-btn{flex-shrink:0}

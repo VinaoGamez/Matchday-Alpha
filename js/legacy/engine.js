@@ -8,6 +8,7 @@ import { createCalendarViewFeature } from '../feature/calendar-view/index.js';
 import { createTacticsFeature } from '../feature/tactics/index.js';
 import { createSeasonSummaryFeature } from '../feature/season-summary/index.js';
 import { createPlayerCells, outfield, fatigueCell } from '../feature/shared/player-cells.js';
+import { createPlayerRenameFeature } from '../feature/player-rename/index.js';
 import { SAVE_KEYS, FEATURES, SERIE_D_GROUP_ROUNDS } from '../core/constants.js';
 import { collectWorldRosters, applyWorldRosters, stampWorldPlayers } from '../engine/world-rosters.js';
 import { createTransfersEngine } from '../engine/transfers.js';
@@ -38,6 +39,7 @@ import {
   formatSellerRejectLetter,
 } from '../engine/transfer-offer-copy.js';
 import { createTransfersFeature } from '../feature/transfers/index.js';
+import { createPlayerCardModal } from '../feature/player-card-modal/index.js';
 import {
   normalizeDevelopmentState,
   emptyDevelopmentState,
@@ -55,7 +57,8 @@ import {
   pickStarterFlags,
   sanitizeSetPieceForDivision,
 } from '../engine/player-generation.js';
-import { resolvePlayerId } from '../engine/player-identity.js';
+import { resolvePlayerId, ensurePlayerId } from '../engine/player-identity.js';
+import { dedupeRosterNames } from '../engine/player-names.js';
 import { playerKey as historyPlayerKey } from '../engine/player-match-stats.js';
 import {
   loadCareerSave,
@@ -155,6 +158,7 @@ import { createSponsorPickerFeature } from '../feature/sponsor-picker/index.js';
 import { createOptionsFeature } from '../feature/options/index.js';
 import { createLiveDayMatchesFeature } from '../feature/live-day-matches/index.js';
 import { createMatchLiveUiFeature } from '../feature/match-live-ui/index.js';
+import { createMatchLiveAudioFeature } from '../feature/match-live-audio/index.js';
 import { createMatchAvailability } from '../engine/match-availability.js';
 import { createAwaySubController } from '../engine/match-live-away-subs.js';
 import { createLiveMatchOrchestration } from '../engine/match-live-orchestration.js';
@@ -387,6 +391,9 @@ export async function bootEngine({ bus } = {}) {
   // Declarados cedo: playerUnavailable / orderRosterForFormation leem durante o boot.
   let liveMatchGame = null;
   let nextUserGame = null;
+  let matchStarted = false;
+  let matchFinished = false;
+  let roundCommitted = false;
   const userLeagueDisciplineKey = () => `LEAGUE:${userDivision}`;
   const fixtureCompetitionKey = fixture =>
     competitionKeyFromFixture(fixture, { isKnockoutShootout: isKnockoutShootoutCompetition, clubs });
@@ -442,6 +449,7 @@ export async function bootEngine({ bus } = {}) {
   document.body.classList.add('dark-mode');
   let startMatchClock=()=>{};
   let openSeasonGoalPreview=()=>{};
+  const matchLiveAudio=createMatchLiveAudioFeature();
   const optionsUi=createOptionsFeature({
     $, $$, onClick, redirectGame, cleanCareerText, writeJson, clearSeasonSave, clearCareerStorage, markSkipPersistOnce, SAVE_KEYS,
     hasCareer: !!savedNewGame,
@@ -449,9 +457,10 @@ export async function bootEngine({ bus } = {}) {
     initialBudget,
     defaultCareerSeason: DEFAULT_CAREER_SEASON,
     initialEnvironmentRanges,
+    matchLiveAudio,
     onPaceChanged: () => {
       const penaltyClosed=$('#penaltyDuelModal')?$('#penaltyDuelModal').classList.contains('hidden'):$('#penaltyChoice').classList.contains('hidden');
-      if(matchStarted&&!matchFinished&&$('#pausePanel').classList.contains('hidden')&&penaltyClosed&&!shootoutState)startMatchClock();
+      if(matchStarted&&!matchFinished&&$('#pausePanel').classList.contains('hidden')&&$('#liveOpponentModal').classList.contains('hidden')&&penaltyClosed&&!shootoutState)startMatchClock();
     },
     onPreviewSeasonGoal:()=>openSeasonGoalPreview(),
   });
@@ -591,16 +600,11 @@ export async function bootEngine({ bus } = {}) {
     const roles=savedNewGame?[...GENERIC_SQUAD_ROLES]:[...starterRoles,...benchRoles];
     const starterFlags=pickStarterFlags(roles.length,gameRandom);
     const roster=roles.map((role,playerIndex)=>generatedPlayer(role,playerIndex+index*29,basePower,division,starterFlags[playerIndex]));
-    const names=new Map();
-    const environmentRange=initialEnvironmentRanges[division];
-    roster.forEach(player=>{
-      const count=names.get(player.name)||0;
-      names.set(player.name,count+1);
-      if(count)player.name=`${player.name} ${count+1}`;
-    });
+    dedupeRosterNames(roster);
     assignSquadJerseyNumbers(roster);
     const top11=[...roster].sort((a,b)=>b.overall-a.overall).slice(0,11);
     const power=Math.round(top11.reduce((sum,player)=>sum+player.overall,0)/11);
+    const environmentRange=initialEnvironmentRanges[division];
     return{name:club,division,power,roster,formation,style:['Posse de bola','Contra-ataque','Pressão alta'][int(0,2)],mentality:['Defensiva','Equilibrada','Ofensiva'][int(0,2)],position:index+1,environment:int(...environmentRange),support:int(38,94),board:int(38,94),finances:int(35,96)};
   };
   if(savedNewGame){
@@ -1615,6 +1619,10 @@ export async function bootEngine({ bus } = {}) {
     if(year&&month&&day)careerCalendarDate=new Date(year,month-1,day,12);
   }
   let onCareerCalendarAdvanced=()=>{};
+  let calendarBatchDepth=0;
+  const beginCalendarBatch=()=>{calendarBatchDepth+=1;};
+  const endCalendarBatch=()=>{calendarBatchDepth=Math.max(0,calendarBatchDepth-1);};
+  const isCalendarBatch=()=>calendarBatchDepth>0;
   const advanceCareerCalendarTo=date=>{
     if(!date)return;
     careerCalendarDate=new Date(date);
@@ -2056,6 +2064,20 @@ export async function bootEngine({ bus } = {}) {
   };
   let rosterSort={key:'pos',dir:'asc'};
   let rosterFilters={pos:'',foot:'',personality:''};
+  const playerRenameCallbacks={syncCareerRosters:()=>{},renderTacticRoster:()=>{}};
+  const playerRename=createPlayerRenameFeature({
+    playerNameCell,
+    getUserClub:()=>userClub,
+    getCareerSeason:()=>careerSeason,
+    getRoster:()=>clubs[userClub]?.roster||squad,
+    canRenamePlayer:()=>!(matchStarted&&!matchFinished),
+    onRenamed:()=>{
+      playerRenameCallbacks.syncCareerRosters();
+      renderRoster();
+      playerRenameCallbacks.renderTacticRoster();
+      playerRename.focusActiveInput();
+    },
+  });
   const rosterSortValue=(p,key)=>{
     switch(key){
       case 'name':return String(p.name||'');
@@ -2141,10 +2163,10 @@ export async function bootEngine({ bus } = {}) {
     list.innerHTML=rows.map(p=>{
       const top=topRosterAttrKeys(p);
       return `<div class="player-row roster-expanded">
-      <span>${playerNameCell(p.name,p,{allCompetitions:true,showLoan:true})}</span>
+      <span>${playerRename.renderNameCell(p,{showLoan:true,clubName:userClub})}</span>
       <span class="badge">${p.pos}</span>
       <span>${p.age}</span>
-      <span class="roster-ovr">${p.overall}${rosterOvrMarkHtml(p)}</span>
+      <span class="roster-ovr roster-col-ovr">${p.overall}${rosterOvrMarkHtml(p)}</span>
       <span>${p.height?`${p.height} cm`:'—'}</span>
       <span>${p.preferredFoot||'—'}</span>
       <span>${p.personality||'—'}</span>
@@ -2164,6 +2186,7 @@ export async function bootEngine({ bus } = {}) {
       <span class="roster-fatigue"><i><b style="width:${clamp(p.fatigue,0,100)}%"></b></i><em>${Math.round(p.fatigue)}%</em></span>
     </div>`;
     }).join('');
+    playerRename.focusActiveInput();
     $$('#rosterHead [data-roster-sort]').forEach(btn=>{
       const active=btn.dataset.rosterSort===rosterSort.key;
       btn.classList.toggle('is-sorted',active);
@@ -2191,6 +2214,8 @@ export async function bootEngine({ bus } = {}) {
       renderRoster();
     }
   });
+  playerRename.bindHandlers('#squad');
+  playerRename.bindHandlers('#tactics');
   renderRoster();
   const leagueRow=(row,index)=>`<div class="league-row ${row.club === userClub ? 'highlight' : ''}" data-club="${row.club}" role="button" tabindex="0"><span>${userDivision==='D'?index+1:clubs[row.club].position}</span><span class="club-link">${row.club}</span><span>${row.played}</span><span>${row.wins}</span><span>${row.draws}</span><span>${row.losses}</span><span>${row.goalDiff>=0?'+':''}${row.goalDiff}</span><span>${row.points}</span></div>`;
   // leagueTable preenchido por renderChampionshipPage após helpers de fase.
@@ -2471,8 +2496,6 @@ export async function bootEngine({ bus } = {}) {
   });
   const {renderCalendar,openCalendarMatchReport,calendarGameResult,openDashboardCalendarView,setSelectedCalendarDate}=calendarView;
   onCupScheduleChanged=calendarView.onCupScheduleChanged;
-  // Flags de partida ao vivo — declaradas cedo: refreshSeasonPresentation / PÓS-JOGO leem antes do bloco do motor.
-  let matchStarted=false, matchFinished=false, roundCommitted=false;
   let advanceTransferCalendarFn=()=>({ok:false,reason:'no_club'});
   let advanceCalendarWeekFn=()=>null;
   let transfersUi=null;
@@ -2698,6 +2721,7 @@ export async function bootEngine({ bus } = {}) {
     savedNewGame.worldRosters=collectWorldRosters(clubs,{skipClub:userClub});
     writeJson(SAVE_KEYS.career,{...savedNewGame});
   };
+  playerRenameCallbacks.syncCareerRosters=syncCareerRosters;
   const clubFormFromHistory=clubName=>{
     const form=[];
     for(let index=seasonRoundHistory.length-1;index>=0&&form.length<5;index--){
@@ -2755,6 +2779,7 @@ export async function bootEngine({ bus } = {}) {
       };
     },
     onAfterTransfer:result=>{
+      transfersEngine?.invalidatePlayerWorldIndex?.();
       if(result?.ok&&result.player){
         const hist=playerHistory?.getPlayer?.(playerKey(result.player));
         if(hist)hist.club=result.to;
@@ -2800,39 +2825,43 @@ export async function bootEngine({ bus } = {}) {
       if(msg)transfersEngine?.attachOfferMessageId?.(offer.id,msg.id);
     });
   };
-  const processAiMarketTickCore=({quietDigest=false,tickKind='week',skipUserOffers=false}={})=>{
+  const processAiMarketTickCore=({quietDigest=false,tickKind='week',skipUserOffers=false,skipSeed=false,silent=false}={})=>{
     if(!transfersEngine)return null;
-    const expired=transfersEngine.expirePendingOffers(currentRound)||[];
-    expired.forEach(offer=>{
-      const body=formatOfferExpiredLetter({
-        fromClub:offer.fromClub,
-        playerName:offer.playerName,
-      });
-      const replaced=messages.replaceMessage?.(
-        { offerId:offer.id, messageId:offer.messageId },
-        {
-          type:'offer-expired',
-          title:'Proposta expirada',
-          body,
-          resolveAction:true,
-          actionResult:'expired',
-          meta:{ competition:'Mercado', offerId:offer.id, playerId:offer.playerId },
-        },
-      );
-      if(!replaced){
-        pushMessage({
-          category:'transfer',
-          type:'offer-expired',
-          title:'Proposta expirada',
-          body,
-          round:currentRound,
-          meta:{competition:'Mercado',offerId:offer.id,playerId:offer.playerId},
+    const expired=silent?[]:(transfersEngine.expirePendingOffers(currentRound)||[]);
+    if(!silent){
+      expired.forEach(offer=>{
+        const body=formatOfferExpiredLetter({
+          fromClub:offer.fromClub,
+          playerName:offer.playerName,
         });
-      }
-    });
+        const replaced=messages.replaceMessage?.(
+          { offerId:offer.id, messageId:offer.messageId },
+          {
+            type:'offer-expired',
+            title:'Proposta expirada',
+            body,
+            resolveAction:true,
+            actionResult:'expired',
+            meta:{ competition:'Mercado', offerId:offer.id, playerId:offer.playerId },
+          },
+        );
+        if(!replaced){
+          pushMessage({
+            category:'transfer',
+            type:'offer-expired',
+            title:'Proposta expirada',
+            body,
+            round:currentRound,
+            meta:{competition:'Mercado',offerId:offer.id,playerId:offer.playerId},
+          });
+        }
+      });
+    }else{
+      try{transfersEngine.expirePendingOffers?.(currentRound);}catch{/* */}
+    }
     if(!transfersEngine.marketOpen())return { expired, tick: null };
-    const tick=transfersEngine.runAiMarketTick({ tickKind, skipUserOffers });
-    if(tick?.digest?.total&&!quietDigest){
+    const tick=transfersEngine.runAiMarketTick({ tickKind, skipUserOffers, skipSeed });
+    if(!silent&&tick?.digest?.total&&!quietDigest){
       const buyN=tick.digest.buyCount||0;
       const loanN=tick.digest.loanCount||0;
       const loanBuyN=tick.digest.loanBuyCount||0;
@@ -2851,6 +2880,7 @@ export async function bootEngine({ bus } = {}) {
       });
     }
     (tick?.deals||[]).forEach(deal=>{
+      if(silent)return;
       if(deal?.type!=='loan_buy'||deal.from!==userClub||!deal.player)return;
       const feeLabel=formatTransferMoney(deal.fee);
       pushMessage({
@@ -2869,7 +2899,13 @@ export async function bootEngine({ bus } = {}) {
         },
       });
     });
-    if(tick?.offers?.length)notifyIncomingTransferOffers(tick.offers);
+    if(!silent&&tick?.offers?.length)notifyIncomingTransferOffers(tick.offers);
+    if(silent&&tick?.offers?.length){
+      tick.offers.forEach(offer=>{
+        const id=offer?.id;
+        if(id)pendingTransferOfferPopupIds.push(id);
+      });
+    }
     return { expired, tick };
   };
   const presentTransferOffersAfterAdvance=(result={})=>{
@@ -2895,20 +2931,25 @@ export async function bootEngine({ bus } = {}) {
    * Avanço de tempo na janela (estilo FIFA Career): semana, ou dia na última semana (Deadline Day).
    * No fechamento da janela, devolve relatório com a maior transferência.
    */
-  const advanceTransferCalendar=()=>{
+  const advanceTransferCalendar=(opts={})=>{
+    const batch=opts.batch===true;
     if(!transfersEngine||!savedNewGame)return { ok:false, reason:'no_club' };
     if(pendingSponsorChoice){openSponsorPickerIfPending();return { ok:false, reason:'sponsor' };}
     if(matchStarted&&!matchFinished)return { ok:false, reason:'market_closed' };
     if(seasonTransition?.isSeasonTransitionPrepared?.())return { ok:false, reason:'market_closed' };
-    ensureCalendarMatchConsistency();
-    rebuildCalendarGames();
+    if(!batch){
+      ensureCalendarMatchConsistency();
+      rebuildCalendarGames();
+    }
     // Jogo atrasado / dia de jogo: não segue avançando a janela.
     if(isOnPendingMatchDay()){
       const stoppedMatch=userMatchOnDate(careerCalendarDate);
-      pushMatchDayBrief(stoppedMatch);
-      setSelectedCalendarDate(careerCalendarDate);
-      persistSeason(true);
-      refreshSeasonPresentation();
+      if(!batch){
+        pushMatchDayBrief(stoppedMatch);
+        setSelectedCalendarDate(careerCalendarDate);
+        persistSeason(true);
+        refreshSeasonPresentation();
+      }
       return {ok:true,days:0,stoppedMatch,phaseBefore:transfersEngine.getWindowPhase?.()||{},phaseAfter:transfersEngine.getWindowPhase?.()||{},report:null,newOfferIds:[]};
     }
     const phaseBefore=transfersEngine.getWindowPhase?.()||{};
@@ -2932,29 +2973,26 @@ export async function bootEngine({ bus } = {}) {
           advanceCupThroughDate(nextDay);
           simulatedDays+=1;
           stoppedMatch=pendingMatch;
-          pushMatchDayBrief(pendingMatch);
+          if(!batch)pushMatchDayBrief(pendingMatch);
           break;
         }
         applyTrainingDay(trainingTypeForDate(nextDay));
         advanceCareerCalendarTo(nextDay);
         advanceCupThroughDate(nextDay);
         simulatedDays+=1;
-        // Expira propostas por calendário mesmo sem tick de oferta.
-        try{transfersEngine.expirePendingOffers?.(currentRound);}catch{/* */}
-        // Deadline: 1 tick/dia. Semana: só IA↔IA nos dias intermediários (sem spam ao usuário).
-        try{
-          if(transfersEngine.marketOpen()){
-            if(phaseBefore.mode==='day'){
+        // Mercado: 1 tick no fim da semana (modo semana) ou 1/dia no Deadline — não a cada dia intermediário.
+        if(!batch){
+          try{
+            if(transfersEngine.marketOpen()&&phaseBefore.mode==='day'){
               processAiMarketTickCore({quietDigest:false,tickKind:'deadline'});
-            }else if(step<daysToAdvance-1){
-              processAiMarketTickCore({quietDigest:true,tickKind:'week',skipUserOffers:true});
             }
-          }
-        }catch{/* tick */}
+          }catch{/* tick */}
+        }
       }
-      // Semana: 1 tick de propostas ao usuário no fim do avanço.
+      // Semana: um único tick de mercado ao final (Deadline já rodou por dia acima).
       try{
         if(
+          !batch &&
           phaseBefore.mode==='week' &&
           !stoppedMatch &&
           transfersEngine.marketOpen()
@@ -2973,20 +3011,24 @@ export async function bootEngine({ bus } = {}) {
         windowKey:phaseBefore.windowKey,
         label:phaseBefore.label,
       });
-      pushMessage({
-        category:'transfer',
-        type:'window-report',
-        title:`Relatório · ${phaseBefore.label||'Janela'}`,
-        body:report.biggest
-          ?`Janela encerrada. Maior transferência: ${report.biggest.playerName} (${report.biggest.from} → ${report.biggest.to}) por ${formatTransferMoney(report.biggest.fee)}. ${report.dealCount} negócios · total ${formatTransferMoney(report.totalFees)}.`
-          :`Janela encerrada sem transferências à vista registradas no mercado.`,
-        round:currentRound,
-        meta:{competition:'Mercado',report},
-      });
+      if(!batch){
+        pushMessage({
+          category:'transfer',
+          type:'window-report',
+          title:`Relatório · ${phaseBefore.label||'Janela'}`,
+          body:report.biggest
+            ?`Janela encerrada. Maior transferência: ${report.biggest.playerName} (${report.biggest.from} → ${report.biggest.to}) por ${formatTransferMoney(report.biggest.fee)}. ${report.dealCount} negócios · total ${formatTransferMoney(report.totalFees)}.`
+            :`Janela encerrada sem transferências à vista registradas no mercado.`,
+          round:currentRound,
+          meta:{competition:'Mercado',report},
+        });
+      }
     }
-    persistSeason(true);
-    refreshSeasonPresentation();
-    transfersUi?.render?.();
+    if(!batch){
+      persistSeason(true);
+      refreshSeasonPresentation();
+      transfersUi?.render?.();
+    }
     const result={
       ok:true,
       days:simulatedDays,
@@ -2997,7 +3039,7 @@ export async function bootEngine({ bus } = {}) {
       stoppedMatch,
       newOfferIds:[...new Set(pendingTransferOfferPopupIds)].filter(Boolean),
     };
-    presentTransferOffersAfterAdvance(result);
+    if(!batch)presentTransferOffersAfterAdvance(result);
     return result;
   };
   advanceTransferCalendarFn=advanceTransferCalendar;
@@ -3097,6 +3139,7 @@ export async function bootEngine({ bus } = {}) {
     formatBudget,
     pushMessage,
     getCurrentRound:()=>currentRound,
+    playerNameCell,
     onTransferOfferRespond:opts=>respondToIncomingTransferOffer(opts),
     openOfferMessage:offer=>{
       const msg=messages.findMessage?.({ messageId:offer?.messageId, offerId:offer?.id });
@@ -3422,12 +3465,16 @@ export async function bootEngine({ bus } = {}) {
     incrementPauses:()=>++pauses,
     openPreparation:title=>openPreparation(title),
     renderStats:()=>renderStats(),
+    stopMatchClock:()=>stopMatchClock(),
+    startMatchClock:()=>startMatchClock(),
+    matchLiveAudio,
   });
   matchLiveUi.injectOpponentModal();
   const renderLiveMatchHeader=matchLiveUi.renderHeader;
   const score=matchLiveUi.score;
   const log=matchLiveUi.log;
   const renderLiveOpponent=matchLiveUi.renderLiveOpponent;
+  const openLiveOpponentAnalysis=matchLiveUi.openLiveOpponentAnalysis;
   const bindLiveActions=matchLiveUi.bindLiveActions;
   const updateLiveMatchClock=matchLiveUi.updateClock;
   
@@ -3457,11 +3504,11 @@ export async function bootEngine({ bus } = {}) {
     const avg=bucket?.avgRating!=null?Number(bucket.avgRating):seasonAverageRating(bucket);
     return formatMatchRating(avg);
   };
-  const analysisTable=(title,players,{numbered=false,slotOffset=0}={})=>`<section class="analysis-roster"><h3>${title}</h3><div class="analysis-head"><span>JOGADOR</span><span>POS.</span><span>OVR</span><span>MÉDIA</span><span>CANSAÇO</span></div>${players.map((player,index)=>`<div class="analysis-player" data-slot="${slotOffset+index}" tabindex="0">${playerNameCell(player.name,player,{prefix:numbered?(index+1)+'. ':''})}<span>${player.pos}</span><span>${player.overall}</span><span class="analysis-avg">${playerSeasonAvgLabel(player)}</span>${fatigueCell(player)}</div>`).join('')}</section>`;
+  const analysisTable=(title,players,{numbered=false,slotOffset=0,clubName=''}={})=>`<section class="analysis-roster"><h3>${title}</h3><div class="analysis-head"><span>JOGADOR</span><span>POS.</span><span>OVR</span><span>MÉDIA</span><span>CANSAÇO</span></div>${players.map((player,index)=>`<div class="analysis-player" data-slot="${slotOffset+index}" tabindex="0">${playerNameCell(player.name,player,{prefix:numbered?(index+1)+'. ': '',openCard:true,clubName})}<span>${player.pos}</span><span>${player.overall}</span><span class="analysis-avg">${playerSeasonAvgLabel(player)}</span>${fatigueCell(player)}</div>`).join('')}</section>`;
   const clubManagerName=clubName=>managerRanking.byClub(clubName)?.name||clubs[clubName]?.managerName||(clubName===userClub?careerProfile.managerName:null)||'—';
   let unbindScoutBoardHover=null;
   const openScout=name=>{
-    const club=clubs[name], roster=club.roster, coords=formations[club.formation]||formations['4-3-3'], overall=Math.round(roster.slice(0,11).reduce((sum,p)=>sum+p.overall,0)/11), leaders=clubSeasonLeaders(name);
+    const club=clubs[name], roster=club.roster.map((player,index)=>ensurePlayerId(player,{club:name,index})), coords=formations[club.formation]||formations['4-3-3'], overall=Math.round(roster.slice(0,11).reduce((sum,p)=>sum+p.overall,0)/11), leaders=clubSeasonLeaders(name);
     $('#scoutClubName').innerHTML=clubCrestTitleHtml(club.name,{initialsFn:clubCrestInitials});
     $('#scoutClubMeta').innerHTML=`<div class="scout-club-meta"><span class="scout-meta-chip"><small>FORMAÇÃO</small><b>${club.formation||'—'}</b></span><span class="scout-meta-chip"><small>ESTILO</small><b>${club.style||'—'}</b></span><span class="scout-meta-chip"><small>MENTALIDADE</small><b>${club.mentality||'—'}</b></span><span class="scout-meta-chip"><small>CLASSIFICAÇÃO</small><b>${club.position!=null?`${club.position}º na tabela`:'—'}</b></span></div>`;
     const managerEl=$('#scoutManager strong');
@@ -3472,8 +3519,8 @@ export async function bootEngine({ bus } = {}) {
     $('#scoutEnvironment strong').textContent=`${club.environment}%`;
     $('#scoutScorer').textContent=leaders.scorer.name;$('#scoutGoals').textContent=`${leaders.goals} G`;
     $('#scoutAssistant').textContent=leaders.assistant.name;$('#scoutAssists').textContent=`${leaders.assists} A`;
-    $('#scoutStarters').innerHTML=analysisTable('TITULARES',roster.slice(0,11),{numbered:true,slotOffset:0});
-    $('#scoutBench').innerHTML=analysisTable('RESERVAS',roster.slice(11),{slotOffset:11});
+    $('#scoutStarters').innerHTML=analysisTable('TITULARES',roster.slice(0,11),{numbered:true,slotOffset:0,clubName:name});
+    $('#scoutBench').innerHTML=analysisTable('RESERVAS',roster.slice(11),{slotOffset:11,clubName:name});
     const labelOf=tactics?.boardPlayerLabel||(name=>{
       const parts=(name||'').split(' ').filter(Boolean);
       const short=parts.length>1?parts[parts.length-1]:parts[0]||name;
@@ -3495,7 +3542,7 @@ export async function bootEngine({ bus } = {}) {
     });
     $('#teamScoutModal').classList.remove('hidden');
   };
-  const openClubFromTable=target=>{const clubTarget=target.closest?.('[data-club]'),name=clubTarget?.dataset.club;if(!name||!clubs[name])return false;openScout(name);return true;};
+  const openClubFromTable=target=>{const clubTarget=target.closest?.('[data-club]'),name=clubTarget?.dataset.club;if(!name||!clubs[name])return false;if(matchStarted&&!matchFinished&&name===matchClub().name){openLiveOpponentAnalysis();return true;}openScout(name);return true;};
   document.addEventListener('click',event=>openClubFromTable(event.target));
   document.addEventListener('keydown',event=>{if((event.key==='Enter'||event.key===' ')&&openClubFromTable(event.target))event.preventDefault();});
   
@@ -3910,6 +3957,16 @@ export async function bootEngine({ bus } = {}) {
     if(!key)return null;
     return playerHistory.getPlayer(key)?.seasons?.[String(careerSeason)]||null;
   };
+  const playerCardModal=createPlayerCardModal({
+    getUserClub:()=>userClub,
+    getUserSquad:()=>squad,
+    getCareerSeason:()=>careerSeason,
+    getPlayerHistory:()=>playerHistory,
+    getTransfersUi:()=>transfersUi,
+    getTransfersEngine:()=>transfersEngine,
+    findPlayerInWorld:playerId=>transfersEngine?.findPlayerInWorld?.(playerId)||null,
+  });
+  playerCardModal.bindHandlers();
   const applyDevelopmentPulseResult=result=>{
     if(!result||result.skipped)return false;
     playerDevelopment=result.state;
@@ -3933,9 +3990,11 @@ export async function bootEngine({ bus } = {}) {
     if(results.some(item=>!item.skipped)){
       if(clubs[userClub]?.roster){
         squad.splice(0,squad.length,...clubs[userClub].roster);
-        try{syncCareerRosters();}catch{/* boot */}
+        if(!isCalendarBatch()){
+          try{syncCareerRosters();}catch{/* boot */}
+          try{renderRoster();}catch{/* boot */}
+        }
       }
-      try{renderRoster();}catch{/* boot */}
     }
   };
   const runSeasonEndDevelopmentPulse=()=>{
@@ -4210,6 +4269,7 @@ export async function bootEngine({ bus } = {}) {
   };
   tactics=createTacticsFeature({
     $,$$,playerNameCell,
+    renderPlayerNameCell:(player,options)=>playerRename.renderNameCell(player,options),
     onTacticsChanged:()=>{renderTacticalConfrontation({context:'tactics'});if(matchStarted&&!matchFinished&&!preMatchPreparation&&$('#stats')&&!$('#stats').classList.contains('hidden'))renderStats();},
     getFormations:()=>formations,
     getFormationRoles:()=>formationRoles,
@@ -4255,6 +4315,7 @@ export async function bootEngine({ bus } = {}) {
     },
   });
   ({draw,drawBoard,renderTacticRoster,renderSubstitutionControls,makeSubstitution,syncTactics,applyTacticSuggestion,closeFormationSuggestion,tacticFor}=tactics);
+  playerRenameCallbacks.renderTacticRoster=renderTacticRoster;
   tactics.init(validSavedSeason?savedSeason?.userTactics:null);
   {
     const savedFormation=validSavedSeason?.userFormation;
@@ -4383,6 +4444,7 @@ export async function bootEngine({ bus } = {}) {
     drawBoard,
     renderSubstitutionControls,
     renderTacticalConfrontation,
+    matchLiveAudio,
   });
   const {renderFinalSummary,showFinalActions,exitLiveMatch,reopenMatchWindow,openPreparation}=matchLiveSession;
   let roundResults = null, roundPreviewResults={};
@@ -5746,27 +5808,36 @@ export async function bootEngine({ bus } = {}) {
     }
     const seasonEnd=seasonEndDate();
     let simulatedDays=0;
-    for(let step=0;step<7;step++){
-      const nextDay=new Date(careerCalendarDate);
-      nextDay.setDate(nextDay.getDate()+1);
-      nextDay.setHours(12,0,0,0);
-      if(nextDay>seasonEnd)break;
-      const pendingMatch=userMatchOnDate(nextDay);
-      if(pendingMatch){
+    beginCalendarBatch();
+    try{
+      for(let step=0;step<7;step++){
+        const nextDay=new Date(careerCalendarDate);
+        nextDay.setDate(nextDay.getDate()+1);
+        nextDay.setHours(12,0,0,0);
+        if(nextDay>seasonEnd)break;
+        const pendingMatch=userMatchOnDate(nextDay);
+        if(pendingMatch){
+          advanceCareerCalendarTo(nextDay);
+          advanceCupThroughDate(nextDay);
+          setSelectedCalendarDate(nextDay);
+          simulatedDays++;
+          persistSeason(true);
+          pushMatchDayBrief(pendingMatch);
+          refreshSeasonPresentation();
+          renderCalendar();
+          return {stopped:'match',game:pendingMatch,days:simulatedDays};
+        }
+        applyTrainingDay(trainingTypeForDate(nextDay));
         advanceCareerCalendarTo(nextDay);
         advanceCupThroughDate(nextDay);
-        setSelectedCalendarDate(nextDay);
         simulatedDays++;
-        persistSeason(true);
-        pushMatchDayBrief(pendingMatch);
-        refreshSeasonPresentation();
-        renderCalendar();
-        return {stopped:'match',game:pendingMatch,days:simulatedDays};
       }
-      applyTrainingDay(trainingTypeForDate(nextDay));
-      advanceCareerCalendarTo(nextDay);
-      advanceCupThroughDate(nextDay);
-      simulatedDays++;
+    }finally{
+      endCalendarBatch();
+      if(simulatedDays>0){
+        try{syncCareerRosters();}catch{/* ignore */}
+        try{renderRoster();}catch{/* ignore */}
+      }
     }
     setSelectedCalendarDate(careerCalendarDate);
     if(simulatedDays>0){
@@ -5797,45 +5868,71 @@ export async function bootEngine({ bus } = {}) {
       return {stopped:'failed',days:0};
     }
     let simulatedDays=0;
-    let safety=60;
-    // Com janela aberta: avança por semana (ou dia no Deadline) com ticks de mercado — igual AVANÇAR SEMANA.
-    while(
-      safety-->0 &&
-      !sameCalendarDay(careerCalendarDate,targetDate) &&
-      !isOnPendingMatchDay()
-    ){
-      const transferPhase=transfersEngine?.getWindowPhase?.()||{};
-      if(!transferPhase.active)break;
-      const result=advanceTransferCalendar();
-      if(!result?.ok)break;
-      simulatedDays+=result.days||0;
-      if((result.days||0)===0&&!result.stoppedMatch)break;
-      if(result.stoppedMatch||sameCalendarDay(careerCalendarDate,targetDate)||isOnPendingMatchDay())break;
-    }
-    safety=400;
-    while(
-      !sameCalendarDay(careerCalendarDate,targetDate) &&
-      !isOnPendingMatchDay() &&
-      simulatedDays<safety
-    ){
-      const nextDay=new Date(careerCalendarDate);
-      nextDay.setDate(nextDay.getDate()+1);
-      nextDay.setHours(12,0,0,0);
-      if(nextDay>seasonEnd)break;
-      applyTrainingDay(trainingTypeForDate(nextDay));
-      advanceCareerCalendarTo(nextDay);
-      advanceCupThroughDate(nextDay);
-      simulatedDays++;
+    let transferWindowTouched=!!transfersEngine?.getWindowPhase?.()?.active;
+    beginCalendarBatch();
+    try{
+      let safety=400;
+      while(
+        !sameCalendarDay(careerCalendarDate,targetDate) &&
+        !isOnPendingMatchDay() &&
+        simulatedDays<safety
+      ){
+        const nextDay=new Date(careerCalendarDate);
+        nextDay.setDate(nextDay.getDate()+1);
+        nextDay.setHours(12,0,0,0);
+        if(nextDay>seasonEnd)break;
+        applyTrainingDay(trainingTypeForDate(nextDay));
+        advanceCareerCalendarTo(nextDay);
+        advanceCupThroughDate(nextDay);
+        simulatedDays+=1;
+        if(transfersEngine?.getWindowPhase?.()?.active)transferWindowTouched=true;
+      }
+    }finally{
+      endCalendarBatch();
+      if(simulatedDays>0){
+        if(transferWindowTouched){
+          suppressTransferOfferPopup=true;
+          try{
+            const phase=transfersEngine?.getWindowPhase?.()||{};
+            const weeks=Math.max(1,Math.min(8,Math.ceil(simulatedDays/7)));
+            for(let w=0;w<weeks;w+=1){
+              if(!transfersEngine?.marketOpen?.())break;
+              processAiMarketTickCore({
+                quietDigest:true,
+                tickKind:phase.mode==='day'?'deadline':'week',
+                skipUserOffers:w<weeks-1,
+                skipSeed:w>0,
+                silent:true,
+              });
+            }
+          }catch{/* tick */}
+          finally{suppressTransferOfferPopup=false;}
+        }
+        try{syncCareerRosters();}catch{/* ignore */}
+        try{renderRoster();}catch{/* ignore */}
+      }
     }
     setSelectedCalendarDate(careerCalendarDate);
     const reachedTarget=sameCalendarDay(careerCalendarDate,targetDate)&&!isFixtureCompleted(nextEntry.game);
+    const deferredOffers=[...new Set(pendingTransferOfferPopupIds)].filter(Boolean);
     if(reachedTarget||isOnPendingMatchDay()){
-      persistSeason(true);
       pushMatchDayBrief(nextEntry.game);
+      persistSeason(true);
       refreshSeasonPresentation();
+      transfersUi?.render?.();
+      if(deferredOffers.length){
+        presentTransferOffersAfterAdvance({ok:true,days:simulatedDays,newOfferIds:deferredOffers});
+      }
       return {stopped:'match',days:simulatedDays,game:nextEntry.game};
     }
-    if(simulatedDays>0){persistSeason(true);refreshSeasonPresentation();}
+    if(simulatedDays>0){
+      persistSeason(true);
+      refreshSeasonPresentation();
+      transfersUi?.render?.();
+      if(deferredOffers.length){
+        presentTransferOffersAfterAdvance({ok:true,days:simulatedDays,newOfferIds:deferredOffers});
+      }
+    }
     return {stopped:'failed',days:simulatedDays};
   };
   onClick('#openDashboardCalendar',advanceToMatchDay);
@@ -6931,6 +7028,7 @@ export async function bootEngine({ bus } = {}) {
     optionsUi,
     knockoutCompetitionLabel,
     getKnockoutTieGames,
+    matchLiveAudio,
     shot:(...args)=>shot(...args),
     planPenaltyOutcome:(...args)=>planPenaltyOutcome?.(...args),
     takeFreeKick:(...args)=>takeFreeKick(...args),
@@ -6999,6 +7097,7 @@ export async function bootEngine({ bus } = {}) {
     foul,
     pickInjuryVictim,
     pushLiveVolumeIncident,
+    matchLiveAudio,
   }));
   const cupLiveMatchNeedsShootout=()=>liveKnockoutNeedsShootout();
   /** Empate no AGREGADO (ida+volta) — não exige empate no placar da volta. */
@@ -7264,6 +7363,7 @@ export async function bootEngine({ bus } = {}) {
     }
     $('#matchActions').classList.remove('hidden');
     startMatchClock();
+    matchLiveAudio.startStadiumAmbient?.();
     scheduleLiveMatchPersist();
     return true;
   };
@@ -7341,6 +7441,7 @@ export async function bootEngine({ bus } = {}) {
       flushLiveMatchPersist();
       if(matchStarted)persistSeason(true);
       stopMatchClock();
+      matchLiveAudio.stopAll();
       closeFormationSuggestion();
       $('#calendarMatchReportModal')?.classList.add('hidden');
       $('#liveOpponentModal').classList.add('hidden');
@@ -7351,11 +7452,13 @@ export async function bootEngine({ bus } = {}) {
     flushLiveMatchPersist();
     if(matchStarted)persistSeason(true);
     stopMatchClock();
+    matchLiveAudio.stopAll();
     modal.classList.add('hidden');$('#liveOpponentModal').classList.add('hidden');closeFormationSuggestion();
     $('#calendarMatchReportModal')?.classList.add('hidden');
     renderUserMatchPresentation();
   });
   onClick('#resumeMatch',()=>{
+    matchLiveAudio.unlock();
     const startingMatch=preMatchPreparation;
     const startingSecondHalf=!startingMatch&&halftimeShown&&!matchFinished&&minute<=45;
     if(startingMatch)pauseLineupBaseline=null;
@@ -7366,6 +7469,13 @@ export async function bootEngine({ bus } = {}) {
     $('#stats').classList.add('hidden');
     $('#matchActions').classList.remove('hidden');
     $('#matchStatus').textContent='A partida está em andamento…';
+    const resumeClock=()=>{
+      updateLiveMatchClock();
+      matchLiveUi.refreshMatchFeed?.();
+      startMatchClock();
+      matchLiveAudio.startStadiumAmbient?.();
+      flushLiveMatchPersist();
+    };
     if(startingMatch){
       matchLiveUi.resetLiveClockSeconds();liveDayMatches.clearSnapshots();liveDayMatches.ensure();applyPreMatchTraining();renderRoster();
       liveOpeningLineup={home:starters().map(player=>player.name),away:matchClub().roster.slice(0,11).map(player=>player.name)};
@@ -7375,23 +7485,33 @@ export async function bootEngine({ bus } = {}) {
       const crowdLine=crowd
         ? ` Público: ${crowd.attendance.toLocaleString('pt-BR')} (${Math.round(crowd.fillRate*100)}% da capacidade).`
         : '';
-      timeline.classList.remove('hidden');
-      timeline.innerHTML=`<p>0' · A bola está rolando no ${venue.name}!${crowdLine}</p>`;
       const kickoff=tacticalKickoffMessage(preMatchTacticSnapshot);
       if(kickoff)log(kickoff,'tactic');
       if(!liveVolumeSamples.length)liveVolumeSamples=[{minute:0,home:0.14,away:0.14}];
-    }else if(startingSecondHalf){
-      // 2º tempo: relógio limpo a partir de 45:00 (acréscimo do 1º fica só no intervalo).
+      const whistleReady=matchLiveAudio.playKickoff();
+      const onKickoffWhistle=()=>{
+        timeline.classList.remove('hidden');
+        timeline.innerHTML=`<p>0' · A bola está rolando no ${venue.name}!${crowdLine}</p>`;
+        resumeClock();
+      };
+      if(whistleReady?.then)whistleReady.then(onKickoffWhistle);
+      else onKickoffWhistle();
+      return;
+    }
+    if(startingSecondHalf){
       stoppageActive=null;
       stoppageElapsed=0;
       minute=45;
       matchLiveUi.resetLiveClockSeconds();
       log('Início do 2º tempo.','');
+      const whistleReady=matchLiveAudio.playSecondHalf();
+      if(whistleReady?.then)whistleReady.then(resumeClock);
+      else resumeClock();
+      return;
     }
-    updateLiveMatchClock();
-    matchLiveUi.refreshMatchFeed?.();
-    startMatchClock();
-    flushLiveMatchPersist();
+    const whistleReady=matchLiveAudio.playResumeWhistle();
+    if(whistleReady?.then)whistleReady.then(resumeClock);
+    else resumeClock();
   });
   onClick('#penaltyTakers',e=>{
     const button=e.target.closest('button');
@@ -7413,11 +7533,15 @@ export async function bootEngine({ bus } = {}) {
       const plan=planPenaltyOutcome(side,{...current,attack:current.attack+9},other,{taker:taker.name,penaltySkill:taker.penaltyTaking});
       if(!plan?.outcome)return;
       pendingPenalty={mode:'shootout',kickingClub};
-      runPenaltyDuelResolve(takerName,plan,()=>{
-        // Limpa antes do execute — ele pode já abrir a próxima escolha/CPU.
-        pendingPenalty=null;
-        executeShootoutKick(kickingClub,taker,plan);
-      });
+      const beginShootoutDuel=()=>{
+        runPenaltyDuelResolve(takerName,plan,()=>{
+          pendingPenalty=null;
+          executeShootoutKick(kickingClub,taker,plan);
+        });
+      };
+      const kickCue=matchLiveAudio.playPenaltyKick();
+      if(kickCue?.then)kickCue.then(beginShootoutDuel);
+      else beginShootoutDuel();
       return;
     }
     const taker=starters().find(p=>p.name===takerName);
@@ -7425,20 +7549,25 @@ export async function bootEngine({ bus } = {}) {
     const pending={...pendingPenalty};
     const plan=planPenaltyOutcome('home',{...pending.current,attack:pending.current.attack+9},pending.other,{taker:taker.name,penaltySkill:taker.penaltyTaking});
     if(!plan?.outcome)return;
-    runPenaltyDuelResolve(takerName,plan,()=>{
-      shot('home',{...pending.current,attack:pending.current.attack+9},pending.other,{
-        penalty:true,
-        taker:taker.name,
-        penaltySkill:taker.penaltyTaking,
-        forcedOutcome:plan.outcome,
+    const beginPenaltyDuel=()=>{
+      runPenaltyDuelResolve(takerName,plan,()=>{
+        shot('home',{...pending.current,attack:pending.current.attack+9},pending.other,{
+          penalty:true,
+          taker:taker.name,
+          penaltySkill:taker.penaltyTaking,
+          forcedOutcome:plan.outcome,
+        });
+        closePenaltyDuel();
+        $('#matchActions').classList.remove('hidden');
+        $('#matchStatus').textContent='A partida está em andamento…';
+        pendingPenalty=null;
+        renderStats();
+        startMatchClock();
       });
-      closePenaltyDuel();
-      $('#matchActions').classList.remove('hidden');
-      $('#matchStatus').textContent='A partida está em andamento…';
-      pendingPenalty=null;
-      renderStats();
-      startMatchClock();
-    });
+    };
+    const kickCue=matchLiveAudio.playPenaltyKick();
+    if(kickCue?.then)kickCue.then(beginPenaltyDuel);
+    else beginPenaltyDuel();
   });
   
   bindLiveActions();

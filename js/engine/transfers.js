@@ -33,6 +33,7 @@ import {
   applyLoanBuyExercise,
 } from './loan-buy-option.js';
 import { isMarketBuyRestricted } from './club-solvency.js';
+import { isPlayerSpecialist } from './player-generation.js';
 
 export const TRANSFER_LIMITS = {
   minRoster: 18,
@@ -243,7 +244,7 @@ const clearLoanState = player => {
   clearLoanBuyOption(player);
 };
 
-const findPlayerInWorld = (clubs, playerId) => {
+const findPlayerInWorldLinear = (clubs, playerId) => {
   if (!playerId || !clubs) return null;
   for (const [clubName, club] of Object.entries(clubs)) {
     const roster = club?.roster;
@@ -253,6 +254,20 @@ const findPlayerInWorld = (clubs, playerId) => {
   }
   return null;
 };
+
+function buildPlayerWorldIndex(clubs) {
+  const index = new Map();
+  if (!clubs) return index;
+  Object.entries(clubs).forEach(([clubName, club]) => {
+    const roster = club?.roster;
+    if (!Array.isArray(roster)) return;
+    roster.forEach((player, rosterIndex) => {
+      const id = resolvePlayerId(player);
+      if (id) index.set(id, { clubName, club, player, index: rosterIndex });
+    });
+  });
+  return index;
+}
 
 /**
  * @param {object} deps
@@ -292,6 +307,21 @@ export function createTransfersEngine(deps) {
   let seasonDealLog = Array.isArray(deps.initialSeasonDeals)
     ? deps.initialSeasonDeals.map(item => ({ ...item }))
     : [];
+  let playerWorldIndex = null;
+  const invalidatePlayerWorldIndex = () => {
+    playerWorldIndex = null;
+  };
+  const findPlayerInWorld = playerId => {
+    if (!playerId) return null;
+    const clubs = getClubs();
+    if (!clubs) return null;
+    if (!playerWorldIndex) playerWorldIndex = buildPlayerWorldIndex(clubs);
+    const hit = playerWorldIndex.get(playerId);
+    if (hit?.player) return hit;
+    const found = findPlayerInWorldLinear(clubs, playerId);
+    if (found && playerWorldIndex) playerWorldIndex.set(playerId, found);
+    return found;
+  };
   /** @type {Map<string, string>} playerId → dayKey até quando está em cooldown */
   const rejectCooldownUntil = new Map(
     Array.isArray(deps.initialOfferCooldowns)
@@ -752,6 +782,7 @@ export function createTransfersEngine(deps) {
       .toLocaleLowerCase('pt-BR');
     const listedOnly = filters.listedOnly === true;
     const loanOnly = filters.loanOnly === true;
+    const specialistOnly = filters.specialistOnly === true;
     let sortBy = String(filters.sortBy || 'ovr').toLowerCase();
     // Compat: chaves antigas com direção embutida
     let sortDir = String(filters.sortDir || '').toLowerCase();
@@ -779,6 +810,7 @@ export function createTransfersEngine(deps) {
         if (playerMovedThisWindow(player)) return;
         if (listedOnly && !player.listed) return;
         if (loanOnly && !player.loanListed) return;
+        if (specialistOnly && !isPlayerSpecialist(player)) return;
         if (pos && player.pos !== pos) return;
         const ovr = Number(player.overall) || 0;
         const age = Number(player.age) || 0;
@@ -1168,7 +1200,7 @@ export function createTransfersEngine(deps) {
     const { name: buyerName, club: buyer } = userClubState();
     if (!buyer) return { ok: false, reason: 'no_club' };
 
-    const found = findPlayerInWorld(getClubs(), playerId);
+    const found = findPlayerInWorld( playerId);
     if (!found || found.clubName === buyerName) return { ok: false, reason: 'not_found' };
     const { club: seller, player, index, clubName: sellerName } = found;
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
@@ -1493,7 +1525,7 @@ export function createTransfersEngine(deps) {
       return { ok: false, reason: 'loan_in_limit', slots: loanSlots(borrowerName) };
     }
 
-    const found = findPlayerInWorld(getClubs(), playerId);
+    const found = findPlayerInWorld( playerId);
     if (!found || found.clubName === borrowerName) return { ok: false, reason: 'not_found' };
     const { club: owner, player, index, clubName: ownerName } = found;
     if (player.onLoan) return { ok: false, reason: 'on_loan' };
@@ -2031,6 +2063,7 @@ export function createTransfersEngine(deps) {
     maxUserOffers = userOffersPerTick,
     tickKind = 'week',
     skipUserOffers = false,
+    skipSeed = false,
   } = {}) => {
     const status = marketStatus();
     if (!status.open) {
@@ -2051,8 +2084,10 @@ export function createTransfersEngine(deps) {
     const offers = [];
 
     // Re-seed listings levemente para manter mercado vivo.
-    seedAiListings({ ratio: 0.04, minListed: 20 });
-    seedAiLoanListings({ ratio: 0.03, minLoanListed: 12 });
+    if (!skipSeed) {
+      seedAiListings({ ratio: 0.04, minListed: 20 });
+      seedAiLoanListings({ ratio: 0.03, minLoanListed: 12 });
+    }
 
     const aiEntries = Object.entries(clubs).filter(
       ([name, club]) => name !== userName && Array.isArray(club?.roster),
@@ -2442,7 +2477,7 @@ export function createTransfersEngine(deps) {
   const getBuyDivisionFit = playerId => {
     const { name: buyerName, club: buyer } = userClubState();
     if (!buyer) return { ok: false, reason: 'no_club' };
-    const found = findPlayerInWorld(getClubs(), playerId);
+    const found = findPlayerInWorld( playerId);
     if (!found || found.clubName === buyerName) return { ok: false, reason: 'not_found' };
     const roster = found.club.roster;
     const rosterAvgOvr = roster?.length
@@ -2466,7 +2501,7 @@ export function createTransfersEngine(deps) {
   const previewSellDownBuyout = (playerId, feeInput = 0) => {
     const { name: buyerName, club: buyer } = userClubState();
     if (!buyer) return null;
-    const found = findPlayerInWorld(getClubs(), playerId);
+    const found = findPlayerInWorld( playerId);
     if (!found || found.clubName === buyerName) return null;
     const roster = found.club.roster;
     const rosterAvgOvr = roster?.length
@@ -2532,7 +2567,8 @@ export function createTransfersEngine(deps) {
     evaluateSellerAccept,
     getBuyDivisionFit,
     previewSellDownBuyout,
-    findPlayerInWorld: playerId => findPlayerInWorld(getClubs(), playerId),
+    findPlayerInWorld,
+    invalidatePlayerWorldIndex,
     estimatePlayerValue,
     hydratePendingOffers,
     snapshotPendingOffers,
@@ -2552,7 +2588,7 @@ export function createTransfersEngine(deps) {
       });
     },
     previewLoanInPayroll: playerId => {
-      const found = findPlayerInWorld(getClubs(), playerId);
+      const found = findPlayerInWorld( playerId);
       const { club: borrower } = userClubState();
       if (!found || !borrower) return null;
       const split = previewLoanHostWage(found.player, found.club, borrower, resolvePlayerRoundWage);

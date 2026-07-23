@@ -1,0 +1,855 @@
+/* Card = PNG completo + zonas dinâmicas (% do PNG 694×1024). */
+
+.md-card {
+  --md-w: 200px;
+  --md-cyan: #2abee9;
+  --foot-bg: #01152d;
+  --font-number: 17.6cqi;
+  --font-role: 4.5cqi;
+  --font-first: 6cqi;
+  --font-last: 11cqi;
+  --font-nation: 5cqi;
+  width: var(--md-w);
+  height: calc(var(--md-w) * 1024 / 693);
+  min-width: var(--md-w);
+  min-height: calc(var(--md-w) * 1024 / 693);
+  flex-shrink: 0;
+  font-family: 'DM Sans', system-ui, sans-serif;
+}
+
+.md-card-scene {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.md-card-flipper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform-origin: center center;
+  transition: transform 0.55s cubic-bezier(0.4, 0.1, 0.2, 1);
+}
+
+.md-card-flipper.is-interactive {
+  cursor: pointer;
+}
+
+.md-card-flipper.is-interactive:focus-visible {
+  outline: 2px solid var(--md-cyan);
+  outline-offset: 3px;
+}
+
+.md-card-flipper.is-flipped {
+  transform: rotateY(180deg);
+}
+
+.md-card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  overflow: hidden;
+}
+
+.md-card-front {
+  transform: translateZ(1px);
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 2px var(--md-cyan),
+    0 0 16px #2abee988,
+    0 12px 28px #00000066;
+  background: transparent;
+}
+
+.md-card-art-frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+.md-card-art-bounds {
+  position: absolute;
+  left: var(--art-x, 0%);
+  top: var(--art-y, 0%);
+  width: var(--art-w, 100%);
+  height: var(--art-h, 100%);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.md-card-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: var(--art-fit, cover);
+  pointer-events: none;
+}
+
+.md-card-foot-mask {
+  position: absolute;
+  left: var(--foot-x, 0%);
+  top: var(--foot-y, 76.37%);
+  width: var(--foot-w, 100%);
+  height: var(--foot-h, 21.58%);
+  background: transparent;
+  z-index: 2;
+  pointer-events: none;
+  box-sizing: border-box;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.md-card.is-calibrating.is-editing-foot .md-card-foot-mask {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: move;
+  z-index: 6;
+  outline: 2px dashed #64748b;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 999px #64748b22;
+}
+
+.md-card.is-calibrating.is-editing-art .md-card-art-bounds {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: move;
+  z-index: 6;
+  outline: 2px dashed #38bdf8;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 999px #38bdf822;
+}
+
+.md-card.is-calibrating.is-editing-art .md-card-foot-mask,
+.md-card.is-calibrating.is-editing-art .md-cal-overlay-layer {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.md-card-art-bounds .md-cal-mask-tools {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.md-card-art-bounds .md-cal-handle {
+  --cal-color: #38bdf8;
+  z-index: 3;
+}
+
+.md-card.is-calibrating.is-editing-foot .md-card-zones,
+.md-card.is-calibrating.is-editing-foot .md-cal-overlay-layer {
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.md-cal-mask-tools {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.md-cal-mask-tools .md-cal-overlay-label {
+  z-index: 2;
+}
+
+.md-card-foot-mask .md-cal-handle {
+  --cal-color: #64748b;
+  z-index: 3;
+}
+
+.md-cal-handle-n {
+  top: -6px;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.md-cal-handle-s {
+  bottom: -6px;
+  left: 50%;
+  right: auto;
+  top: auto;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+
+.md-cal-handle-e {
+  right: -6px;
+  top: 50%;
+  bottom: auto;
+  left: auto;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.md-cal-handle-w {
+  left: -6px;
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+
+.md-card.has-foot-fill .md-card-foot-mask {
+  background: var(--foot-bg, #01152d);
+}
+
+.md-card-zones {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.md-card-zone {
+  position: absolute;
+  left: var(--zone-x);
+  top: var(--zone-y);
+  width: var(--zone-w);
+  height: var(--zone-h);
+  display: flex;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 0 2cqi;
+}
+
+.md-card-zone--number,
+.md-card-zone--role {
+  justify-content: flex-start;
+  align-items: flex-start;
+}
+
+.md-card-zone--first {
+  justify-content: flex-end;
+  align-items: flex-start;
+}
+
+.md-card-zone--last {
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.md-card-zone--nation {
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.md-card-num,
+.md-card-role,
+.md-card-first,
+.md-card-last,
+.md-card-nation-row,
+.md-card-nation {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.md-card-num {
+  font: 800 var(--font-number) / 0.82 'Barlow Condensed', sans-serif;
+  color: #fff;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.md-card-role {
+  font: 600 var(--font-role) / 1.05 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.md-card-first {
+  display: inline-block;
+  font: 400 var(--font-first) / 1.05 'DM Sans', system-ui, sans-serif;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.md-card-last {
+  display: inline-block;
+  font: 800 var(--font-last) / 0.95 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.03em;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.md-card-nation-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35em;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.md-card-flag {
+  display: block;
+  width: auto;
+  height: 1.05em;
+  min-height: 10px;
+  max-height: 1.35em;
+  object-fit: contain;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.md-card-nation {
+  font: 400 var(--font-nation) / 1.1 'DM Sans', system-ui, sans-serif;
+  color: #ffffffdd;
+  white-space: nowrap;
+}
+
+/* Calibrador — overlays sobre o card */
+.md-card.is-calibrating .md-card-flipper {
+  cursor: default;
+}
+
+.md-cal-overlay-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.md-cal-overlay {
+  position: absolute;
+  left: var(--zone-x);
+  top: var(--zone-y);
+  width: var(--zone-w);
+  height: var(--zone-h);
+  border: 2px dashed var(--cal-color);
+  background: color-mix(in srgb, var(--cal-color) 18%, transparent);
+  box-sizing: border-box;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: move;
+}
+
+.md-cal-overlay.is-selected {
+  border-style: solid;
+  background: color-mix(in srgb, var(--cal-color) 28%, transparent);
+  box-shadow: 0 0 0 1px #00000088;
+}
+
+.md-cal-overlay-label {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #000000bb;
+  color: #fff;
+  font: 600 9px/1.2 'DM Sans', sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.md-cal-handle {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--cal-color);
+  border: 2px solid #fff;
+  cursor: nwse-resize;
+  pointer-events: auto;
+}
+
+.md-card-back {
+  transform: rotateY(180deg) translateZ(1px);
+  display: block;
+  container-type: inline-size;
+  color: #fff;
+  background: #0a1018;
+  border-radius: 18px;
+  box-shadow:
+    0 0 0 2px var(--md-cyan),
+    0 0 16px #2abee988,
+    0 12px 28px #00000088;
+  overflow: hidden;
+}
+
+.mdc-back-zone {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+  z-index: 1;
+}
+
+.mdc-back-zone[data-zone='actions'] {
+  z-index: 3;
+}
+
+.md-card-back-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 2cqi;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 3.2cqi 3.4cqi 2.4cqi;
+  background: linear-gradient(135deg, var(--md-accent, #9333ea) 0%, #1a0a28 55%, #0a1018 100%);
+  border-bottom: 1px solid #ffffff18;
+}
+
+.md-card-back-id {
+  min-width: 0;
+}
+
+.md-card-back-last {
+  display: block;
+  font: 800 8.2cqi/0.95 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.md-card-back-role {
+  display: block;
+  margin-top: 1.4cqi;
+  font: 700 4.8cqi/1.15 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffffffdd;
+}
+
+.md-card-back-ovr-wrap {
+  display: grid;
+  justify-items: end;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.md-card-back-ovr-wrap small {
+  font: 700 2.6cqi/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.16em;
+  color: #ffffff99;
+}
+
+.md-card-back-ovr {
+  font: 800 12cqi/0.9 'Barlow Condensed', sans-serif;
+  letter-spacing: -0.02em;
+  color: #fff;
+  text-shadow: 0 0 18px #ffffff44;
+}
+
+.mdc-gauge-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2cqi;
+  align-items: end;
+  align-content: end;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 1cqi;
+}
+
+.mdc-gauge {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 0.8cqi;
+  padding-top: 0.6cqi;
+}
+
+.mdc-gauge-label {
+  font: 600 3.6cqi/1.05 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.1em;
+  color: #94a3b8;
+  max-width: 100%;
+  padding: 0 0.4cqi;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mdc-gauge-svg {
+  width: 100%;
+  max-width: 27cqi;
+  height: auto;
+  overflow: visible;
+}
+
+.mdc-gauge-track,
+.mdc-gauge-fill {
+  fill: none;
+  stroke-width: 1.55cqi;
+  stroke-linecap: round;
+}
+
+.mdc-gauge-track {
+  stroke: #334155;
+}
+
+.mdc-gauge-fill {
+  stroke: var(--gauge-color, #22c55e);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--gauge-color) 55%, transparent));
+}
+
+.mdc-gauge-value {
+  position: absolute;
+  bottom: 0.8cqi;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 800 6.2cqi/1 'Barlow Condensed', sans-serif;
+  color: var(--gauge-color, #22c55e);
+}
+
+.mdc-bar-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9cqi 2cqi;
+  align-content: start;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 1cqi;
+  overflow: hidden;
+}
+
+.mdc-bar-stat {
+  display: grid;
+  gap: 0.45cqi;
+  min-width: 0;
+}
+
+.mdc-bar-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.8cqi;
+  font-size: 2.85cqi;
+  line-height: 1.1;
+}
+
+.mdc-bar-head span {
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mdc-bar-head strong {
+  font: 700 3.05cqi/1 'Barlow Condensed', sans-serif;
+  color: #e2e8f0;
+  flex-shrink: 0;
+}
+
+.mdc-bar-track {
+  height: 1.05cqi;
+  min-height: 3px;
+  border-radius: 999px;
+  background: #1e293b;
+  overflow: hidden;
+}
+
+.mdc-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  min-width: 2px;
+}
+
+.mdc-back-zone[data-zone='backFeet'] .mdc-feet-block {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 1cqi;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 1cqi;
+  border-top: none;
+}
+
+.mdc-back-zone[data-zone='backFeet'] .mdc-feet {
+  display: flex;
+  gap: 2.4cqi;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.mdc-back-zone[data-zone='backFeet'] .mdc-foot-icon {
+  width: 5.5cqi;
+  height: 10cqi;
+}
+
+.mdc-back-zone[data-zone='backFeet'] .mdc-feet-title {
+  font: 700 3cqi/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.14em;
+  color: #94a3b8;
+}
+
+.mdc-back-zone[data-zone='backFeet'] .mdc-feet-label {
+  font: 600 3.6cqi/1 'DM Sans', sans-serif;
+  color: #cbd5e1;
+}
+
+.mdc-back-zone[data-zone='backSpecHex'],
+.mdc-back-zone[data-zone='backSpecStar'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.mdc-back-zone[data-zone='backSpecHex'] .mdc-foot-badge,
+.mdc-back-zone[data-zone='backSpecStar'] .mdc-foot-badge {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 0 6px #2abee944);
+  pointer-events: none;
+  user-select: none;
+}
+
+.mdc-back-zone[data-zone='backCareer'] .mdc-career-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1.2cqi 2cqi;
+  align-content: center;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 1.4cqi 2cqi;
+  border-top: 1px solid #ffffff28;
+  background: linear-gradient(180deg, #ffffff0d 0%, #ffffff05 100%);
+}
+
+.mdc-career-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  padding: 6px 2px 2px;
+  border-top: 1px solid #ffffff12;
+}
+
+.mdc-career-item {
+  display: grid;
+  gap: 3px;
+  justify-items: center;
+  text-align: center;
+}
+
+.mdc-back-zone[data-zone='backCareer'] .mdc-career-item {
+  gap: 1cqi;
+}
+
+.mdc-career-item span {
+  font: 600 0.5rem/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.mdc-back-zone[data-zone='backCareer'] .mdc-career-item span {
+  font: 700 3.4cqi/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.12em;
+  color: #cbd5e1;
+}
+
+.mdc-career-item strong {
+  font: 700 0.82rem/1 'Barlow Condensed', sans-serif;
+  color: #f1f5f9;
+}
+
+.mdc-back-zone[data-zone='backCareer'] .mdc-career-item strong {
+  font: 800 5.6cqi/1 'Barlow Condensed', sans-serif;
+  color: #ffffff;
+  text-shadow: 0 0 10px #ffffff33;
+}
+
+.mdc-back-zone[data-zone='backCareer'] .mdc-career-item--cards strong {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.2cqi;
+}
+
+.mdc-cards {
+  display: inline-flex;
+  gap: 4px;
+  font-style: normal;
+}
+
+.mdc-card-chip {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 3px;
+  border-radius: 3px;
+  font: 800 0.62rem/1 'Barlow Condensed', sans-serif;
+  font-style: normal;
+}
+
+.mdc-back-zone[data-zone='backCareer'] .mdc-card-chip {
+  min-width: 5.8cqi;
+  height: 6.2cqi;
+  padding: 0 0.8cqi;
+  border-radius: 0.7cqi;
+  font: 800 3.8cqi/1 'Barlow Condensed', sans-serif;
+  box-shadow: 0 1px 4px #00000055;
+}
+
+.mdc-card-actions {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  padding: 0 4px;
+}
+
+.mdc-card-action {
+  flex: 1;
+  max-width: 48%;
+  min-height: 0;
+  height: 100%;
+  padding: 0 10px;
+  border: 1px solid #2abee966;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #132033 0%, #0b1d25 100%);
+  color: #e2e8f0;
+  font: 700 0.68rem/1 'DM Sans', sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 2px 8px #00000044;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.12s ease,
+    box-shadow 0.15s ease;
+}
+
+.mdc-card-action--sell {
+  border-color: #bbeb2788;
+  color: #ecfccb;
+  background: linear-gradient(180deg, #1a2818 0%, #0f1a14 100%);
+}
+
+.mdc-card-action--loan {
+  border-color: #2abee988;
+  color: #dbeafe;
+}
+
+.mdc-card-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px #00000055;
+}
+
+.mdc-card-action--sell:hover {
+  border-color: #bbeb27;
+  background: linear-gradient(180deg, #243818 0%, #142018 100%);
+}
+
+.mdc-card-action--loan:hover {
+  border-color: #2abee9;
+  background: linear-gradient(180deg, #183040 0%, #0d2030 100%);
+}
+
+.mdc-card-action:active {
+  transform: translateY(0);
+}
+
+.mdc-card-action:focus-visible {
+  outline: 2px solid #2abee9;
+  outline-offset: 2px;
+}
+
+.mdc-feet-block {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 0 2px;
+  border-top: 1px solid #ffffff12;
+}
+
+.mdc-feet-title {
+  font: 600 0.55rem/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.mdc-feet {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+}
+
+.mdc-foot-icon {
+  width: 22px;
+  height: 40px;
+  fill: #334155;
+  opacity: 0.55;
+  transform-origin: center bottom;
+}
+
+.mdc-foot-icon--left {
+  transform: scaleX(-1);
+}
+
+.mdc-foot-icon.is-strong {
+  fill: #e2e8f0;
+  opacity: 1;
+  filter: drop-shadow(0 0 6px #ffffff33);
+}
+
+.mdc-feet-label {
+  font: 600 0.72rem/1 'DM Sans', sans-serif;
+  color: #cbd5e1;
+}
+
+.mdc-card-chip--y {
+  background: #eab308;
+  color: #1a1200;
+}
+
+.mdc-card-chip--r {
+  background: #ef4444;
+  color: #fff;
+}
+
+.mdc-back-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  text-align: center;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.md-card-back-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 6px;
+  text-align: center;
+  font: 600 0.55rem/1 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.14em;
+  color: #ffffff55;
+}
+
+.mdc-card-actions.is-disabled .mdc-card-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.35);
+}

@@ -37,6 +37,8 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         home: resolve(__dirname, 'home.html'),
+        cardLab: resolve(__dirname, 'card-lab.html'),
+        cardPreview: resolve(__dirname, 'card-preview.html'),
       },
     },
   },

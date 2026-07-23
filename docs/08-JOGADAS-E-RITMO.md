@@ -182,8 +182,8 @@ Juntos, mantêm GPM de jogos equilibrados perto do Brasileirão e cortam goleada
 
 | Tipo | Base |
 |------|------|
-| Pênalti | ~56–94% (cobrança vs defesa de pênalti; especialista >85 ganha bônus) |
-| Falta direta | Só especialista (freeKick > 85) tem boa taxa; demais costumam cruzar/afastar |
+| Pênalti | ~56–94% (cobrança vs defesa; esp. cobrança **+5 pp**, esp. defesa **−3,5 pp** na chance de gol) |
+| Falta direta | Só especialista tem boa taxa; **+3,5 pp** na conversão; demais costumam cruzar/afastar |
 | Escanteio | Cabeceio vs defesa aérea |
 
 ### 6.5 Quem aparece na jogada

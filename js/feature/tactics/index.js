@@ -34,6 +34,7 @@ export function createTacticsFeature(deps) {
     $,
     $$,
     playerNameCell,
+    renderPlayerNameCell,
     getFormations,
     getFormationRoles,
     getFormationNotes,
@@ -285,10 +286,15 @@ export function createTacticsFeature(deps) {
     setBoardSlotHighlight(tacticsPitchRoots(), slot);
   };
 
+  const tacticNameCell = (player, options = {}) =>
+    renderPlayerNameCell
+      ? renderPlayerNameCell(player, { showLoan: false, clubName: getUserClub?.() || '', ...options })
+      : playerNameCell(player.name, player, { showLoan: false, clubName: getUserClub?.() || '', ...options });
+
   const renderTacticRoster = () => {
     const squad = getSquad();
     const playerRow = (player, index, starter) =>
-      `<div class="tactic-player-row ${playerUnavailable(player) ? 'unavailable' : 'repositionable'}" data-slot="${index}" draggable="${!playerUnavailable(player)}" tabindex="0">${playerNameCell(player.name, player, { prefix: starter ? `${index + 1}. ` : '' })}<span>${player.pos}</span><span>${player.overall}</span><span class="tactic-fatigue"><i><b style="width:${clamp(player.fatigue, 0, 100)}%"></b></i>${Math.round(player.fatigue)}%</span></div>`;
+      `<div class="tactic-player-row ${playerUnavailable(player) ? 'unavailable' : 'repositionable'}" data-slot="${index}" draggable="${!playerUnavailable(player)}" tabindex="0">${tacticNameCell(player, { prefix: starter ? `${index + 1}. ` : '', openCard: true })}<span>${player.pos}</span><span>${player.overall}</span><span class="tactic-fatigue"><i><b style="width:${clamp(player.fatigue, 0, 100)}%"></b></i>${Math.round(player.fatigue)}%</span></div>`;
     $('#tacticStarters').innerHTML = squad.slice(0, 11).map((player, index) => playerRow(player, index, true)).join('');
     $('#tacticBench').innerHTML = squad.slice(11).map((player, index) => playerRow(player, index + 11, false)).join('');
     bindRosterRowDrag();
@@ -490,8 +496,10 @@ export function createTacticsFeature(deps) {
     if (getHasCareer()) persistSeason();
   };
 
-  const substitutionPlayerRow = (player, attributes, selected, liveState = null) =>
-    `<button type="button" class="substitution-player-row ${selected ? 'selected' : ''}" ${attributes} style="display:grid!important;width:100%!important;padding:7px 8px!important;border:0!important;border-top:1px solid #234b55!important;border-radius:0!important;background:${selected ? '#173b48' : '#091820'}!important;color:#edf8f5!important;box-shadow:${selected ? 'inset 3px 0 0 #b6ff38' : 'none'}!important;transform:none!important"><span class="sub-pos">${player.pos}</span><span class="sub-ovr">${player.overall}</span><span class="sub-name">${playerNameCell(player.name, player, { liveState })}</span><span class="sub-fatigue"><i><b style="width:${clamp(player.fatigue, 0, 100)}%"></b></i><em>${Math.round(player.fatigue)}%</em></span></button>`;
+  const substitutionPlayerRow = (player, attributes, selected, liveState = null) => {
+    const clubName = getUserClub?.() || '';
+    return `<button type="button" class="substitution-player-row ${selected ? 'selected' : ''}" ${attributes} style="display:grid!important;width:100%!important;padding:7px 8px!important;border:0!important;border-top:1px solid #234b55!important;border-radius:0!important;background:${selected ? '#173b48' : '#091820'}!important;color:#edf8f5!important;box-shadow:${selected ? 'inset 3px 0 0 #b6ff38' : 'none'}!important;transform:none!important"><span class="sub-pos">${player.pos}</span><span class="sub-ovr">${player.overall}</span><span class="sub-name">${playerNameCell(player.name, player, { liveState, openCard: true, clubName })}</span><span class="sub-fatigue"><i><b style="width:${clamp(player.fatigue, 0, 100)}%"></b></i><em>${Math.round(player.fatigue)}%</em></span></button>`;
+  };
 
   const renderSubstitutionControls = () => {
     const live = getLiveState();

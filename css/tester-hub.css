@@ -189,7 +189,8 @@ body:has(.home-shell) .modal-card .close:hover {
   margin-top: 16px;
 }
 
-.home-tester-links button {
+.home-tester-links button,
+.home-tester-links .home-tester-link {
   border: 0;
   padding: 0;
   background: transparent;
@@ -201,7 +202,8 @@ body:has(.home-shell) .modal-card .close:hover {
   cursor: pointer;
 }
 
-.home-tester-links button:hover {
+.home-tester-links button:hover,
+.home-tester-links .home-tester-link:hover {
   color: #bbeb27;
 }
 

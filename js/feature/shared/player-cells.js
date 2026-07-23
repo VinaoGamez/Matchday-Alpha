@@ -1,4 +1,6 @@
 import { clamp } from '../../ui/dom.js';
+import { resolvePlayerId } from '../../engine/player-identity.js';
+import { isPenaltySavingSpecialist, isSetPieceSpecialist, setPieceSpecialistTitle } from '../../engine/player-generation.js';
 
 /** Campo vazio em tabelas de atributos. */
 export const outfield = value => value || '—';
@@ -137,25 +139,35 @@ export function createPlayerCells({
   };
 
   const specialistStar = player => {
-    const flag = player?.setPieceSpecialist;
-    if (!(flag === 'freeKick' || flag === 'penalty' || flag === 'both' || flag === true)) return '';
-    const title =
-      flag === 'both'
-        ? 'Especialista em faltas e pênaltis'
-        : flag === 'penalty'
-          ? 'Especialista em pênaltis'
-          : 'Especialista em faltas';
-    return `<span class="player-specialist-star" title="${title}" aria-label="${title}">★</span>`;
+    if (isSetPieceSpecialist(player)) {
+      const title = setPieceSpecialistTitle(player);
+      return `<span class="player-specialist-star" title="${title}" aria-label="${title}">★</span>`;
+    }
+    if (isPenaltySavingSpecialist(player)) {
+      const title = 'Especialista em defesa de pênaltis';
+      return `<span class="player-specialist-star" title="${title}" aria-label="${title}">★</span>`;
+    }
+    return '';
   };
 
   const playerNameCell = (
     name,
     player,
-    { prefix = '', liveState = null, allCompetitions = false, showLoan = false } = {},
+    { prefix = '', liveState = null, allCompetitions = false, showLoan = false, openCard = false, clubName = '' } = {},
   ) => {
     const loanLine = showLoan ? playerLoanLine(player) : '';
     const badges = playerStatusBadges(player, liveState, { allCompetitions, showLoan: false });
-    return `<b class="player-name-cell${loanLine ? ' has-loan' : ''}"><span class="player-name-line">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span class="player-name-text">${name}</span>${specialistStar(player)}${badges}</span>${loanLine}</b>`;
+    const playerId = resolvePlayerId(player) || '';
+    const escAttr = v =>
+      String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+    const cardAttrs =
+      openCard && playerId
+        ? ` role="button" tabindex="0" class="player-name-text is-card-trigger" data-open-player-card data-player-id="${escAttr(playerId)}"${clubName ? ` data-player-club="${escAttr(clubName)}"` : ''}`
+        : ' class="player-name-text"';
+    return `<b class="player-name-cell${loanLine ? ' has-loan' : ''}"><span class="player-name-line">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span${cardAttrs}>${name}</span>${specialistStar(player)}${badges}</span>${loanLine}</b>`;
   };
 
   return { playerNameCell, playerStatusBadges };

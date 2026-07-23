@@ -6,6 +6,9 @@
 import { ensurePlayerId } from './player-identity.js';
 import { ensureMarketFields } from './player-value.js';
 import { sanitizeSetPieceForDivision } from './player-generation.js';
+import { ensureRosterNationalities } from './player-nationality.js';
+import { ensureForeignPlayerNames } from './player-names.js';
+import { ensureCardVariantId } from './player-card-art.js';
 
 const WORKLOAD_DEFAULT = {
   minutesLast7Days: 0,
@@ -20,13 +23,20 @@ const WORKLOAD_DEFAULT = {
 const PLAYER_WORLD_KEYS = [
   'playerId',
   'name',
+  'nameCustomized',
+  'nameRenamedSeason',
+  'nameNationalityKey',
   'pos',
   'age',
   'overall',
   'potential',
   'height',
   'preferredFoot',
+  'nationality',
+  'nationalityIso',
+  'cardVariantId',
   'setPieceSpecialist',
+  'penaltySavingSpecialist',
   'personality',
   'number',
   'injuryProneness',
@@ -157,7 +167,10 @@ export function stampWorldPlayers(clubs, context = {}) {
         season: context.season,
       });
       if (sanitizeSetPieceForDivision(player, division)) setPieceRepaired += 1;
+      ensureCardVariantId(player);
     });
+    ensureRosterNationalities(club.roster, division);
+    ensureForeignPlayerNames(club.roster);
     seq += club.roster.length;
   });
   return setPieceRepaired;

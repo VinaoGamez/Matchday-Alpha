@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="css/calendar.css?v=20260719-notas-fix">
   <link rel="stylesheet" href="css/layout.css?v=20260720-next-match">
   <link rel="stylesheet" href="css/header-news.css?v=20260720-marquee">
-  <link rel="stylesheet" href="css/transfers.css?v=20260720-club-link">
+  <link rel="stylesheet" href="css/transfers.css?v=20260722-card-open">
   <!-- Engine themes & feature CSS (extracted from JS injects; order = cascade) -->
   <link rel="stylesheet" href="css/treatment-modal.css?v=20260717-css-mod">
   <link rel="stylesheet" href="css/live-opponent.css?v=20260720-board-hover">
@@ -29,6 +29,8 @@
   <link rel="stylesheet" href="css/menu-visual.css?v=20260717-css-mod">
   <link rel="stylesheet" href="css/theme-matchday.css?v=20260717-css-mod">
   <link rel="stylesheet" href="css/options-polish.css?v=20260717-css-mod">
+  <link rel="stylesheet" href="css/player-card-system.css?v=20260722-badge-art">
+  <link rel="stylesheet" href="css/player-card-modal.css?v=20260722-cards3">
   <link rel="stylesheet" href="css/scout.css?v=20260720-board-hover">
   <link rel="stylesheet" href="css/tables.css?v=20260720-blue-tables">
   <link rel="stylesheet" href="css/championship-spacing.css?v=20260720-blue-tables">
@@ -120,7 +122,7 @@
             <button type="button" data-roster-sort="name">JOGADOR</button>
             <button type="button" data-roster-sort="pos">POS</button>
             <button type="button" data-roster-sort="age">IDADE</button>
-            <button type="button" data-roster-sort="ovr">OVERALL</button>
+            <button type="button" data-roster-sort="ovr">OVR</button>
             <button type="button" data-roster-sort="height">ALTURA</button>
             <button type="button" data-roster-sort="foot">PÉ</button>
             <button type="button" data-roster-sort="personality">PERFIL</button>
@@ -340,6 +342,7 @@
           <div class="transfers-search-options">
             <label class="transfers-filter-check"><input id="transfersFilterListed" type="checkbox" /> Só mostrar jogadores à venda</label>
             <label class="transfers-filter-check"><input id="transfersFilterLoan" type="checkbox" /> Só disponíveis para empréstimo</label>
+            <label class="transfers-filter-check"><input id="transfersFilterSpecialist" type="checkbox" /> Só mostrar especialistas</label>
             <button id="transfersApplyFilters" type="button">PROCURAR</button>
             <span id="transfersLoanSlots" class="transfers-loan-slots" aria-live="polite"></span>
             <span id="transfersResultCount" class="transfers-result-count"></span>
@@ -447,29 +450,29 @@
     <section id="ranking" class="view national-ranking-view">
       <div class="title ranking-page-heading"><p>CLASSIFICAÇÃO NACIONAL DE CLUBES</p><h1>Ranking Nacional</h1></div>
       <div class="ranking-top-bar">
-        <div class="ranking-trophy-section">
-          <header><div><small>CONQUISTAS NACIONAIS</small><strong>Pontos para o clube campeão</strong></div></header>
-          <div class="ranking-trophies">
-            <article class="ranking-trophy trophy-a">
-              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-              <span><small>BRASILEIRÃO</small><strong>Série A</strong></span><b>40 <small>PTS</small></b>
-            </article>
-            <article class="ranking-trophy trophy-b">
-              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-              <span><small>BRASILEIRÃO</small><strong>Série B</strong></span><b>28 <small>PTS</small></b>
-            </article>
-            <article class="ranking-trophy trophy-c">
-              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-              <span><small>BRASILEIRÃO</small><strong>Série C</strong></span><b>20 <small>PTS</small></b>
-            </article>
-            <article class="ranking-trophy trophy-d">
-              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-              <span><small>BRASILEIRÃO</small><strong>Série D</strong></span><b>12 <small>PTS</small></b>
-            </article>
-            <article class="ranking-trophy trophy-cup">
-              <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
-              <span><small>MATA-MATA</small><strong>Copa do Brasil</strong></span><b>35 <small>PTS</small></b>
-            </article>
+      <div class="ranking-trophy-section">
+        <header><div><small>CONQUISTAS NACIONAIS</small><strong>Pontos para o clube campeão</strong></div></header>
+        <div class="ranking-trophies">
+          <article class="ranking-trophy trophy-a">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+            <span><small>BRASILEIRÃO</small><strong>Série A</strong></span><b>40 <small>PTS</small></b>
+          </article>
+          <article class="ranking-trophy trophy-b">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+            <span><small>BRASILEIRÃO</small><strong>Série B</strong></span><b>28 <small>PTS</small></b>
+          </article>
+          <article class="ranking-trophy trophy-c">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+            <span><small>BRASILEIRÃO</small><strong>Série C</strong></span><b>20 <small>PTS</small></b>
+          </article>
+          <article class="ranking-trophy trophy-d">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+            <span><small>BRASILEIRÃO</small><strong>Série D</strong></span><b>12 <small>PTS</small></b>
+          </article>
+          <article class="ranking-trophy trophy-cup">
+            <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 8h24v10c0 12-5 20-12 20s-12-8-12-20V8Z"/><path d="M20 14H10v5c0 8 5 13 13 13M44 14h10v5c0 8-5 13-13 13M32 38v9M24 55h16M27 47h10v8H27z"/></svg>
+            <span><small>MATA-MATA</small><strong>Copa do Brasil</strong></span><b>35 <small>PTS</small></b>
+          </article>
           </div>
         </div>
         <div class="ranking-club-search" role="search">
@@ -694,7 +697,8 @@
   #squad .roster-filters{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:end;gap:10px;padding:10px 12px;border-bottom:1px solid #234650;background:#0d222b}
   #squad .roster-filters label{display:grid;gap:4px;min-width:120px;color:#75cde3;font:700 10px 'DM Sans',sans-serif;letter-spacing:.45px}
   #squad .roster-filters select{min-width:120px;padding:6px 8px;border:1px solid #315d69;border-radius:4px;background:#0c1e28;color:#edf8f5;font:600 12px 'DM Sans',sans-serif}
-  .roster-head.roster-expanded,.player-row.roster-expanded{width:max-content;min-width:100%;grid-template-columns:minmax(168px,220px) 52px 52px 84px 72px 78px 110px 48px 48px 48px 48px 48px 48px 48px 48px 56px 64px 64px 64px 48px 110px;gap:6px}
+  .roster-head.roster-expanded,.player-row.roster-expanded{width:max-content;min-width:100%;grid-template-columns:minmax(200px,1.4fr) 52px 52px 52px 72px 78px 110px 48px 48px 48px 48px 48px 48px 48px 48px 56px 64px 64px 64px 48px 110px;gap:6px}
+  #squad .roster-head>button[data-roster-sort="ovr"],#squad .player-row>.roster-col-ovr{min-width:0;padding-inline:2px}
   #squad .roster-ovr{display:inline-flex;align-items:center;justify-content:center;gap:4px;font-weight:700}
   #squad .roster-ovr-mark{display:inline-block;font:800 13px/1 'DM Sans',sans-serif;font-style:normal;letter-spacing:0}
   #squad .roster-ovr-mark.is-up{color:#5fdc7a}
