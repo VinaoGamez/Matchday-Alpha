@@ -121,6 +121,99 @@ export const STADIUM_SECTOR_DEFS = {
   },
 };
 
+/** Preço base por setor (R$) — nacional / copas. */
+export const TICKET_SECTOR_PRICE_RANGE = {
+  popular: { national: { min: 12, max: 35 }, cups: { min: 18, max: 45 } },
+  stands: { national: { min: 18, max: 50 }, cups: { min: 25, max: 65 } },
+  seats: { national: { min: 35, max: 90 }, cups: { min: 45, max: 120 } },
+  boxes: { national: { min: 80, max: 250 }, cups: { min: 100, max: 320 } },
+  vip: { national: { min: 150, max: 450 }, cups: { min: 180, max: 550 } },
+};
+
+/** Elasticidade da demanda por setor (0–1; menor = mais sensível ao preço). */
+export const SECTOR_PRICE_ELASTICITY = {
+  popular: 0.92,
+  stands: 0.78,
+  seats: 0.62,
+  boxes: 0.48,
+  vip: 0.38,
+};
+
+const TICKET_SECTOR_IDS = ['popular', 'stands', 'seats', 'boxes', 'vip'];
+
+export function defaultSectorPricesForChannel(channel) {
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  const out = {};
+  for (const id of TICKET_SECTOR_IDS) {
+    const range = TICKET_SECTOR_PRICE_RANGE[id]?.[ch];
+    if (!range) continue;
+    out[id] = Math.round((range.min + range.max) / 2);
+  }
+  return out;
+}
+
+export function clampSectorTicketPrice(sectorId, channel, value) {
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  const range = TICKET_SECTOR_PRICE_RANGE[sectorId]?.[ch];
+  if (!range) return Math.max(1, Math.round(Number(value) || 0));
+  return Math.max(range.min, Math.min(range.max, Math.round(Number(value) || range.min)));
+}
+
+/** Migra saves legados (número único) para preço por setor. */
+export function normalizeTicketPrices(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const out = { national: {}, cups: {} };
+  for (const channel of ['national', 'cups']) {
+    const val = src[channel];
+    if (typeof val === 'number' && Number.isFinite(val)) {
+      const defaults = defaultSectorPricesForChannel(channel);
+      const ratio = val / (defaults.popular || 24);
+      for (const id of TICKET_SECTOR_IDS) {
+        out[channel][id] = clampSectorTicketPrice(id, channel, (defaults[id] || val) * ratio);
+      }
+      continue;
+    }
+    if (val && typeof val === 'object') {
+      const defaults = defaultSectorPricesForChannel(channel);
+      for (const id of TICKET_SECTOR_IDS) {
+        out[channel][id] = clampSectorTicketPrice(id, channel, val[id] ?? defaults[id]);
+      }
+      continue;
+    }
+    Object.assign(out[channel], defaultSectorPricesForChannel(channel));
+  }
+  return out;
+}
+
+export function getSectorTicketPrice(ticketPrices, channel, sectorId) {
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  const normalized = normalizeTicketPrices(ticketPrices);
+  const fallback = defaultSectorPricesForChannel(ch)[sectorId] ?? 24;
+  return normalized[ch]?.[sectorId] ?? fallback;
+}
+
+/** Ticket médio ponderado pelos setores ativos (para IA / estimativas). */
+export function weightedAverageTicketPrice(club, channel) {
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  const division = club?.division || 'A';
+  if (club?.stadiumSectors && typeof club.stadiumSectors === 'object') {
+    const { rows } = computeSectorBreakdown(club, division);
+    let weighted = 0;
+    let cap = 0;
+    for (const row of rows) {
+      const c = Math.max(0, Math.round(Number(row.seats) || 0));
+      if (c <= 0) continue;
+      weighted += c * getSectorTicketPrice(club.ticketPrices, ch, row.id);
+      cap += c;
+    }
+    if (cap > 0) return Math.round(weighted / cap);
+  }
+  const prices = normalizeTicketPrices(club?.ticketPrices);
+  const vals = TICKET_SECTOR_IDS.map(id => prices[ch]?.[id]).filter(v => Number.isFinite(v));
+  if (!vals.length) return ch === 'cups' ? 32 : 24;
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+}
+
 export const STRUCTURE_UPGRADE = {
   id: 'structure',
   label: 'Estrutura do estádio',
@@ -388,23 +481,18 @@ export function estimateGateReceiptSectors(
     division = 'A',
     game = null,
     gateScale = 0.28,
-    ticketPrices = {},
-    ticketRanges = {},
+    ticketPrices = null,
     environment = 60,
     support = 60,
   } = {},
 ) {
-  const resolvedChannel = channel;
-  const range = ticketRanges[resolvedChannel] || { min: 15, max: 90, default: 22 };
-  const priceRaw = ticketPrices[resolvedChannel] ?? range.default;
-  const price = Math.max(range.min, Math.min(range.max, Math.round(Number(priceRaw) || range.default)));
-  const priceSpan = Math.max(1, range.max - range.min);
-  const priceFactor = 1 - ((price - range.min) / priceSpan) * 0.46;
+  const resolvedChannel = channel === 'cups' ? 'cups' : 'national';
+  const prices = normalizeTicketPrices(ticketPrices ?? club?.ticketPrices);
   const env = Math.max(0, Math.min(100, Number(environment ?? club?.environment) || 60));
   const sup = Math.max(0, Math.min(100, Number(support ?? club?.support) || 60));
   const envBoost = (env - 55) / 160;
   const supportBoost = (sup - 50) / 200;
-  const baseFill = Math.max(0.28, Math.min(0.96, 0.55 * priceFactor + envBoost + supportBoost));
+  const fillBase = Math.max(0.28, Math.min(0.96, 0.55 + envBoost + supportBoost));
 
   const { total, rows } = computeSectorBreakdown(club, division);
   const cap = Math.max(1000, total || 1000);
@@ -413,7 +501,9 @@ export function estimateGateReceiptSectors(
   if (game) {
     const comp = String(game.competition || '');
     if (comp.includes('COPA') || comp.includes('Copa')) knockoutBoost = 0.12;
-    if (String(game.phase || '').match(/FINAL|SEMI|QUARTAS|OITAVAS/i)) knockoutBoost = Math.max(knockoutBoost, 0.18);
+    if (String(game.phase || '').match(/FINAL|SEMI|QUARTAS|OITAVAS/i)) {
+      knockoutBoost = Math.max(knockoutBoost, 0.18);
+    }
   } else if (resolvedChannel === 'cups') knockoutBoost = 0.05;
 
   let attendance = 0;
@@ -422,21 +512,34 @@ export function estimateGateReceiptSectors(
 
   for (const row of rows) {
     const def = STADIUM_SECTOR_DEFS[row.id];
-    let fill = baseFill * (def?.fillBias ?? 1);
+    const sectorBase = getSectorTicketPrice(prices, resolvedChannel, row.id);
+    const range = TICKET_SECTOR_PRICE_RANGE[row.id]?.[resolvedChannel];
+    const mid = range ? (range.min + range.max) / 2 : sectorBase;
+    const priceSpan = range ? Math.max(1, range.max - range.min) : 1;
+    const priceFactor = 1 - ((sectorBase - mid) / priceSpan) * (1 - (SECTOR_PRICE_ELASTICITY[row.id] ?? 0.7));
+    let fill = fillBase * priceFactor * (def?.fillBias ?? 1);
     if (row.id === 'vip' || row.id === 'boxes') fill *= 1 + knockoutBoost;
     fill = Math.max(0.22, Math.min(0.98, fill));
     const sectorAttendance = Math.round(row.seats * fill);
-    const sectorRevenue = Math.round(sectorAttendance * price * (def?.priceMultiplier ?? 1) * gateScale);
+    const sectorRevenue = Math.round(sectorAttendance * sectorBase * gateScale);
     attendance += sectorAttendance;
     revenue += sectorRevenue;
-    sectorDetails.push({ ...row, fillRate: fill, attendance: sectorAttendance, revenue: sectorRevenue });
+    sectorDetails.push({
+      ...row,
+      fillRate: fill,
+      attendance: sectorAttendance,
+      revenue: sectorRevenue,
+      price: sectorBase,
+    });
   }
+
+  const avgTicket = attendance > 0 ? Math.round(revenue / (attendance * gateScale)) : weightedAverageTicketPrice(club, resolvedChannel);
 
   return {
     channel: resolvedChannel,
     attendance,
-    fillRate: cap > 0 ? attendance / cap : baseFill,
-    price,
+    fillRate: cap > 0 ? attendance / cap : fillBase,
+    price: avgTicket,
     revenue,
     capacity: cap,
     environment: env,
@@ -457,6 +560,56 @@ export function maxAchievableStadiumCapacity(division = 'A') {
     club.stadiumSectors[sectorId] = effectiveSectorMax(club, div, sectorId);
   }
   return computeSectorBreakdown(club, div).total;
+}
+
+/** Snapshot do estádio para save de temporada / carreira. */
+export function serializeUserStadium(club) {
+  if (!club || typeof club !== 'object') return null;
+  return {
+    name: club.stadiumName || 'Estádio Solar',
+    capacity: club.stadiumCapacity,
+    sectors: { ...(club.stadiumSectors || {}) },
+    investments: getStadiumInvestments(club),
+    sectorModel: club.stadiumSectorModel ?? STADIUM_SECTOR_MODEL,
+    structure: club.stadiumStructure ?? 0,
+    pitchLevel: club.pitchLevel ?? 0,
+    pitchCondition: club.pitchCondition || 'average',
+    popularBaseline: Number.isFinite(Number(club.stadiumPopularBaseline))
+      ? Number(club.stadiumPopularBaseline)
+      : null,
+    ticketPrices: club.ticketPrices ? normalizeTicketPrices(club.ticketPrices) : null,
+    namingRights: club.namingRights ? { ...club.namingRights } : null,
+  };
+}
+
+/** Restaura snapshot do estádio (save de temporada ou carreira). */
+export function applySavedUserStadium(club, savedStadium) {
+  if (!club || !savedStadium || typeof savedStadium !== 'object') return false;
+  if (Number.isFinite(Number(savedStadium.capacity))) club.stadiumCapacity = Number(savedStadium.capacity);
+  if (savedStadium.sectors && typeof savedStadium.sectors === 'object') {
+    club.stadiumSectors = { ...savedStadium.sectors };
+  }
+  if (Number.isFinite(Number(savedStadium.investments))) {
+    club.stadiumInvestments = Number(savedStadium.investments);
+  }
+  if (Number.isFinite(Number(savedStadium.sectorModel))) {
+    club.stadiumSectorModel = Number(savedStadium.sectorModel);
+  }
+  if (Number.isFinite(Number(savedStadium.capacityLevel))) {
+    club.stadiumCapacityLevel = Number(savedStadium.capacityLevel);
+  }
+  if (savedStadium.name) club.stadiumName = savedStadium.name;
+  if (savedStadium.ticketPrices) club.ticketPrices = normalizeTicketPrices(savedStadium.ticketPrices);
+  if (Number.isFinite(Number(savedStadium.structure))) club.stadiumStructure = Number(savedStadium.structure);
+  if (Number.isFinite(Number(savedStadium.pitchLevel))) club.pitchLevel = Number(savedStadium.pitchLevel);
+  if (savedStadium.pitchCondition) club.pitchCondition = savedStadium.pitchCondition;
+  if (Number.isFinite(Number(savedStadium.popularBaseline))) {
+    club.stadiumPopularBaseline = Number(savedStadium.popularBaseline);
+  }
+  if (savedStadium.namingRights && typeof savedStadium.namingRights === 'object') {
+    club.namingRights = { ...savedStadium.namingRights };
+  }
+  return true;
 }
 
 DIVISION_CAPACITY_CAP = {

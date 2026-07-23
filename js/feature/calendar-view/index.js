@@ -5,6 +5,7 @@ import { crestWithHumanHtml } from '../../ui/human-badge.js';
 import { formatMatchRating as defaultFormatMatchRating } from '../../engine/player-match-stats.js';
 import { formatMatchMinuteLabel } from '../../engine/match-clock.js';
 import { isDateInTransferWindow, getTransferWindowPhase } from '../../engine/transfers.js';
+import { sortCalendarCompetitionCodes, calendarCompetitionLabel } from '../../engine/season-calendar-mold.js';
 import { tipKey, buildPlayerTipIndex, ownGoalTipCount } from './match-report-tips.js';
 import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
 import ownGoalBallUrl from '../../../assets/ui/goal-ball-own.png?url';
@@ -27,6 +28,7 @@ export function createCalendarViewFeature(deps) {
     getChampionshipFixtures,
     getCopaFixtures,
     getCalendarGames,
+    getCalendarCompetitionTags,
     getSeasonCalendarFixtures,
     rebuildCalendarGames,
     getRestConflictCount,
@@ -731,6 +733,17 @@ export function createCalendarViewFeature(deps) {
     $('#calendarDayAgenda').innerHTML = gameRows + trainingRows + marketRows + freeRow;
   };
 
+  const calendarCompetitionTagMarkup = key => {
+    const tags = typeof getCalendarCompetitionTags === 'function' ? getCalendarCompetitionTags().get(key) : null;
+    if (!tags?.size) return '';
+    return `<span class="calendar-comp-tags">${sortCalendarCompetitionCodes([...tags])
+      .map(code => {
+        const label = calendarCompetitionLabel(code);
+        return `<span class="calendar-comp-tag" data-code="${code}" data-tip="${escapeAgenda(label)}" aria-label="${escapeAgenda(label)}">${code}</span>`;
+      })
+      .join('')}</span>`;
+  };
+
   const renderCalendar = () => {
     const userClub = getUserClub();
     const currentRound = getCurrentRound();
@@ -764,7 +777,6 @@ export function createCalendarViewFeature(deps) {
       const userGame = games.find(isUserFixture);
       const pendingUserGame = userGame && !isFixtureCompleted(userGame);
       const atHome = userGame?.home === userClub;
-      const cupGame = games.find(game => game.competition === 'COPA DO BRASIL');
       const activities = trainingMap.get(key) || [];
       const selected = key === calendarKey(selectedCalendarDate);
       const outside = date.getMonth() !== month || date.getFullYear() !== careerSeason;
@@ -773,18 +785,18 @@ export function createCalendarViewFeature(deps) {
       const inPlanningWeek = date >= planWeekStart && date <= planWeekEnd;
       const inTransferWindow = !outside && isDateInTransferWindow(date);
       const transferPhase = inTransferWindow ? getTransferWindowPhase(date) : null;
+      const isUserCup = userGame?.competition === 'COPA DO BRASIL';
       const eventText = userGame
-        ? (userGame.competition === 'COPA DO BRASIL' ? `COPA · ${userGame.phase}` : `${atHome ? 'CASA' : 'FORA'} · R${userGame.round}`) +
-          (userScore ? ` · ${userScore}` : '')
-        : cupGame
-          ? `COPA · ${cupGame.phase}`
-          : games.length
-            ? `${games.length} JOGOS · R${games[0].round}`
-            : '';
+        ? isUserCup
+          ? userScore || ''
+          : `${atHome ? 'CASA' : 'FORA'} · R${userGame.round}${userScore ? ` · ${userScore}` : ''}`
+        : '';
       const transferChip = inTransferWindow
         ? `<span class="transfer-window-event ${transferPhase?.isDeadlineWeek ? 'is-deadline' : ''}">${transferPhase?.isDeadlineDay ? 'DEADLINE' : transferPhase?.isDeadlineWeek ? 'JANELA · DIA' : 'JANELA'}</span>`
         : '';
-      return `<button type="button" class="calendar-day ${outside ? 'outside' : ''} ${selected ? 'selected' : ''} ${inPlanningWeek ? 'planning-week' : ''} ${inTransferWindow ? 'transfer-window' : ''} ${transferPhase?.isDeadlineWeek ? 'transfer-deadline' : ''} ${transferPhase?.isDeadlineDay ? 'transfer-deadline-day' : ''} ${key === careerDayKey ? 'career-today' : ''} ${pendingUserGame && key === careerDayKey ? 'matchday-stop' : ''} ${userGame ? (atHome ? 'user-home' : 'user-away') : ''} ${userCompleted ? 'completed-user' : ''} ${key === currentRoundKey ? 'current-round' : ''}" data-calendar-date="${key}" aria-pressed="${selected}"><time datetime="${key}">${date.getDate()}</time><span class="calendar-day-events">${eventText ? `<span class="${cupGame ? 'cup-match' : userGame ? 'user-match' : ''} ${userScore ? 'completed-score' : ''}">${eventText}</span>` : ''}${transferChip}${activities.map(activity => `<span class="training-event">◆ ${activity.label}</span>`).join('')}</span></button>`;
+      const compTags = calendarCompetitionTagMarkup(key);
+      const userEventClass = userGame && !isUserCup ? (atHome ? 'user-match' : 'user-match user-match-away') : userScore ? 'completed-score' : '';
+      return `<button type="button" class="calendar-day ${outside ? 'outside' : ''} ${selected ? 'selected' : ''} ${inPlanningWeek ? 'planning-week' : ''} ${inTransferWindow ? 'transfer-window' : ''} ${transferPhase?.isDeadlineWeek ? 'transfer-deadline' : ''} ${transferPhase?.isDeadlineDay ? 'transfer-deadline-day' : ''} ${key === careerDayKey ? 'career-today' : ''} ${pendingUserGame && key === careerDayKey ? 'matchday-stop' : ''} ${userGame ? (atHome ? 'user-home' : 'user-away') : ''} ${userCompleted ? 'completed-user' : ''} ${key === currentRoundKey ? 'current-round' : ''}" data-calendar-date="${key}" aria-pressed="${selected}"><time datetime="${key}">${date.getDate()}</time><span class="calendar-day-events">${compTags}${eventText ? `<span class="${userEventClass}">${eventText}</span>` : ''}${transferChip}${activities.map(activity => `<span class="training-event">◆ ${activity.label}</span>`).join('')}</span></button>`;
     }).join('');
     renderTrainingRules();
     renderCalendarRoutine();
@@ -830,7 +842,7 @@ export function createCalendarViewFeature(deps) {
     );
     $('.calendar-legend').insertAdjacentHTML(
       'beforeend',
-      '<span><i class="cup"></i>COPA DO BRASIL</span><span><i class="transfer-window"></i>JANELA</span><span><i class="transfer-deadline"></i>DEADLINE</span>',
+      '<span><i class="comp-bsa"></i>BSA · SÉRIE A</span><span><i class="comp-bsb"></i>BSB · SÉRIE B</span><span><i class="comp-bsc"></i>BSC · SÉRIE C</span><span><i class="comp-bsd"></i>BSD · SÉRIE D</span><span><i class="cup"></i>CBR · COPA</span><span><i class="transfer-window"></i>JANELA</span><span><i class="transfer-deadline"></i>DEADLINE</span>',
     );
     $('.calendar-sidebar').insertAdjacentHTML(
       'beforeend',

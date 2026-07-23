@@ -262,6 +262,13 @@ a.office-sponsor-logo.is-link:hover,a.office-sponsor-logo.is-link:focus-visible{
 .office-cashflow-balance b{color:#b6ff38;font:700 24px Barlow Condensed,sans-serif;line-height:1;white-space:nowrap}
 .office-cashflow-empty{margin:0;padding:14px 12px;border:1px dashed #234650;border-radius:6px;color:#7fa8b0;font-size:11px;line-height:1.45;background:#0b1d25}
 .economy-investments .economy-invest-head,.economy-investments .economy-invest-row,.stadium-upgrades .economy-invest-head,.stadium-upgrades .economy-invest-row{display:grid;grid-template-columns:minmax(0,1fr) 58px 108px;gap:14px;align-items:center}
+.stadium-ticket-group{margin-bottom:8px}
+.stadium-ticket-group:last-child{margin-bottom:0}
+.stadium-ticket-group-head{padding:12px 2px 6px;border-bottom:1px solid #234650;margin-bottom:2px}
+.stadium-ticket-group-head b{display:block;color:#2abee9;font:700 13px Barlow Condensed,sans-serif;letter-spacing:.3px}
+.stadium-ticket-group-head small{display:block;margin-top:4px;color:#9eb6b8;font-size:11px;line-height:1.35;max-width:48ch}
+.stadium-ticket-group .stadium-ticket-row{min-height:56px;padding:10px 2px}
+.stadium-ticket-group .stadium-ticket-row b{font-size:15px}
 .stadium-ticket-head,.stadium-ticket-row{display:grid;grid-template-columns:minmax(0,1.2fr) 80px 120px;gap:12px;align-items:center}
 .economy-invest-head,.stadium-ticket-head{padding:0 2px 10px;border-bottom:1px solid #234650;margin-bottom:4px}
 .economy-invest-head span,.stadium-ticket-head span{color:#7fa8b0;font:700 10px DM Sans,sans-serif;letter-spacing:.4px}

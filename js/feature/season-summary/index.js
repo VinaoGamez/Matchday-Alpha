@@ -1,4 +1,4 @@
-﻿import { MODULE_VERSIONS } from '../../core/constants.js';
+import { MODULE_VERSIONS } from '../../core/constants.js';
 import { seasonGoalGauge } from './goal-gauge.js';
 
 const LEAGUE_ORDER = [
@@ -266,12 +266,13 @@ export function createSeasonSummaryFeature(deps) {
     return `<article class="season-movement-card ${type}"><h4><i>${icon}</i>${title}</h4><div class="season-movement-list">${items}</div></article>`;
   };
 
-  const rewardsCard = ({ total, lines, budgetAfter, formatBudget }) => {
+  const rewardsCard = ({ total, lines, budgetAfter, formatBudget, prizeCredited = true }) => {
     if (!total) {
       return '<div class="season-rewards"><div class="season-rewards-total"><span>Premiação</span><strong>—</strong></div><p style="margin:0;color:#9eb6b8;font-size:11px">Nenhuma premiação registrada nesta temporada.</p></div>';
     }
+    const totalLabel = prizeCredited ? 'Total creditado' : 'Total da premiação';
     return `<div class="season-rewards">
-      <div class="season-rewards-total"><span>Total creditado</span><strong>+ ${formatBudget(total)}</strong></div>
+      <div class="season-rewards-total"><span>${totalLabel}</span><strong>+ ${formatBudget(total)}</strong></div>
       ${lines.map(line => `<div class="season-reward-line"><span>${line.label}</span><b>+ ${formatBudget(line.amount)}</b></div>`).join('')}
       <div class="season-reward-line" style="margin-top:6px;padding-top:8px;border-top:1px solid #234b55"><span>Orçamento do clube</span><b>${formatBudget(budgetAfter)}</b></div>
     </div>`;

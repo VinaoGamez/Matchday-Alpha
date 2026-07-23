@@ -2,6 +2,7 @@
  * Impacto econômico do estádio v2 (setores + naming) vs modelo legado.
  * Uso: node scripts/stadium-economy-impact-sim.mjs
  */
+import { writeFileSync } from 'node:fs';
 import {
   ensureStadium,
   estimateGateReceipt,
@@ -30,6 +31,12 @@ import {
   effectiveSectorMax,
   STADIUM_SECTOR_MODEL,
   DIVISION_SECTOR_ALLOW,
+  STADIUM_SECTOR_DEFS,
+  normalizeTicketPrices,
+  getSectorTicketPrice,
+  defaultSectorPricesForChannel,
+  estimateGateReceiptSectors,
+  TICKET_SECTOR_PRICE_RANGE,
 } from '../js/engine/stadium-sectors.js';
 import {
   estimateNamingPerRound,
@@ -44,6 +51,142 @@ const rnd = n => Math.round(n);
 
 const ROUNDS = { A: 38, B: 38, C: 38, D: 22 };
 const HOME_SHARE = 0.5;
+const TICKET_STEP = 5;
+
+/** Modelo antigo (pré por-setor): preço único × priceMultiplier por setor. */
+function flatSectorGateReceipt(club, division, channel = 'national') {
+  const resolvedChannel = channel === 'cups' ? 'cups' : 'national';
+  const range = TICKET_PRICE_RANGE[resolvedChannel] || TICKET_PRICE_RANGE.national;
+  const raw = club.ticketPrices?.[resolvedChannel];
+  const basePrice =
+    typeof raw === 'number'
+      ? Math.max(range.min, Math.min(range.max, Math.round(raw)))
+      : getSectorTicketPrice(club.ticketPrices, resolvedChannel, 'popular');
+  const priceSpan = Math.max(1, range.max - range.min);
+  const priceFactor = 1 - ((basePrice - range.min) / priceSpan) * 0.46;
+  const env = Math.max(0, Math.min(100, Number(club.environment) || 60));
+  const sup = Math.max(0, Math.min(100, Number(club.support) || 60));
+  const envBoost = (env - 55) / 160;
+  const supportBoost = (sup - 50) / 200;
+  const baseFill = Math.max(0.28, Math.min(0.96, 0.55 * priceFactor + envBoost + supportBoost));
+
+  const { total, rows } = computeSectorBreakdown(club, division);
+  const cap = Math.max(1000, total || 1000);
+  let attendance = 0;
+  let revenue = 0;
+  const sectorDetails = [];
+
+  for (const row of rows) {
+    const def = STADIUM_SECTOR_DEFS[row.id];
+    let fill = baseFill * (def?.fillBias ?? 1);
+    fill = Math.max(0.22, Math.min(0.98, fill));
+    const sectorAttendance = Math.round(row.seats * fill);
+    const sectorRevenue = Math.round(sectorAttendance * basePrice * (def?.priceMultiplier ?? 1) * GATE_REVENUE_SCALE);
+    attendance += sectorAttendance;
+    revenue += sectorRevenue;
+    sectorDetails.push({ id: row.id, attendance: sectorAttendance, revenue: sectorRevenue, price: basePrice });
+  }
+
+  return {
+    channel: resolvedChannel,
+    attendance,
+    fillRate: cap > 0 ? attendance / cap : baseFill,
+    price: basePrice,
+    revenue,
+    capacity: cap,
+    sectors: sectorDetails,
+  };
+}
+
+function cloneClubProfile(buildFn, division = 'A', opts = {}) {
+  const club = baseClub(division, opts);
+  buildFn(club, division);
+  ensureStadium(club, division);
+  return club;
+}
+
+function comparePricingModels(club, division) {
+  const nationalFlat = flatSectorGateReceipt(club, division, 'national');
+  const nationalNew = estimateGateReceipt(club, { channel: 'national', division });
+  const cupsFlat = flatSectorGateReceipt(club, division, 'cups');
+  const cupsNew = estimateGateReceipt(club, { channel: 'cups', division });
+  const ops = estimateStadiumOpsBill(club, division);
+  const flatSeasonGate = seasonGateMixFlat(club, division);
+  const newSeasonGate = seasonGateMix(club, division);
+  const rounds = ROUNDS[division] || 38;
+
+  return {
+    capacity: club.stadiumCapacity,
+    structure: club.stadiumStructure,
+    investments: club.stadiumInvestments,
+    national: {
+      flatGate: nationalFlat.revenue,
+      newGate: nationalNew.revenue,
+      flatFill: nationalFlat.fillRate,
+      newFill: nationalNew.fillRate,
+      flatTicket: nationalFlat.price,
+      newTicket: nationalNew.price,
+      deltaGate: nationalNew.revenue - nationalFlat.revenue,
+      deltaPct: nationalFlat.revenue > 0 ? ((nationalNew.revenue / nationalFlat.revenue - 1) * 100) : 0,
+    },
+    cups: {
+      flatGate: cupsFlat.revenue,
+      newGate: cupsNew.revenue,
+      flatFill: cupsFlat.fillRate,
+      newFill: cupsNew.fillRate,
+      flatTicket: cupsFlat.price,
+      newTicket: cupsNew.price,
+      deltaGate: cupsNew.revenue - cupsFlat.revenue,
+      deltaPct: cupsFlat.revenue > 0 ? ((cupsNew.revenue / cupsFlat.revenue - 1) * 100) : 0,
+    },
+    season: {
+      flatGate: flatSeasonGate,
+      newGate: newSeasonGate,
+      deltaGate: newSeasonGate - flatSeasonGate,
+      deltaPct: flatSeasonGate > 0 ? ((newSeasonGate / flatSeasonGate - 1) * 100) : 0,
+      flatNet: flatSeasonGate - ops * rounds,
+      newNet: newSeasonGate - ops * rounds,
+      deltaNet: newSeasonGate - flatSeasonGate,
+    },
+    ticketPrices: normalizeTicketPrices(club.ticketPrices),
+  };
+}
+
+function seasonGateMix(club, division) {
+  const national = estimateGateReceipt(club, { channel: 'national', division });
+  const cups = estimateGateReceipt(club, { channel: 'cups', division });
+  const homeGames = Math.round((ROUNDS[division] || 38) * HOME_SHARE);
+  const cupHomeShare = division === 'D' ? 0.35 : 0.12;
+  const leagueHomes = Math.round(homeGames * (1 - cupHomeShare));
+  const cupHomes = homeGames - leagueHomes;
+  return national.revenue * leagueHomes + cups.revenue * cupHomes;
+}
+
+function seasonGateMixFlat(club, division) {
+  const national = flatSectorGateReceipt(club, division, 'national');
+  const cups = flatSectorGateReceipt(club, division, 'cups');
+  const homeGames = Math.round((ROUNDS[division] || 38) * HOME_SHARE);
+  const cupHomeShare = division === 'D' ? 0.35 : 0.12;
+  const leagueHomes = Math.round(homeGames * (1 - cupHomeShare));
+  const cupHomes = homeGames - leagueHomes;
+  return national.revenue * leagueHomes + cups.revenue * cupHomes;
+}
+
+function setAllSectorPrices(club, channel, value) {
+  ensureStadium(club, club.division || 'A');
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  const normalized = normalizeTicketPrices(club.ticketPrices);
+  for (const id of Object.keys(TICKET_SECTOR_PRICE_RANGE)) {
+    normalized[ch][id] = value;
+  }
+  club.ticketPrices = normalized;
+}
+
+function setSectorPrice(club, channel, sectorId, value) {
+  ensureStadium(club, club.division || 'A');
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  club.ticketPrices[ch][sectorId] = value;
+}
 
 const baseClub = (division, { environment = 70, support = 70, ticketNational = 22, ticketCups = 36 } = {}) => ({
   name: 'Sim FC',
@@ -680,4 +823,385 @@ console.log('\n=== Bilheteria interfere quanto no jogo? (start vs max, Série A)
   }
 }
 
-console.log('\n— Fim das simulações —\n');
+function cmpPct(a, b) {
+  if (!b) return '—';
+  const d = ((a / b - 1) * 100).toFixed(1);
+  return `${d >= 0 ? '+' : ''}${d}%`;
+}
+
+console.log('\n— Fim das simulações base —\n');
+
+// ── 10) NOVO: flat (preço único × multiplicador) vs por-setor ──
+console.log('\n=== IMPACTO DA MUDANÇA: preço flat vs por-setor ===');
+console.log('(Mesmo estádio · env/torcida 70 · save legado R$22/36 migrado para defaults por setor)\n');
+
+const pricingCompareRows = [];
+const pricingCompareData = [];
+
+for (const p of PROFILES_V2) {
+  for (const div of ['A', 'B']) {
+    if (p.id === 'arena' && div === 'B') continue;
+    const club = cloneClubProfile(p.build.bind(p), div);
+    const cmp = comparePricingModels(club, div);
+    pricingCompareData.push({ perfil: p.label, division: div, ...cmp });
+    pricingCompareRows.push({
+      perfil: `${p.label} (${div})`,
+      cap: cmp.capacity.toLocaleString('pt-BR'),
+      gateNatFlat: fmt(cmp.national.flatGate),
+      gateNatNew: fmt(cmp.national.newGate),
+      deltaNat: `${cmp.national.deltaPct >= 0 ? '+' : ''}${cmp.national.deltaPct.toFixed(1)}%`,
+      gateTempFlat: fmt(cmp.season.flatGate),
+      gateTempNew: fmt(cmp.season.newGate),
+      deltaTemp: `${cmp.season.deltaPct >= 0 ? '+' : ''}${cmp.season.deltaPct.toFixed(1)}%`,
+      liqDelta: fmt(cmp.season.deltaNet),
+    });
+  }
+}
+
+printTable('Flat vs por-setor — gate por jogo e temporada', pricingCompareRows, [
+  { key: 'perfil', label: 'Perfil' },
+  { key: 'cap', label: 'Cap.' },
+  { key: 'gateNatFlat', label: 'Nat. flat' },
+  { key: 'gateNatNew', label: 'Nat. novo' },
+  { key: 'deltaNat', label: 'Δ nat.' },
+  { key: 'gateTempFlat', label: 'Gate temp flat' },
+  { key: 'gateTempNew', label: 'Gate temp novo' },
+  { key: 'deltaTemp', label: 'Δ temp.' },
+  { key: 'liqDelta', label: 'Δ líq. estádio' },
+]);
+
+// ── 11) Breakdown por setor (arena A) ──
+console.log('\n=== Breakdown por setor — Arena máxima Série A ===\n');
+{
+  const club = cloneClubProfile(PROFILES_V2.find(x => x.id === 'arena').build, 'A');
+  const flat = flatSectorGateReceipt(club, 'A', 'national');
+  const neu = estimateGateReceipt(club, { channel: 'national', division: 'A' });
+  const prices = normalizeTicketPrices(club.ticketPrices);
+  console.log('Preços default migrados (Nacional):');
+  for (const id of Object.keys(TICKET_SECTOR_PRICE_RANGE)) {
+    console.log(`  • ${STADIUM_SECTOR_DEFS[id]?.shortLabel || id}: R$ ${prices.national[id]}`);
+  }
+  console.log('');
+  console.log(
+    `${'Setor'.padEnd(12)} ${'Lugares'.padStart(8)} ${'Preço'.padStart(8)} ${'Flat gate'.padStart(12)} ${'Novo gate'.padStart(12)} ${'Δ'.padStart(8)}`,
+  );
+  for (const row of neu.sectors || []) {
+    const flatRow = flat.sectors?.find(s => s.id === row.id);
+    const flatRev = flatRow?.revenue || 0;
+    const delta = row.revenue - flatRev;
+    const deltaPct = flatRev > 0 ? ((delta / flatRev) * 100).toFixed(0) : '—';
+    console.log(
+      `${(STADIUM_SECTOR_DEFS[row.id]?.shortLabel || row.id).padEnd(12)} ${String(row.seats).padStart(8)} ${String(row.price ?? prices.national[row.id]).padStart(8)} ${fmt(flatRev).padStart(12)} ${fmt(row.revenue).padStart(12)} ${((delta >= 0 ? '+' : '') + deltaPct + '%').padStart(8)}`,
+    );
+  }
+  console.log(
+    `\nTotal/jogo: flat ${fmt(flat.revenue)} → novo ${fmt(neu.revenue)} (${cmpPct(neu.revenue, flat.revenue)}) | Lotação: ${Math.round(flat.fillRate * 100)}% → ${Math.round(neu.fillRate * 100)}%`,
+  );
+}
+
+// ── 12) Sensibilidade por setor (mid A) ──
+console.log('\n=== Sensibilidade — ajuste de preço por setor (Médio · Série A · Nacional) ===\n');
+{
+  const baseMid = cloneClubProfile(PROFILES_V2.find(x => x.id === 'mid').build, 'A');
+  const baseline = estimateGateReceipt(baseMid, { channel: 'national', division: 'A' }).revenue;
+  console.log(`Baseline (defaults): ${fmt(baseline)}/jogo\n`);
+
+  for (const sectorId of ['popular', 'stands', 'seats']) {
+    const def = STADIUM_SECTOR_DEFS[sectorId];
+    const range = TICKET_SECTOR_PRICE_RANGE[sectorId].national;
+    const scenarios = [
+      { label: 'mín', price: range.min },
+      { label: 'méd', price: Math.round((range.min + range.max) / 2) },
+      { label: 'máx', price: range.max },
+    ];
+    console.log(`${def.label}:`);
+    for (const sc of scenarios) {
+      const club = cloneClubProfile(PROFILES_V2.find(x => x.id === 'mid').build, 'A');
+      setSectorPrice(club, 'national', sectorId, sc.price);
+      const g = estimateGateReceipt(club, { channel: 'national', division: 'A' });
+      const delta = g.revenue - baseline;
+      console.log(
+        `  • ${sc.label} R$ ${sc.price} → gate ${fmt(g.revenue)} (${delta >= 0 ? '+' : ''}${fmt(delta)} · lotação ${Math.round(g.fillRate * 100)}%)`,
+      );
+    }
+  }
+
+  console.log('\nPremium agressivo (VIP/Camarotes no máx · Popular no mín):');
+  const premiumClub = cloneClubProfile(PROFILES_V2.find(x => x.id === 'large').build, 'A');
+  setSectorPrice(premiumClub, 'national', 'popular', TICKET_SECTOR_PRICE_RANGE.popular.national.min);
+  setSectorPrice(premiumClub, 'national', 'boxes', TICKET_SECTOR_PRICE_RANGE.boxes.national.max);
+  setSectorPrice(premiumClub, 'national', 'vip', TICKET_SECTOR_PRICE_RANGE.vip.national.max);
+  const premG = estimateGateReceipt(premiumClub, { channel: 'national', division: 'A' });
+  const premFlat = flatSectorGateReceipt(premiumClub, 'A', 'national');
+  console.log(
+    `  Gate ${fmt(premG.revenue)}/jogo vs flat ${fmt(premFlat.revenue)} (${cmpPct(premG.revenue, premFlat.revenue)}) · ticket médio efetivo R$ ${premG.price}`,
+  );
+}
+
+// ── 13) Peso econômico com novo modelo (start vs arena · Série A) ──
+console.log('\n=== Peso na economia total — novo modelo por-setor (Série A) ===\n');
+const economyWeight = [];
+for (const p of ['start', 'mid', 'arena']) {
+  const profile = PROFILES_V2.find(x => x.id === p);
+  const club = cloneClubProfile(profile.build, 'A');
+  const snap = snapshotEconomy(club, 'A', { withNaming: p !== 'start' });
+  const season = simulateSeason(club, 'A', snap);
+  const flatSeason = seasonGateMixFlat(club, 'A');
+  economyWeight.push({
+    perfil: profile.label,
+    gateTemp: season.gateSeason,
+    gateTempFlat: flatSeason,
+    deltaPct: flatSeason > 0 ? ((season.gateSeason / flatSeason - 1) * 100).toFixed(1) : '0',
+    pctRenda: pct(season.gateSeason, season.incomeTotal),
+    pctLiqEstadio: pct(season.stadiumNet, season.incomeTotal),
+    saldoRod: fmt(season.netPerRound),
+  });
+  console.log(`• ${profile.label}`);
+  console.log(`  Bilheteria/temp: ${fmt(season.gateSeason)} (${pct(season.gateSeason, season.incomeTotal)} renda) · vs flat ${fmt(flatSeason)} (${economyWeight.at(-1).deltaPct}%)`);
+  console.log(`  Líq. estádio/temp: ${fmt(season.stadiumNet)} (${pct(season.stadiumNet, season.incomeTotal)} renda) · saldo/rod ${fmt(season.netPerRound)}`);
+}
+
+function gateNationalAtScale(club, division, gateScale) {
+  return estimateGateReceiptSectors(club, {
+    channel: 'national',
+    division,
+    gateScale,
+    ticketPrices: club.ticketPrices,
+    environment: club.environment,
+    support: club.support,
+  }).revenue;
+}
+
+function seasonProfileAtScale(club, division, gateScale, { withNaming = false, profileId = 'start' } = {}) {
+  const national = estimateGateReceiptSectors(club, {
+    channel: 'national',
+    division,
+    gateScale,
+    ticketPrices: club.ticketPrices,
+    environment: club.environment,
+    support: club.support,
+  });
+  const cups = estimateGateReceiptSectors(club, {
+    channel: 'cups',
+    division,
+    gateScale,
+    ticketPrices: club.ticketPrices,
+    environment: club.environment,
+    support: club.support,
+  });
+  const homeGames = Math.round((ROUNDS[division] || 38) * HOME_SHARE);
+  const cupHomeShare = division === 'D' ? 0.35 : 0.12;
+  const leagueHomes = Math.round(homeGames * (1 - cupHomeShare));
+  const cupHomes = homeGames - leagueHomes;
+  const gateSeason = national.revenue * leagueHomes + cups.revenue * cupHomes;
+  const ops = estimateStadiumOpsBill(club, division);
+  const rounds = ROUNDS[division] || 38;
+  const snap = {
+    gateNational: national.revenue,
+    opsPerRound: ops,
+    namingPerRound: 0,
+    roundCost: estimateRoundCostBill(club, division, { managerReputation: 70 }),
+  };
+  if (withNaming && canOfferStadiumNaming(club, division)) {
+    assignNamingContract(
+      club,
+      { sponsor: 'ScaleSim', perRound: estimateNamingPerRound(club, division, { random: () => 0.5 }) },
+      { season: 2026, division },
+    );
+    snap.namingPerRound = estimateNamingRound(club, division);
+  }
+  snap.gateNational = national.revenue;
+  const season = simulateSeason(club, division, snap);
+  return {
+    gatePerGame: national.revenue,
+    fillRate: national.fillRate,
+    gateSeason,
+    incomeTotal: season.incomeTotal,
+    stadiumNet: season.gateSeason - season.opsSeason + season.namingSeason,
+    pctGateIncome: season.gateSeason / Math.max(1, season.incomeTotal),
+    netPerRound: season.netPerRound,
+    opsSeason: season.opsSeason,
+  };
+}
+
+// ── 14) Crise (env 42 / torcida 45) ──
+console.log('\n=== CRISE — env 42 · torcida 45 (flat vs por-setor) ===\n');
+const crisisRows = [];
+const crisisData = [];
+for (const p of ['start', 'mid', 'arena']) {
+  const profile = PROFILES_V2.find(x => x.id === p);
+  const club = cloneClubProfile(profile.build, 'A', { environment: 42, support: 45 });
+  const healthy = cloneClubProfile(profile.build, 'A', { environment: 70, support: 70 });
+  const cmp = comparePricingModels(club, 'A');
+  const healthyGate = estimateGateReceipt(healthy, { channel: 'national', division: 'A' }).revenue;
+  const crisisGate = estimateGateReceipt(club, { channel: 'national', division: 'A' }).revenue;
+  crisisData.push({
+    perfil: profile.label,
+    crisisGate,
+    healthyGate,
+    dropPct: healthyGate > 0 ? ((crisisGate / healthyGate - 1) * 100) : 0,
+    flatGate: cmp.national.flatGate,
+    newGate: cmp.national.newGate,
+    deltaFlatNewPct: cmp.national.deltaPct,
+    seasonDeltaNet: cmp.season.deltaNet,
+  });
+  crisisRows.push({
+    perfil: profile.label,
+    saudavel: fmt(healthyGate),
+    crise: fmt(crisisGate),
+    queda: pct(crisisGate, healthyGate),
+    flat: fmt(cmp.national.flatGate),
+    novo: fmt(cmp.national.newGate),
+    deltaModelo: `${cmp.national.deltaPct >= 0 ? '+' : ''}${cmp.national.deltaPct.toFixed(1)}%`,
+  });
+  console.log(
+    `• ${profile.label}: saudável ${fmt(healthyGate)} → crise ${fmt(crisisGate)} (${pct(crisisGate, healthyGate)} do saudável) · flat ${fmt(cmp.national.flatGate)} → novo ${fmt(cmp.national.newGate)} (${cmp.national.deltaPct >= 0 ? '+' : ''}${cmp.national.deltaPct.toFixed(1)}%)`,
+  );
+}
+
+// ── 15) Divisões B / C / D (start vs arena máx) ──
+console.log('\n=== DIVISÕES B · C · D — start vs máximo (novo modelo) ===\n');
+const divisionRows = [];
+const divisionData = [];
+for (const div of ['B', 'C', 'D']) {
+  const startClub = cloneClubProfile(PROFILES_V2.find(x => x.id === 'start').build, div);
+  const maxClub = buildMaxStadiumClub(div);
+  ensureStadium(maxClub, div);
+  const startCmp = comparePricingModels(startClub, div);
+  const maxCmp = comparePricingModels(maxClub, div);
+  const startSeason = simulateSeason(startClub, div, snapshotEconomy(startClub, div));
+  const maxSeason = simulateSeason(maxClub, div, snapshotEconomy(maxClub, div, { withNaming: div === 'A' || div === 'B' }));
+  divisionData.push({
+    division: div,
+    start: {
+      capacity: startCmp.capacity,
+      gateGame: startCmp.national.newGate,
+      deltaFlatNewPct: startCmp.national.deltaPct,
+      gateSeason: startSeason.gateSeason,
+      pctIncome: startSeason.gateSeason / Math.max(1, startSeason.incomeTotal),
+      stadiumNet: startSeason.stadiumNet,
+    },
+    max: {
+      capacity: maxCmp.capacity,
+      gateGame: maxCmp.national.newGate,
+      deltaFlatNewPct: maxCmp.national.deltaPct,
+      gateSeason: maxSeason.gateSeason,
+      pctIncome: maxSeason.gateSeason / Math.max(1, maxSeason.incomeTotal),
+      stadiumNet: maxSeason.stadiumNet,
+    },
+  });
+  divisionRows.push({
+    div: `Série ${div}`,
+    capStart: startCmp.capacity.toLocaleString('pt-BR'),
+    capMax: maxCmp.capacity.toLocaleString('pt-BR'),
+    gateStart: fmt(startCmp.national.newGate),
+    gateMax: fmt(maxCmp.national.newGate),
+    deltaStart: `${startCmp.national.deltaPct >= 0 ? '+' : ''}${startCmp.national.deltaPct.toFixed(1)}%`,
+    deltaMax: `${maxCmp.national.deltaPct >= 0 ? '+' : ''}${maxCmp.national.deltaPct.toFixed(1)}%`,
+    pctRendaMax: pct(maxSeason.gateSeason, maxSeason.incomeTotal),
+  });
+  console.log(`• Série ${div}`);
+  console.log(
+    `  Start: ${startCmp.capacity.toLocaleString('pt-BR')} lug · gate ${fmt(startCmp.national.newGate)}/jogo (Δ flat ${startCmp.national.deltaPct >= 0 ? '+' : ''}${startCmp.national.deltaPct.toFixed(1)}%) · ${pct(startSeason.gateSeason, startSeason.incomeTotal)} renda`,
+  );
+  console.log(
+    `  Máx:   ${maxCmp.capacity.toLocaleString('pt-BR')} lug · gate ${fmt(maxCmp.national.newGate)}/jogo (Δ flat ${maxCmp.national.deltaPct >= 0 ? '+' : ''}${maxCmp.national.deltaPct.toFixed(1)}%) · ${pct(maxSeason.gateSeason, maxSeason.incomeTotal)} renda · líq ${fmt(maxSeason.stadiumNet)}`,
+  );
+}
+
+printTable('Divisões B/C/D — flat→novo por perfil', divisionRows, [
+  { key: 'div', label: 'Divisão' },
+  { key: 'capStart', label: 'Cap start' },
+  { key: 'gateStart', label: 'Gate start' },
+  { key: 'deltaStart', label: 'Δ flat start' },
+  { key: 'capMax', label: 'Cap máx' },
+  { key: 'gateMax', label: 'Gate máx' },
+  { key: 'deltaMax', label: 'Δ flat máx' },
+  { key: 'pctRendaMax', label: '% renda máx' },
+]);
+
+// ── 16) Sensibilidade GATE_REVENUE_SCALE (0.25 / 0.28 / 0.30) ──
+console.log('\n=== GATE_REVENUE_SCALE — 0.25 vs 0.28 vs 0.30 (Série A · novo modelo) ===\n');
+const scaleRows = [];
+const scaleData = [];
+const SCALES = [0.25, 0.28, 0.3];
+for (const p of ['start', 'mid', 'arena']) {
+  const profile = PROFILES_V2.find(x => x.id === p);
+  const row = { perfil: profile.label };
+  for (const scale of SCALES) {
+    const club = cloneClubProfile(profile.build, 'A');
+    const stats = seasonProfileAtScale(club, 'A', scale, { withNaming: p !== 'start', profileId: p });
+    const key = String(scale).replace('.', '');
+    row[`gate${key}`] = fmt(stats.gatePerGame);
+    row[`temp${key}`] = fmt(stats.gateSeason);
+    row[`pct${key}`] = `${(stats.pctGateIncome * 100).toFixed(1)}%`;
+    row[`liq${key}`] = fmt(stats.stadiumNet);
+    row[`saldo${key}`] = fmt(stats.netPerRound);
+  }
+  scaleRows.push(row);
+  scaleData.push({ perfil: profile.label, scales: SCALES.map(s => {
+    const club = cloneClubProfile(profile.build, 'A');
+    const st = seasonProfileAtScale(club, 'A', s, { withNaming: p !== 'start' });
+    return { scale: s, gatePerGame: st.gatePerGame, gateSeason: st.gateSeason, pctIncome: st.pctGateIncome, stadiumNet: st.stadiumNet, netPerRound: st.netPerRound };
+  })});
+  console.log(`• ${profile.label}`);
+  for (const scale of SCALES) {
+    const st = scaleData.at(-1).scales.find(x => x.scale === scale);
+    console.log(
+      `  scale ${scale}: gate ${fmt(st.gatePerGame)}/jogo · temp ${fmt(st.gateSeason)} (${(st.pctIncome * 100).toFixed(1)}% renda) · líq estádio ${fmt(st.stadiumNet)} · saldo/rod ${fmt(st.netPerRound)}`,
+    );
+  }
+}
+
+printTable('GATE_REVENUE_SCALE por perfil', scaleRows.map(r => ({
+  perfil: r.perfil,
+  gate025: r.gate025,
+  gate028: r.gate028,
+  gate03: r.gate03,
+  pct028: r.pct028,
+  pct03: r.pct03,
+  saldo028: r.saldo028,
+  saldo03: r.saldo03,
+})), [
+  { key: 'perfil', label: 'Perfil' },
+  { key: 'gate025', label: '0.25/jogo' },
+  { key: 'gate028', label: '0.28/jogo' },
+  { key: 'gate03', label: '0.30/jogo' },
+  { key: 'pct028', label: '% renda 0.28' },
+  { key: 'pct03', label: '% renda 0.30' },
+  { key: 'saldo028', label: 'Saldo/rod 0.28' },
+  { key: 'saldo03', label: 'Saldo/rod 0.30' },
+]);
+
+const arena028 = scaleData.find(x => x.perfil.includes('Arena'))?.scales.find(x => x.scale === 0.28);
+const arena030 = scaleData.find(x => x.perfil.includes('Arena'))?.scales.find(x => x.scale === 0.3);
+console.log('\nRecomendação scale:');
+console.log(`  • 0.28 (atual): arena máx = ${(arena028?.pctIncome * 100).toFixed(1)}% da renda · saldo/rod ${fmt(arena028?.netPerRound)}`);
+console.log(`  • 0.30:         arena máx = ${(arena030?.pctIncome * 100).toFixed(1)}% da renda · saldo/rod ${fmt(arena030?.netPerRound)} (+${cmpPct(arena030?.pctIncome, arena028?.pctIncome)} na fatia bilheteria)`);
+console.log(`  • 0.25:         arena máx = ${((scaleData.find(x => x.perfil.includes('Arena'))?.scales.find(x => x.scale === 0.25)?.pctIncome ?? 0) * 100).toFixed(1)}% da renda — mais conservador`);
+console.log('  → Manter 0.28 no start/médio; considerar 0.26–0.27 se quiser capar arena >50% renda sem nerfar divisões menores.');
+
+// ── Export JSON resumo ──
+const exportPayload = {
+  generatedAt: new Date().toISOString(),
+  model: 'per-sector-pricing-v1',
+  gateRevenueScale: GATE_REVENUE_SCALE,
+  flatVsNew: pricingCompareData.map(d => ({
+    perfil: d.perfil,
+    division: d.division,
+    capacity: d.capacity,
+    nationalDeltaPct: d.national?.deltaPct,
+    seasonDeltaPct: d.season?.deltaPct,
+    seasonDeltaNet: d.season?.deltaNet,
+  })),
+  economyWeight,
+  crisis: crisisData,
+  divisions: divisionData,
+  gateScaleSensitivity: scaleData,
+  defaultSectorPrices: {
+    national: defaultSectorPricesForChannel('national'),
+    cups: defaultSectorPricesForChannel('cups'),
+  },
+};
+writeFileSync('tmp-bench-stadium-sector-pricing.json', JSON.stringify(exportPayload, null, 2));
+console.log('\n→ Resumo JSON: tmp-bench-stadium-sector-pricing.json\n');

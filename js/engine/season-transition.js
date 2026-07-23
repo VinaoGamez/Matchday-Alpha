@@ -5,6 +5,13 @@ import {
   normalizeDivisionTeamsSerieC,
 } from './serie-c-calendar.js';
 
+function seasonPrizeCreditedTotal(club) {
+  const ledger = Array.isArray(club?.budgetLedger) ? club.budgetLedger : [];
+  return ledger
+    .filter(entry => entry?.reason === 'season_prize')
+    .reduce((sum, entry) => sum + Math.abs(Number(entry?.amount) || 0), 0);
+}
+
 /**
  * Fim de temporada — promoções/rebaixamentos, prêmios, balanço e simulação idle.
  * Sem DOM direto; callbacks do engine legado.
@@ -184,17 +191,26 @@ export function createSeasonTransitionEngine(deps) {
     deps.ensureBudget(userClubState, userDivision);
     let budgetAfter = deps.getBalance(userClubState);
 
-    if (!seasonTransitionPrepared) {
-      deps.runSeasonEndDevelopmentPulse();
-      deps.credit(userClubState, prize.total, {
+    const creditedSoFar = seasonPrizeCreditedTotal(userClubState);
+    const prizeDelta = Math.max(0, prize.total - creditedSoFar);
+
+    if (prizeDelta > 0) {
+      deps.credit(userClubState, prizeDelta, {
         reason: 'season_prize',
-        label: `Premiação temporada ${careerSeason}`,
-        meta: { lines: prize.lines },
+        label:
+          creditedSoFar > 0
+            ? `Premiação temporada ${careerSeason} (ajuste)`
+            : `Premiação temporada ${careerSeason}`,
+        meta: { lines: prize.lines, season: careerSeason },
       });
       userClubState.wageShortfall = false;
       deps.syncFinancesFromBudget(userClubState, userDivision);
       deps.renderEnvironmentCard();
       budgetAfter = deps.getBalance(userClubState);
+    }
+
+    if (!seasonTransitionPrepared) {
+      deps.runSeasonEndDevelopmentPulse();
 
       const seasonGoal = deps.ensureSeasonGoal();
       let seasonGoalResult = deps.getSeasonGoalResult();
@@ -245,7 +261,7 @@ export function createSeasonTransitionEngine(deps) {
 
       deps.pushSeasonEndBrief({ prizeTotal: prize.total, budgetAfter });
       seasonTransitionPrepared = true;
-    } else {
+    } else if (prizeDelta <= 0) {
       budgetAfter = deps.getBalance(userClubState);
     }
 
@@ -292,7 +308,12 @@ export function createSeasonTransitionEngine(deps) {
       champions,
       leadersByDivision,
       clubs,
-      seasonRewards: { total: prize.total, lines: prize.lines, budgetAfter },
+      seasonRewards: {
+        total: prize.total,
+        lines: prize.lines,
+        budgetAfter,
+        prizeCredited: creditedSoFar + prizeDelta >= prize.total - 1,
+      },
       formatBudget: deps.formatBudget,
       seasonGoalResult: deps.getSeasonGoalResult(),
       seasonObjectivesResult: deps.getSeasonObjectivesResult(),
@@ -346,7 +367,7 @@ export function createSeasonTransitionEngine(deps) {
       worldRosters: deps.collectWorldRosters(clubs, { skipClub: userClub }),
       clubStatus: {
         ...(deps.snapshotUserClubStatus() || savedNewGame.clubStatus || {}),
-        budget: clubs[userClub].budget ?? savedNewGame.clubStatus?.budget ?? deps.initialBudget(pendingUserDivision),
+        budget: deps.getBalance(clubs[userClub]),
         bankLoan: deps.serializeBankLoan(clubs[userClub]),
       },
       nationalRanking: {
@@ -369,6 +390,7 @@ export function createSeasonTransitionEngine(deps) {
       seasonObjectivesResult: null,
       season: (savedNewGame.season || 2026) + 1,
       stadiumName: clubs[userClub]?.stadiumName || savedNewGame.stadiumName || null,
+      userStadium: deps.serializeUserStadium(clubs[userClub]),
       pendingSponsorChoice: true,
       createdAt: new Date().toISOString(),
       version: 4,

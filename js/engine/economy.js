@@ -26,6 +26,11 @@ import {
   getStadiumInvestments,
   canOfferStadiumNaming,
   sectorSeats,
+  normalizeTicketPrices,
+  clampSectorTicketPrice,
+  getSectorTicketPrice,
+  weightedAverageTicketPrice,
+  TICKET_SECTOR_PRICE_RANGE,
 } from './stadium-sectors.js';
 import {
   generateNamingOffers,
@@ -1099,15 +1104,9 @@ export function ensureStadium(club, division = 'A', options = {}) {
     club.stadiumName = 'Estádio Solar';
   }
   if (!club.ticketPrices || typeof club.ticketPrices !== 'object') {
-    club.ticketPrices = {
-      national: TICKET_PRICE_RANGE.national.default,
-      cups: TICKET_PRICE_RANGE.cups.default,
-    };
+    club.ticketPrices = normalizeTicketPrices(null);
   } else {
-    club.ticketPrices = {
-      national: clampTicket('national', club.ticketPrices.national),
-      cups: clampTicket('cups', club.ticketPrices.cups),
-    };
+    club.ticketPrices = normalizeTicketPrices(club.ticketPrices);
   }
   setPitchLevel(club, Math.min(getPitchLevel(club), maxPitchForStructure(getStructureLevel(club))));
   return {
@@ -1121,12 +1120,6 @@ export function ensureStadium(club, division = 'A', options = {}) {
     investments: getStadiumInvestments(club),
     ticketPrices: { ...club.ticketPrices },
   };
-}
-
-function clampTicket(channel, value) {
-  const range = TICKET_PRICE_RANGE[channel] || TICKET_PRICE_RANGE.national;
-  const amount = Math.round(Number(value) || range.default);
-  return Math.max(range.min, Math.min(range.max, amount));
 }
 
 /** Gastos voluntários exigem saldo ≥ custo (não aprofunda o vermelho por escolha). */
@@ -1675,27 +1668,55 @@ export function purchaseUpgrade(club, upgradeId) {
   };
 }
 
-export function getTicketPrices(club) {
-  ensureStadium(club, club?.division || 'A');
-  return { ...club.ticketPrices };
+function clampTicket(channel, value) {
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  return clampSectorTicketPrice('popular', ch, value);
 }
 
-/** Ajusta preço de ingresso (nacional ou copas). Sem custo de caixa. */
-export function adjustTicketPrice(club, channel, delta) {
+export function getTicketPrices(club) {
   ensureStadium(club, club?.division || 'A');
-  const range = TICKET_PRICE_RANGE[channel];
-  if (!range) return { ok: false, error: 'unknown_channel' };
-  const next = clampTicket(channel, (Number(club.ticketPrices[channel]) || range.default) + Number(delta || 0));
-  club.ticketPrices[channel] = next;
-  return { ok: true, channel, price: next, ticketPrices: { ...club.ticketPrices } };
+  return normalizeTicketPrices(club.ticketPrices);
+}
+
+/** Ajusta preço de ingresso por setor (nacional ou copas). Sem custo de caixa. */
+export function adjustSectorTicketPrice(club, channel, sectorId, delta) {
+  ensureStadium(club, club?.division || 'A');
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  if (!TICKET_SECTOR_PRICE_RANGE[sectorId]) return { ok: false, error: 'unknown_sector' };
+  const current = getSectorTicketPrice(club.ticketPrices, ch, sectorId);
+  const next = clampSectorTicketPrice(sectorId, ch, current + Number(delta || 0));
+  club.ticketPrices[ch][sectorId] = next;
+  return {
+    ok: true,
+    channel: ch,
+    sectorId,
+    price: next,
+    ticketPrices: normalizeTicketPrices(club.ticketPrices),
+  };
+}
+
+/** @deprecated Use adjustSectorTicketPrice — ajusta setor Popular. */
+export function adjustTicketPrice(club, channel, delta) {
+  return adjustSectorTicketPrice(club, channel, 'popular', delta);
+}
+
+export function setSectorTicketPrice(club, channel, sectorId, value) {
+  ensureStadium(club, club?.division || 'A');
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  if (!TICKET_SECTOR_PRICE_RANGE[sectorId]) return { ok: false, error: 'unknown_sector' };
+  const next = clampSectorTicketPrice(sectorId, ch, value);
+  club.ticketPrices[ch][sectorId] = next;
+  return {
+    ok: true,
+    channel: ch,
+    sectorId,
+    price: next,
+    ticketPrices: normalizeTicketPrices(club.ticketPrices),
+  };
 }
 
 export function setTicketPrice(club, channel, value) {
-  ensureStadium(club, club?.division || 'A');
-  const range = TICKET_PRICE_RANGE[channel];
-  if (!range) return { ok: false, error: 'unknown_channel' };
-  club.ticketPrices[channel] = clampTicket(channel, value);
-  return { ok: true, channel, price: club.ticketPrices[channel], ticketPrices: { ...club.ticketPrices } };
+  return setSectorTicketPrice(club, channel, 'popular', value);
 }
 
 const isSerieDKnockoutGame = game => {
@@ -1851,8 +1872,9 @@ export function applyHighStakesFillFloor(fillRate, game, club, context = {}) {
  */
 export function estimateFillRate(club, channel = 'national', options = {}) {
   ensureStadium(club, club?.division || 'A');
-  const range = TICKET_PRICE_RANGE[channel] || TICKET_PRICE_RANGE.national;
-  const price = club.ticketPrices[channel] ?? range.default;
+  const ch = channel === 'cups' ? 'cups' : 'national';
+  const price = weightedAverageTicketPrice(club, ch);
+  const range = TICKET_PRICE_RANGE[ch] || TICKET_PRICE_RANGE.national;
   const priceSpan = Math.max(1, range.max - range.min);
   const priceFactor = 1 - ((price - range.min) / priceSpan) * 0.46;
   const environment = Math.max(0, Math.min(100, Number(options.environment ?? club.environment) || 60));
@@ -1895,7 +1917,6 @@ export function estimateGateReceipt(
       game,
       gateScale: GATE_REVENUE_SCALE,
       ticketPrices: club.ticketPrices,
-      ticketRanges: TICKET_PRICE_RANGE,
       environment: club.environment,
       support: club.support,
       attendanceContext: ctx,
@@ -1927,7 +1948,7 @@ export function estimateGateReceipt(
   const fill = estimateFillRate(club, resolvedChannel, { game, attendanceContext: ctx });
   const cap = Math.max(1000, Number(capacity) || Number(club.stadiumCapacity) || 12_000);
   const attendance = Math.round(cap * fill);
-  const price = club.ticketPrices[resolvedChannel] ?? TICKET_PRICE_RANGE[resolvedChannel].default;
+  const price = weightedAverageTicketPrice(club, resolvedChannel);
   const revenue = Math.round(attendance * price * GATE_REVENUE_SCALE);
   return {
     channel: resolvedChannel,
@@ -1951,16 +1972,32 @@ export function computeMatchAttendance(club, game, { division = 'A', capacity = 
   ensureStadium(club, division || club.division || 'A');
   const channel = ticketChannelFromGame(game);
   const cap = Math.max(1000, Number(capacity) || Number(club.stadiumCapacity) || 12_000);
-  const price = club.ticketPrices[channel] ?? TICKET_PRICE_RANGE[channel].default;
+  const price = weightedAverageTicketPrice(club, channel);
   if (Number.isFinite(Number(game.attendance)) && Number.isFinite(Number(game.fillRate))) {
     const attendance = Math.round(Number(game.attendance));
     const fillRate = Math.max(0.28, Math.min(0.96, Number(game.fillRate)));
+    let revenue;
+    if (Number.isFinite(Number(game.gateRevenue))) {
+      revenue = Math.round(Number(game.gateRevenue));
+    } else {
+      const recalc = estimateGateReceipt(club, {
+        channel,
+        division,
+        game,
+        capacity: cap,
+        attendanceContext,
+      });
+      revenue =
+        recalc.attendance > 0
+          ? Math.round(recalc.revenue * (attendance / recalc.attendance))
+          : recalc.revenue;
+    }
     return {
       channel,
       attendance,
       fillRate,
       price,
-      revenue: Math.round(attendance * price * GATE_REVENUE_SCALE),
+      revenue,
       capacity: cap,
       attraction: competitionAttraction(game),
       environment: Number(club.environment) || 60,
@@ -1981,6 +2018,15 @@ export function attachMatchAttendance(club, game, options = {}) {
   if (!estimate.cached) {
     game.attendance = estimate.attendance;
     game.fillRate = Number(estimate.fillRate.toFixed(4));
+    game.gateRevenue = estimate.revenue;
+    if (Array.isArray(estimate.sectors) && estimate.sectors.length) {
+      game.gateSectorBreakdown = estimate.sectors.map(s => ({
+        id: s.id,
+        attendance: s.attendance,
+        revenue: s.revenue,
+        price: s.price,
+      }));
+    }
   }
   return estimate;
 }
@@ -3217,7 +3263,10 @@ export function createEconomyEngine() {
     structureLevelLabel,
     getTicketPrices,
     adjustTicketPrice,
+    adjustSectorTicketPrice,
     setTicketPrice,
+    setSectorTicketPrice,
+    TICKET_SECTOR_PRICE_RANGE,
     estimateFillRate,
     estimateGateReceipt,
     competitionAttraction,

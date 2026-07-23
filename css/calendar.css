@@ -20,8 +20,16 @@
   padding: 0 !important;
   border: 1px solid #28505b !important;
   border-radius: 8px !important;
-  overflow: hidden;
+  overflow: visible;
   background: #0b1a22 !important;
+}
+
+.season-calendar {
+  overflow: hidden;
+}
+
+.season-calendar .calendar-days {
+  overflow: visible;
 }
 
 .calendar-toolbar {
@@ -120,6 +128,7 @@
   font: inherit !important;
   text-align: left;
   cursor: pointer;
+  overflow: visible;
 }
 
 .calendar-view button.calendar-day:nth-child(7n) {
@@ -181,6 +190,7 @@
   display: grid;
   gap: 4px;
   min-width: 0;
+  overflow: visible;
 }
 
 .calendar-day-events span {
@@ -191,6 +201,13 @@
   color: #91b0b5;
   font: 700 8px 'DM Sans', sans-serif;
   letter-spacing: .25px;
+}
+
+.calendar-day-events .calendar-comp-tags,
+.calendar-day-events .calendar-comp-tag {
+  overflow: visible;
+  text-overflow: unset;
+  white-space: nowrap;
 }
 
 .calendar-day-events .user-match {
@@ -208,6 +225,87 @@
 
 .calendar-day-events .training-event {
   color: #ffc94f;
+}
+
+.calendar-day-events .calendar-comp-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-width: 100%;
+}
+
+.calendar-day-events .calendar-comp-tag {
+  position: relative;
+  display: inline-block;
+  padding: 4px 7px;
+  border-radius: 3px;
+  font: 700 9px 'Barlow Condensed', sans-serif;
+  letter-spacing: 0.35px;
+  line-height: 1;
+  cursor: default;
+}
+
+.calendar-day-events .calendar-comp-tag[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 5px);
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 5px 8px;
+  border: 1px solid #3a6b77;
+  border-radius: 4px;
+  background: #0b1d25;
+  color: #edf8f5;
+  font: 700 9px 'DM Sans', sans-serif;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 16px #000a;
+}
+
+.calendar-comp-tag[data-code='BSA'] {
+  background: #1e4a58;
+  color: #b6ff38;
+}
+
+.calendar-comp-tag[data-code='BSB'] {
+  background: #243848;
+  color: #8ed4ff;
+}
+
+.calendar-comp-tag[data-code='BSC'] {
+  background: #2a3040;
+  color: #c4b8ff;
+}
+
+.calendar-comp-tag[data-code='BSD'] {
+  background: #2e2838;
+  color: #ffb8e8;
+}
+
+.calendar-comp-tag[data-code='CBR'] {
+  background: #5a4010;
+  color: #ffc94f;
+}
+
+.calendar-comp-tag[data-code='EST'],
+.calendar-comp-tag[data-code='SCB'],
+.calendar-comp-tag[data-code='REG'] {
+  background: #1a4038;
+  color: #9ef0c8;
+}
+
+.calendar-comp-tag[data-code='LIB'],
+.calendar-comp-tag[data-code='CSU'],
+.calendar-comp-tag[data-code='REC'] {
+  background: #1a2848;
+  color: #7ab8ff;
+}
+
+.calendar-comp-tag[data-code='FIF'] {
+  background: #3a2838;
+  color: #e8b8ff;
 }
 
 .calendar-legend {
@@ -240,6 +338,10 @@
 .calendar-legend .away { background: #63d9ff; }
 .calendar-legend .round { background: #397487; }
 .calendar-legend .training { background: #ffc94f; }
+.calendar-legend .comp-bsa { background: #b6ff38; }
+.calendar-legend .comp-bsb { background: #8ed4ff; }
+.calendar-legend .comp-bsc { background: #c4b8ff; }
+.calendar-legend .comp-bsd { background: #ffb8e8; }
 .calendar-legend .transfer-window { background: #3d9a58; }
 .calendar-legend .transfer-deadline { background: #e8a020; }
 

@@ -80,26 +80,28 @@ check('Rebuild occupancy a partir de jogos materializados', () => {
   assert(countRestConflicts(occupancy, DEFAULT_MIN_REST_DAYS) === 0, 'no conflicts after rebuild');
 });
 
-check('Copa re-agenda respeitando ocupação da liga', () => {
+check('Copa re-agenda respeitando ocupação da liga (slots Qua/Sáb)', () => {
   const fixtures = buildCompetitionRoundRobinFixtures(teams4, 'brasileirao');
   const national = { A: { fixtures } };
   const occupancy = scheduleAllLeagueCompetitions(2026, national);
   const cupGames = [
-    { home: 'A1', away: 'A2', date: nominalRoundDate(2026, 1, 6, LEAGUE_CALENDAR_WINDOWS.A), leg: 'IDA', tieId: 'T1' },
-    { home: 'A2', away: 'A1', date: nominalRoundDate(2026, 2, 6, LEAGUE_CALENDAR_WINDOWS.A), leg: 'VOLTA', tieId: 'T1' },
+    { home: 'A1', away: 'A2', date: nominalRoundDate(2026, 1, 6, LEAGUE_CALENDAR_WINDOWS.A), leg: 'IDA', tieId: 'T1', phaseIndex: 6, completed: false },
+    { home: 'A2', away: 'A1', date: nominalRoundDate(2026, 2, 6, LEAGUE_CALENDAR_WINDOWS.A), leg: 'VOLTA', tieId: 'T1', phaseIndex: 6, completed: false },
   ];
   rescheduleCupFixtures(cupGames, occupancy, { minRestDays: DEFAULT_MIN_REST_DAYS, twoLegGapDays: 7, seasonYear: 2026 });
   cupGames.forEach(game => {
     assert(game.date instanceof Date, 'cup dated');
     assert(game.date.getFullYear() === 2026, String(game.date));
+    const expectedDay = game.leg === 'VOLTA' ? 3 : 0;
+    assert(game.date.getDay() === expectedDay, `cup phase 6 ${game.leg} ${game.date}`);
   });
   assert(cupGames[1].date.getTime() >= cupGames[0].date.getTime() + 7 * 86400000, 'volta gap');
   assert(countRestConflicts(occupancy, DEFAULT_MIN_REST_DAYS) === 0, 'cup + league rest');
 });
 
-check('serializeCompetitionWindows gera ISO por divisão', () => {
+check('serializeCompetitionWindows gera ISO por divisão (molde CBF)', () => {
   const windows = serializeCompetitionWindows(2026);
-  assert(windows.A?.start === '2026-04-11', windows.A?.start);
+  assert(windows.A?.start === '2026-01-28', windows.A?.start);
   assert(windows.D?.end === '2026-09-13', windows.D?.end);
 });
 
@@ -115,6 +117,15 @@ check('findAvailableDate evita conflito no mesmo clube', () => {
   const gap = (DEFAULT_MIN_REST_DAYS + 1) * 86400000;
   assert(Math.abs(next.getTime() - base.getTime()) >= gap, `gap=${Math.abs(next - base)}`);
   assert(next.getFullYear() === 2026, String(next));
+});
+
+check('Liga Série A: rodadas caem aos domingos (BSA/CBF)', () => {
+  const fixtures = buildCompetitionRoundRobinFixtures(teams4, 'brasileirao');
+  const national = { A: { fixtures } };
+  scheduleAllLeagueCompetitions(2026, national);
+  fixtures.flat().forEach(game => {
+    assert(game.date.getDay() === 0, `expected Sun: ${game.date}`);
+  });
 });
 
 check('calendarAdvanceLimitDate = 31/dez (sem ano seguinte)', () => {

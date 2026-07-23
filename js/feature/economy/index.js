@@ -9,7 +9,7 @@ import {
 } from '../../engine/bank-loan.js';
 import { seasonGoalLiveProgress } from '../../engine/season-goals.js';
 import { seasonObjectiveLiveProgress } from '../../engine/season-objectives.js';
-import { maxAchievableStadiumCapacity } from '../../engine/stadium-sectors.js';
+import { maxAchievableStadiumCapacity, STADIUM_SECTOR_DEFS, TICKET_SECTOR_PRICE_RANGE } from '../../engine/stadium-sectors.js';
 import { seasonGoalGauge } from '../season-summary/goal-gauge.js';
 import { mountStadiumVisual } from './stadium-visual.js';
 
@@ -68,6 +68,7 @@ export function createEconomyFeature(deps) {
     ensureStadium,
     getTicketPrices,
     adjustTicketPrice,
+    adjustSectorTicketPrice,
     estimateGateReceipt,
     getSponsors,
     estimateSponsorInstallment,
@@ -1172,7 +1173,7 @@ export function createEconomyFeature(deps) {
     if (gateCupEl) gateCupEl.textContent = formatBudget(cups.revenue);
     if (hintEl) {
       const env = Math.round(Number(club.environment) || 0);
-      hintEl.textContent = `Estimativa média · Ambiente ${env}% · Nacional ${Math.round(national.fillRate * 100)}% lotação · Copas ${Math.round(cups.fillRate * 100)}%. Setores premium elevam o ticket médio.`;
+      hintEl.textContent = `Estimativa média · Ambiente ${env}% · Nacional ${Math.round(national.fillRate * 100)}% lotação · Copas ${Math.round(cups.fillRate * 100)}%. Preço por setor — premium eleva o ticket médio.`;
     }
     if (namingBtn && rightsMeta) {
       const season = getCareerSeason?.() ?? 1;
@@ -1208,37 +1209,51 @@ export function createEconomyFeature(deps) {
     const list = $('#stadiumTicketsList');
     if (!list) return;
     const prices = getTicketPrices(club);
+    const division = getUserDivision?.() || club.division || 'A';
+    const { rows } = computeSectorBreakdown(club, division);
+    const activeSectors = rows.filter(row => row.seats > 0).map(row => row.id);
+    const ticketStep = 5;
     const channels = [
       {
         id: 'national',
         label: 'Campeonato Nacional',
         description: 'Brasileirão e confrontos de liga em casa.',
-        price: prices.national,
-        range: TICKET_PRICE_RANGE.national,
       },
       {
         id: 'cups',
         label: 'Copas',
         description: 'Copa do Brasil e eliminatórias em casa.',
-        price: prices.cups,
-        range: TICKET_PRICE_RANGE.cups,
       },
     ];
     list.innerHTML = channels
       .map(channel => {
-        const atMin = channel.price <= channel.range.min;
-        const atMax = channel.price >= channel.range.max;
-        return `<div class="stadium-ticket-row" data-ticket-channel="${channel.id}">
+        const sectorRows = activeSectors
+          .map(sectorId => {
+            const def = STADIUM_SECTOR_DEFS[sectorId];
+            const range = TICKET_SECTOR_PRICE_RANGE[sectorId]?.[channel.id];
+            const price = prices[channel.id]?.[sectorId] ?? range?.min ?? 0;
+            const atMin = !range || price <= range.min;
+            const atMax = !range || price >= range.max;
+            const label = def?.shortLabel || def?.label || sectorId;
+            return `<div class="stadium-ticket-row" data-ticket-channel="${channel.id}" data-ticket-sector="${sectorId}">
           <div>
-            <b>${channel.label}</b>
-            <small>${channel.description}</small>
+            <b>${label}</b>
           </div>
-          <span class="stadium-ticket-price">${formatTicketPrice(channel.price)}</span>
+          <span class="stadium-ticket-price">${formatTicketPrice(price)}</span>
           <div class="stadium-ticket-controls">
-            <button type="button" class="stadium-ticket-step" data-ticket-adjust="${channel.id}" data-delta="-${channel.range.step}" ${atMin ? 'disabled' : ''} aria-label="Diminuir ingresso ${channel.label}">−</button>
-            <button type="button" class="stadium-ticket-step" data-ticket-adjust="${channel.id}" data-delta="${channel.range.step}" ${atMax ? 'disabled' : ''} aria-label="Aumentar ingresso ${channel.label}">+</button>
+            <button type="button" class="stadium-ticket-step" data-ticket-adjust="${channel.id}" data-ticket-sector="${sectorId}" data-delta="-${ticketStep}" ${atMin ? 'disabled' : ''} aria-label="Diminuir ingresso ${label} ${channel.label}">−</button>
+            <button type="button" class="stadium-ticket-step" data-ticket-adjust="${channel.id}" data-ticket-sector="${sectorId}" data-delta="${ticketStep}" ${atMax ? 'disabled' : ''} aria-label="Aumentar ingresso ${label} ${channel.label}">+</button>
           </div>
         </div>`;
+          })
+          .join('');
+        return `<div class="stadium-ticket-group">
+        <div class="stadium-ticket-group-head">
+          <b>${channel.label}</b>
+          <small>${channel.description}</small>
+        </div>
+        ${sectorRows}
+      </div>`;
       })
       .join('');
   };
@@ -1946,7 +1961,12 @@ export function createEconomyFeature(deps) {
       if (!button || button.disabled) return;
       const club = userClubState();
       if (!club) return;
-      adjustTicketPrice(club, button.dataset.ticketAdjust, Number(button.dataset.delta));
+      adjustSectorTicketPrice(
+        club,
+        button.dataset.ticketAdjust,
+        button.dataset.ticketSector,
+        Number(button.dataset.delta),
+      );
       renderStadium();
       onBudgetChanged?.();
     });

@@ -13,6 +13,11 @@ import {
   DIVISION_CAPACITY_CAP,
   INITIAL_STADIUM_CAPACITY_RANGE,
   STADIUM_SECTOR_MODEL,
+  normalizeTicketPrices,
+  clampSectorTicketPrice,
+  getSectorTicketPrice,
+  weightedAverageTicketPrice,
+  estimateGateReceiptSectors,
 } from '../js/engine/stadium-sectors.js';
 
 let passed = 0;
@@ -31,6 +36,31 @@ const check = (label, fn) => {
 const assert = (c, m) => {
   if (!c) throw new Error(m || 'fail');
 };
+
+check('normalizeTicketPrices migra número legado para setores', () => {
+  const prices = normalizeTicketPrices({ national: 22, cups: 36 });
+  assert(typeof prices.national === 'object', 'national object');
+  assert(typeof prices.national.popular === 'number', 'popular price');
+  assert(prices.national.vip > prices.national.popular, 'vip > popular');
+  assert(prices.cups.popular >= 18, 'cups popular min');
+});
+
+check('estimateGateReceiptSectors usa preço por setor', () => {
+  const club = {
+    division: 'A',
+    environment: 70,
+    support: 70,
+    stadiumStructure: 3,
+    stadiumSectors: { popular: 2, stands: 1, seats: 0, boxes: 0, vip: 0 },
+    stadiumSectorModel: STADIUM_SECTOR_MODEL,
+    ticketPrices: normalizeTicketPrices({ national: 22, cups: 36 }),
+  };
+  ensureStadiumSectors(club, 'A');
+  const est = estimateGateReceiptSectors(club, { channel: 'national', gateScale: 0.28 });
+  assert(est.revenue > 0, 'revenue');
+  assert(est.sectors.length >= 2, 'sectors');
+  assert(est.sectors.some(s => s.id === 'stands' && s.price > est.sectors.find(x => x.id === 'popular').price), 'stands price');
+});
 
 check('novo jogo: estrutura 0, popular 1, capacidade inicial A na faixa', () => {
   const club = { name: 'Teste FC', budget: 5_000_000, environment: 70, support: 70, ticketPrices: { national: 22, cups: 36 } };

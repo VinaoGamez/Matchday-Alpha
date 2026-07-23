@@ -6,18 +6,30 @@ import {
   seasonEndDate as planSeasonEndDate,
   clampToSeason,
   refreshCupNominalDates,
+  cupPhaseMaxDate,
 } from './season-calendar-plan.js';
+import {
+  leagueWindowsFromMold,
+  leagueCompetitionId,
+} from './season-calendar-mold.js';
+import {
+  getCompetitionWeekdays,
+  getCompetitionSlotKey,
+  getCupLegWeekdays,
+  getSlotDefaultTime,
+  buildWeeklyCadenceDates,
+  collectMultiWeekdaySlots,
+  listSlotDatesInRange,
+  snapToNearestWeekday,
+  snapToNextWeekday,
+} from './season-week-slots.js';
 
-/** Janelas nacionais (início/fim por divisão) — inspiradas na CBF. */
-export const LEAGUE_CALENDAR_WINDOWS = {
-  A: { start: [3, 11], end: [11, 6], priority: 2, matchCount: 38 },
-  B: { start: [2, 14], end: [10, 28], priority: 2, matchCount: 38 },
-  C: { start: [3, 18], end: [10, 24], priority: 2, matchCount: null },
-  D: { start: [3, 5], end: [8, 13], priority: 2, matchCount: 10 },
-};
+/** Janelas nacionais — derivadas do molde CBF 2026. */
+export const LEAGUE_CALENDAR_WINDOWS = leagueWindowsFromMold();
 
 export const DEFAULT_FIXTURE_TIMES = ['19:00', '21:30', '16:00', '20:00'];
-export const DEFAULT_MIN_REST_DAYS = 3;
+/** Mínimo entre jogos — calibrado para Qua→Dom / Qua→Sáb (3 dias de calendário). */
+export const DEFAULT_MIN_REST_DAYS = 2;
 export const DEFAULT_TWO_LEG_GAP_DAYS = 7;
 
 const MS_DAY = 86400000;
@@ -30,14 +42,15 @@ export function windowToDates(season, window) {
   };
 }
 
-/** Data nominal de rodada por interpolação na janela (seed inicial). */
-export function nominalRoundDate(season, round, totalRounds, window) {
+/** Data nominal de rodada — cadência semanal no slot da competição. */
+export function nominalRoundDate(season, round, totalRounds, window, {
+  competitionId = 'league',
+} = {}) {
   const { start, end } = windowToDates(season, window);
-  const rounds = Math.max(2, totalRounds || 2);
-  const progress = Math.max(0, Math.min(1, (round - 1) / (rounds - 1)));
-  const date = new Date(start.getTime() + (end.getTime() - start.getTime()) * progress);
-  date.setHours(12, 0, 0, 0);
-  return date;
+  const weekdays = getCompetitionWeekdays(competitionId);
+  const roundDates = buildWeeklyCadenceDates(start, end, weekdays, Math.max(1, totalRounds || 1));
+  const index = Math.max(0, Math.min(roundDates.length - 1, round - 1));
+  return roundDates[index] || clampToSeason(start, season);
 }
 
 export function createClubOccupancy() {
@@ -86,6 +99,77 @@ export function clubsAvailable(occupancy, home, away, date, minRestDays) {
 }
 
 /**
+ * Encontra data livre em slots semanais (meio de semana / fim de semana).
+ */
+export function findAvailableSlotDate(occupancy, home, away, {
+  nominalDate,
+  minDate = null,
+  maxDate = null,
+  minRestDays = DEFAULT_MIN_REST_DAYS,
+  slotWeekdays,
+  maxWeeks = 26,
+} = {}) {
+  if (!slotWeekdays?.length) {
+    return findAvailableDate(occupancy, home, away, {
+      nominalDate, minDate, maxDate, minRestDays,
+    });
+  }
+
+  const nominal = normalizeNoon(nominalDate);
+  const minBound = minDate ? normalizeNoon(minDate) : null;
+  const maxBound = maxDate ? normalizeNoon(maxDate) : null;
+  const searchStart = minBound && minBound.getTime() > nominal.getTime() ? minBound : nominal;
+  const searchEnd = maxBound || normalizeNoon(new Date(searchStart.getTime() + maxWeeks * 7 * MS_DAY));
+
+  const slots = collectMultiWeekdaySlots(searchStart, searchEnd, slotWeekdays);
+  const sorted = [...slots].sort(
+    (a, b) => Math.abs(a.getTime() - nominal.getTime()) - Math.abs(b.getTime() - nominal.getTime()),
+  );
+
+  for (const date of sorted) {
+    if (minBound && date.getTime() < minBound.getTime()) continue;
+    if (maxBound && date.getTime() > maxBound.getTime()) continue;
+    if (clubsAvailable(occupancy, home, away, date, minRestDays)) return new Date(date);
+  }
+
+  let cursor = sorted.length
+    ? normalizeNoon(new Date(sorted[sorted.length - 1]))
+    : snapToNearestWeekday(searchStart, slotWeekdays);
+  for (let week = 0; week < maxWeeks; week += 1) {
+    cursor.setDate(cursor.getDate() + 7);
+    if (maxBound && cursor.getTime() > maxBound.getTime()) break;
+    if (minBound && cursor.getTime() < minBound.getTime()) continue;
+    if (clubsAvailable(occupancy, home, away, cursor, minRestDays)) return new Date(cursor);
+  }
+
+  cursor = sorted.length
+    ? normalizeNoon(new Date(sorted[0]))
+    : snapToNearestWeekday(searchStart, slotWeekdays);
+  for (let week = 0; week < maxWeeks; week += 1) {
+    cursor.setDate(cursor.getDate() - 7);
+    if (minBound && cursor.getTime() < minBound.getTime()) break;
+    if (clubsAvailable(occupancy, home, away, cursor, minRestDays)) return new Date(cursor);
+  }
+
+  const fallbackNominal = minBound && minBound.getTime() > nominal.getTime() ? minBound : nominal;
+  let probe = snapToNextWeekday(fallbackNominal, slotWeekdays);
+  for (let attempt = 0; attempt < maxWeeks * slotWeekdays.length * 2; attempt += 1) {
+    if (maxBound && probe.getTime() > maxBound.getTime()) break;
+    if (minBound && probe.getTime() >= minBound.getTime()
+      && clubsAvailable(occupancy, home, away, probe, minRestDays)) {
+      return new Date(probe);
+    }
+    probe.setDate(probe.getDate() + 1);
+    probe = snapToNextWeekday(probe, slotWeekdays);
+  }
+
+  return snapToNextWeekday(
+    maxBound && maxBound.getTime() < fallbackNominal.getTime() ? maxBound : fallbackNominal,
+    slotWeekdays,
+  );
+}
+
+/**
  * Encontra data livre para dois clubes, buscando a partir de nominal/minDate.
  */
 export function findAvailableDate(occupancy, home, away, {
@@ -94,7 +178,18 @@ export function findAvailableDate(occupancy, home, away, {
   maxDate = null,
   minRestDays = DEFAULT_MIN_REST_DAYS,
   maxSearchDays = 60,
+  slotWeekdays = null,
 } = {}) {
+  if (slotWeekdays?.length) {
+    return findAvailableSlotDate(occupancy, home, away, {
+      nominalDate,
+      minDate,
+      maxDate,
+      minRestDays,
+      slotWeekdays,
+      maxWeeks: Math.ceil(maxSearchDays / 7) + 4,
+    });
+  }
   const maxBound = maxDate ? normalizeNoon(maxDate) : null;
   const minBound = minDate ? normalizeNoon(minDate) : null;
   let base = normalizeNoon(
@@ -150,41 +245,55 @@ export function scheduleGameOnOccupancy(game, occupancy, {
   maxDate = null,
   minRestDays = DEFAULT_MIN_REST_DAYS,
   time = null,
+  slotWeekdays = null,
+  competitionId = null,
 } = {}) {
   if (!game?.home || !game?.away) return game;
   unreserveScheduledGame(occupancy, game);
+  const weekdays = slotWeekdays?.length
+    ? slotWeekdays
+    : (competitionId ? getCompetitionWeekdays(competitionId) : null);
   const scheduled = findAvailableDate(occupancy, game.home, game.away, {
     nominalDate: nominalDate || new Date(),
     minDate,
     maxDate,
     minRestDays,
+    slotWeekdays: weekdays,
   });
   game.date = scheduled;
-  game.time = time || game.time || DEFAULT_FIXTURE_TIMES[0];
+  const slotKey = competitionId ? getCompetitionSlotKey(competitionId) : null;
+  game.time = time || game.time || (slotKey ? getSlotDefaultTime(slotKey) : DEFAULT_FIXTURE_TIMES[0]);
   game._reservedTs = scheduled.getTime();
   reserveClubDate(occupancy, game.home, scheduled);
   reserveClubDate(occupancy, game.away, scheduled);
   return game;
 }
 
-/** Distribui datas do pontos corridos (rodada sincronizada, horários escalonados). */
+/** Distribui datas do pontos corridos (rodada sincronizada no slot da divisão). */
 export function scheduleLeagueDivision(season, division, fixtures, {
   window = LEAGUE_CALENDAR_WINDOWS[division],
   fixtureTimes = DEFAULT_FIXTURE_TIMES,
   minRestDays = DEFAULT_MIN_REST_DAYS,
   occupancy = createClubOccupancy(),
+  competitionId = null,
 } = {}) {
   if (!window || !Array.isArray(fixtures)) return occupancy;
   const maxDate = planSeasonEndDate(season);
   const rounds = fixtures.length;
+  const { start, end } = windowToDates(season, window);
+  const leagueCompId = competitionId || window.competitionId || leagueCompetitionId(division);
+  const leagueWeekdays = getCompetitionWeekdays(leagueCompId);
+  const roundDates = buildWeeklyCadenceDates(start, end, leagueWeekdays, rounds);
   fixtures.forEach((roundGames, roundIndex) => {
     if (!Array.isArray(roundGames)) return;
-    const roundDate = clampToSeason(nominalRoundDate(season, roundIndex + 1, rounds, window), season);
+    const roundDate = clampToSeason(roundDates[roundIndex] || roundDates[roundDates.length - 1], season);
     roundGames.forEach((game, gameIndex) => {
       scheduleGameOnOccupancy(game, occupancy, {
         nominalDate: roundDate,
         maxDate,
         minRestDays,
+        slotWeekdays: leagueWeekdays,
+        competitionId: leagueCompId,
         time: fixtureTimes[gameIndex % fixtureTimes.length],
       });
       if (game.date) game.date = clampToSeason(game.date, season);
@@ -256,20 +365,27 @@ export function rescheduleCupFixtures(cupGames, occupancy, {
     )
     .forEach(game => {
       if (game.completed) return;
+      const phaseMax = cupPhaseMaxDate(year, game.phaseIndex || 0);
+      const gameMax = phaseMax.getTime() < maxDate.getTime() ? phaseMax : maxDate;
       let minDate = game.leg === 'VOLTA' && tieIdaDates.has(game.tieId)
         ? new Date(tieIdaDates.get(game.tieId) + twoLegGapMs)
         : null;
       if (floor && normalizeNoon(game.date).getTime() < floor.getTime()) {
         if (!minDate || minDate.getTime() < floor.getTime()) minDate = new Date(floor);
       }
+      const leg = game.leg === 'VOLTA' ? 'VOLTA' : 'IDA';
+      const slotWeekdays = getCupLegWeekdays(game.phaseIndex || 0, leg);
       scheduleGameOnOccupancy(game, occupancy, {
         nominalDate: clampToSeason(game.date, year),
         minDate: minDate ? clampToSeason(minDate, year) : null,
-        maxDate,
+        maxDate: clampToSeason(gameMax, year),
         minRestDays,
+        slotWeekdays,
+        competitionId: 'cup',
         time: game.time,
       });
       game.date = clampToSeason(game.date, year);
+      if (game.date.getTime() > phaseMax.getTime()) game.date = normalizeNoon(phaseMax);
       if (game.leg !== 'VOLTA') tieIdaDates.set(game.tieId, game.date.getTime());
     });
 }

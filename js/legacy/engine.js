@@ -86,6 +86,7 @@ import {
 } from '../core/save.js';
 import { createMatchRatingsEngine, DEFAULT_USER_TACTICS, blankMatchStats } from '../engine/match-ratings.js';
 import { createSeasonTransitionEngine } from '../engine/season-transition.js';
+import { serializeUserStadium, applySavedUserStadium } from '../engine/stadium-sectors.js';
 import { createInjuryEngine } from '../engine/injury.js';
 import { createFatigueEngine } from '../engine/fatigue.js';
 import { createDisciplineEngine } from '../engine/discipline.js';
@@ -140,6 +141,7 @@ import {
   buildCupPhaseNominalDates,
   seasonEndDate as planSeasonEndDate,
 } from '../engine/season-calendar-plan.js';
+import { resolveFixtureCompetitionCode } from '../engine/season-calendar-mold.js';
 import { competitionRulesHtml } from '../engine/competition-rules.js';
 import {
   resolveBoardJobRisk,
@@ -354,6 +356,7 @@ export async function bootEngine({ bus } = {}) {
     purchaseStadiumUpgrade,
     getTicketPrices,
     adjustTicketPrice,
+    adjustSectorTicketPrice,
     estimateGateReceipt,
     competitionAttraction,
     computeMatchAttendance,
@@ -680,6 +683,7 @@ export async function bootEngine({ bus } = {}) {
       writeJson(SAVE_KEYS.career,{...savedNewGame});
     }
   }
+  const continuingCareer=!!(validSavedSeason||(savedNewGame&&Array.isArray(savedNewGame.userRoster)&&savedNewGame.userRoster.length>=18));
   Object.values(clubs).forEach(club=>{
     const attackers=club.roster.filter(p=>['ATA','PE','PD','MEI','MC'].includes(p.pos)).sort((a,b)=>(b.finishing+b.heading*.2)-(a.finishing+a.heading*.2));
     const creators=club.roster.filter(p=>p.pos!=='GOL').sort((a,b)=>(b.passing+b.playmaking)-(a.passing+a.playmaking));
@@ -690,11 +694,7 @@ export async function bootEngine({ bus } = {}) {
     if(club.name===userClub){
       if(savedNewGame?.stadiumName)club.stadiumName=String(savedNewGame.stadiumName).trim();
       ensureBudget(club,club.division||userDivision);
-      if(savedNewGame){
-        ensureStadium(club,club.division||userDivision,{newGame:true});
-      }else{
-        ensureStadium(club,club.division||userDivision);
-      }
+      ensureStadium(club,club.division||userDivision,{newGame:!continuingCareer});
     }
     club.medicalInvestment=club.medicalInvestment??0;
     club.preventionProgram=club.preventionProgram??0;
@@ -1101,23 +1101,9 @@ export async function bootEngine({ bus } = {}) {
       clubStatus.syncFinancesFromBudget(clubs[userClub],userDivision);
     }
     renderEnvironmentCard();
-    const savedStadium=savedSeason?.userStadium;
+    const savedStadium=savedSeason?.userStadium||savedNewGame?.userStadium;
     if(savedStadium&&typeof savedStadium==='object'){
-      if(Number.isFinite(Number(savedStadium.capacity)))clubs[userClub].stadiumCapacity=Number(savedStadium.capacity);
-      if(savedStadium.sectors&&typeof savedStadium.sectors==='object'){
-        clubs[userClub].stadiumSectors={...savedStadium.sectors};
-      }
-      if(Number.isFinite(Number(savedStadium.investments)))clubs[userClub].stadiumInvestments=Number(savedStadium.investments);
-      if(Number.isFinite(Number(savedStadium.sectorModel)))clubs[userClub].stadiumSectorModel=Number(savedStadium.sectorModel);
-      if(Number.isFinite(Number(savedStadium.capacityLevel)))clubs[userClub].stadiumCapacityLevel=Number(savedStadium.capacityLevel);
-      if(savedStadium.name)clubs[userClub].stadiumName=savedStadium.name;
-      if(savedStadium.ticketPrices)clubs[userClub].ticketPrices={...savedStadium.ticketPrices};
-      if(Number.isFinite(Number(savedStadium.structure)))clubs[userClub].stadiumStructure=Number(savedStadium.structure);
-      if(Number.isFinite(Number(savedStadium.pitchLevel)))clubs[userClub].pitchLevel=Number(savedStadium.pitchLevel);
-      if(savedStadium.pitchCondition)clubs[userClub].pitchCondition=savedStadium.pitchCondition;
-      if(savedStadium.namingRights&&typeof savedStadium.namingRights==='object'){
-        clubs[userClub].namingRights={...savedStadium.namingRights};
-      }
+      applySavedUserStadium(clubs[userClub],savedStadium);
     }else if(savedNewGame?.stadiumName){
       clubs[userClub].stadiumName=String(savedNewGame.stadiumName).trim();
     }
@@ -1675,8 +1661,8 @@ export async function bootEngine({ bus } = {}) {
   let cupGameNumber=Math.max(0,...(cupCompetition.stages||[]).flatMap(stage=>(Array.isArray(stage?.fixtures)?stage.fixtures:[]).map(game=>game.gameNumber||0)))+1;
   // O calendário é resolvido como uma agenda nacional única. Antes de confirmar
   // uma data da Copa, são considerados todos os jogos de liga do clube e as fases
-  // anteriores da própria Copa. Intervalo mínimo de quatro datas = três dias
-  // completos de descanso entre um compromisso e outro.
+  // anteriores da própria Copa. Slots Qua (Copa) + Sáb (Nacional); mínimo 2 dias
+  // completos de descanso entre compromissos (Qua→Sáb na mesma semana).
   const MIN_REST_DAYS=DEFAULT_MIN_REST_DAYS;
   const clubMatchDates=new Map();
   const reserveClubDateLocal=(club,date)=>reserveClubDate(clubMatchDates,club,date);
@@ -1701,6 +1687,7 @@ export async function bootEngine({ bus } = {}) {
     minDate,
     maxDate:planSeasonEndDate(careerSeason),
     minRestDays:MIN_REST_DAYS,
+    competitionId:'cup',
     time:game.time,
   });
   const allCupFixtures=()=>(cupCompetition.stages||[]).flatMap(stage=>Array.isArray(stage?.fixtures)?stage.fixtures:[]);
@@ -1715,7 +1702,7 @@ export async function bootEngine({ bus } = {}) {
       seasonYear:careerSeason,
     });
   };
-  const calendarIntervalLabel=conflicts=>conflicts===0?'intervalo mínimo de 3 dias validado':`${conflicts} conflito(s) aguardando ajuste`;
+  const calendarIntervalLabel=conflicts=>conflicts===0?'molde CBF · Qua/Dom · descanso validado':`${conflicts} conflito(s) aguardando ajuste`;
   const cupPairsForStage=(definition,entrants)=>{
     const pool=Array.isArray(entrants)?entrants.filter(Boolean):[];
     if(!definition||pool.length<2)return [];
@@ -2403,10 +2390,34 @@ export async function bootEngine({ bus } = {}) {
     pushMessage({category:'competition',type:'phase-advance',title:`Série D · ${label}`,body:`${userClub} avançou para ${label}. Os confrontos em ida e volta já estão no calendário.`,round:currentRound,meta:{competition:'Série D · Eliminatórias',briefKey}});
   };
   const calendarGames=new Map();
+  const calendarCompetitionTagsByDate=new Map();
+  const addCalendarCompetitionTag=(date,code)=>{
+    if(!date||!code)return;
+    const key=calendarKey(date);
+    if(!calendarCompetitionTagsByDate.has(key))calendarCompetitionTagsByDate.set(key,new Set());
+    calendarCompetitionTagsByDate.get(key).add(code);
+  };
+  const rebuildCalendarCompetitionTags=()=>{
+    calendarCompetitionTagsByDate.clear();
+    Object.entries(nationalCompetitions).forEach(([division,competition])=>{
+      (competition.fixtures||[]).flat().forEach(game=>{
+        if(!game?.home)return;
+        const code=resolveFixtureCompetitionCode(game,{division});
+        if(!code)return;
+        const date=gameScheduledDate(game,game.round?fixtureDateFor(division,game.round):null);
+        if(date)addCalendarCompetitionTag(date,code);
+      });
+    });
+    copaDoBrasilFixtures.forEach(game=>{
+      if(!game?.date)return;
+      addCalendarCompetitionTag(new Date(game.date),resolveFixtureCompetitionCode(game));
+    });
+  };
   const rebuildCalendarGames=()=>{
     seasonCalendarFixtures=[...championshipFixtures.flat(),...userKnockoutFixtures(),...copaDoBrasilFixtures].sort((a,b)=>fixtureDetails(a).date-fixtureDetails(b).date);
     calendarGames.clear();
     seasonCalendarFixtures.forEach(game=>{const key=calendarKey(fixtureDetails(game).date);if(!calendarGames.has(key))calendarGames.set(key,[]);calendarGames.get(key).push(game);});
+    rebuildCalendarCompetitionTags();
     restConflictCount=calculateRestConflicts();
   };
   rebuildCalendarGames();
@@ -2462,6 +2473,7 @@ export async function bootEngine({ bus } = {}) {
     getChampionshipFixtures:()=>championshipFixtures,
     getCopaFixtures:()=>copaDoBrasilFixtures,
     getCalendarGames:()=>calendarGames,
+    getCalendarCompetitionTags:()=>calendarCompetitionTagsByDate,
     rebuildCalendarGames,
     getRestConflictCount:()=>restConflictCount,
     calendarIntervalLabel,
@@ -2634,6 +2646,7 @@ export async function bootEngine({ bus } = {}) {
     ensureStadium,
     getTicketPrices,
     adjustTicketPrice,
+    adjustSectorTicketPrice,
     estimateGateReceipt,
     getSponsors,
     estimateSponsorInstallment,
@@ -5461,18 +5474,7 @@ export async function bootEngine({ bus } = {}) {
     const userClubState=clubs[activeUserClub];
     if(!userClubState)return false;
     ensureStadium(userClubState,activeDivision);
-    const userStadium={
-      name:userClubState.stadiumName||'Estádio Solar',
-      capacity:userClubState.stadiumCapacity,
-      sectors:{...(userClubState.stadiumSectors||{})},
-      investments:getStadiumInvestments(userClubState),
-      sectorModel:userClubState.stadiumSectorModel??2,
-      structure:userClubState.stadiumStructure??0,
-      pitchLevel:userClubState.pitchLevel??0,
-      pitchCondition:userClubState.pitchCondition||'average',
-      ticketPrices:{national:userClubState.ticketPrices?.national,cups:userClubState.ticketPrices?.cups},
-      namingRights:userClubState.namingRights?{...userClubState.namingRights}:null,
-    };
+    const userStadium=serializeUserStadium(userClubState);
     const userSponsors=!opts.resetUserEconomy&&userClubState.sponsors?{
       season:userClubState.sponsors.season,
       division:userClubState.sponsors.division,
@@ -5680,6 +5682,9 @@ export async function bootEngine({ bus } = {}) {
         budget:seasonBudget,
         bankLoan:opts.resetUserEconomy?null:serializeBankLoan(userClubState),
       };
+      if(!opts.resetUserEconomy&&userStadium){
+        savedNewGame.userStadium=userStadium;
+      }
     }
     // Persiste AO VIVO na chave própria (não embute no season).
     if(matchStarted&&liveMatchGame&&!roundCommitted){
@@ -6905,6 +6910,7 @@ export async function bootEngine({ bus } = {}) {
     snapshotUserClubStatus:()=>clubStatus.snapshotUserStatus(),
     initialBudget,
     serializeBankLoan,
+    serializeUserStadium,
     getNationalRankingFormulaVersion:()=>nationalRankingFormulaVersion,
     getNationalRankingFinalizedSeasons:()=>nationalRankingFinalizedSeasons,
     pruneRankingTitles,

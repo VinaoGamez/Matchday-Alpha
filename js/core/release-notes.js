@@ -5,6 +5,30 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.1.95',
+    date: '2026-07-23',
+    publishedAt: '2026-07-23T13:12:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Calendário',
+        items: [
+          'Cada dia com jogos mostra tags de campeonato.',
+          'Grade mais limpa: removido o texto repetido de fase da Copa no dia.',
+          'Legenda atualizada com as cores das séries e da Copa.',
+          'Temporada reorganizada.',
+          'Correção: Brasileirão e Copa do Brasil rodam em paralelo, sem empurrar tudo para dezembro.',
+        ],
+      },
+      {
+        label: 'Ambiente · ingressos',
+        items: [
+          'Preços de ingresso agora são por setor do estádio (arquibancada, premium, etc.).',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.1.90',
     date: '2026-07-23',
     publishedAt: '2026-07-23T03:15:00-03:00',

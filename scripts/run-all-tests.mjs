@@ -13,6 +13,7 @@ const SUITES = [
   { label: 'league-fixtures', steps: [['scripts/league-fixtures-tests.mjs']] },
   { label: 'season-scheduler', steps: [['scripts/season-scheduler-tests.mjs']] },
   { label: 'season-calendar-plan', steps: [['scripts/season-calendar-plan-tests.mjs']] },
+  { label: 'season-calendar-mold', steps: [['scripts/season-calendar-mold-tests.mjs']] },
   { label: 'knockout-shootout', steps: [['scripts/knockout-shootout-tests.mjs']] },
   { label: 'competition-rules', steps: [['scripts/competition-rules-tests.mjs']] },
   { label: 'serie-c-calendar', steps: [['scripts/serie-c-calendar-tests.mjs']] },
