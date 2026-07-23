@@ -682,13 +682,13 @@ export function createCalendarViewFeature(deps) {
     return parts.join('');
   };
 
-  const renderCalendarAgenda = () => {
+  const renderCalendarAgenda = (trainingMap = null) => {
     const userClub = getUserClub();
     const trainingRules = getTrainingRules();
     const calendarGames = getCalendarGames();
     const key = calendarKey(selectedCalendarDate);
     const games = [...(calendarGames.get(key) || [])].sort((a, b) => Number(isUserFixture(b)) - Number(isUserFixture(a)));
-    const activities = calendarTrainingMap().get(key) || [];
+    const activities = (trainingMap || calendarTrainingMap()).get(key) || [];
     const dateLabel = selectedCalendarDate.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
     calendarReportGames.clear();
     $('#calendarSelectedDay').textContent = dateLabel;
@@ -756,6 +756,17 @@ export function createCalendarViewFeature(deps) {
     const firstDay = new Date(year, month, 1);
     const gridStart = new Date(year, month, 1 - firstDay.getDay());
     const trainingMap = calendarTrainingMap();
+    const transferMetaByKey = new Map();
+    for (let index = 0; index < 42; index += 1) {
+      const date = new Date(gridStart);
+      date.setDate(gridStart.getDate() + index);
+      date.setHours(12, 0, 0, 0);
+      const key = calendarKey(date);
+      const outside = date.getMonth() !== month || date.getFullYear() !== careerSeason;
+      if (!outside && isDateInTransferWindow(date)) {
+        transferMetaByKey.set(key, getTransferWindowPhase(date));
+      }
+    }
     const roundNumber = Math.min(Math.max(currentRound, 1), Math.max(championshipFixtures.length, 1));
     const roundGames = championshipFixtures[roundNumber - 1] || [];
     const anchorGame = roundGames.find(isUserFixture) || roundGames[0];
@@ -783,8 +794,8 @@ export function createCalendarViewFeature(deps) {
       const userCompleted = userGame && isFixtureCompleted(userGame);
       const userScore = userCompleted ? fixtureResultLabel(userGame) : '';
       const inPlanningWeek = date >= planWeekStart && date <= planWeekEnd;
-      const inTransferWindow = !outside && isDateInTransferWindow(date);
-      const transferPhase = inTransferWindow ? getTransferWindowPhase(date) : null;
+      const transferPhase = !outside ? transferMetaByKey.get(key) || null : null;
+      const inTransferWindow = !!transferPhase;
       const isUserCup = userGame?.competition === 'COPA DO BRASIL';
       const eventText = userGame
         ? isUserCup
@@ -800,7 +811,7 @@ export function createCalendarViewFeature(deps) {
     }).join('');
     renderTrainingRules();
     renderCalendarRoutine();
-    renderCalendarAgenda();
+    renderCalendarAgenda(trainingMap);
   };
 
   const openDashboardCalendarView = () => {

@@ -1949,17 +1949,27 @@ export async function bootEngine({ bus } = {}) {
     if(leagueFixtureRecorded(game))return true;
     return (game.round||99)<=userLeaguePlayed();
   };
+  let userScheduleCache=null;
+  let pendingUserScheduleCache=null;
+  const invalidateUserScheduleCache=()=>{userScheduleCache=null;pendingUserScheduleCache=null;};
   const userSchedule=()=>{
+    if(userScheduleCache)return userScheduleCache;
     const league=championshipFixtures.flat().filter(isUserFixture).filter(isSerieDGroupStageGame);
     const knockout=userGroupStageComplete()?userKnockoutFixtures().filter(isUserFixture):[];
     const cup=copaDoBrasilFixtures.filter(isUserFixture);
-    return [...league,...knockout,...cup].map(game=>({game,details:fixtureDetails(game)})).sort((a,b)=>a.details.date-b.details.date||((a.game.round||0)-(b.game.round||0))||String(a.game.leg||'').localeCompare(String(b.game.leg||'')));
+    userScheduleCache=[...league,...knockout,...cup].map(game=>({game,details:fixtureDetails(game)})).sort((a,b)=>a.details.date-b.details.date||((a.game.round||0)-(b.game.round||0))||String(a.game.leg||'').localeCompare(String(b.game.leg||'')));
+    pendingUserScheduleCache=null;
+    return userScheduleCache;
   };
   const userKnockoutFixtures=()=>userDivision==='D'
     ?(Array.isArray(nationalCompetitions.D?.fixtures)?nationalCompetitions.D.fixtures:[])
       .filter(Array.isArray).flat().filter(isKnockoutShootoutCompetition)
     :[];
-  const pendingUserSchedule=()=>userSchedule().filter(entry=>!isFixtureCompleted(entry.game));
+  const pendingUserSchedule=()=>{
+    if(pendingUserScheduleCache)return pendingUserScheduleCache;
+    pendingUserScheduleCache=userSchedule().filter(entry=>!isFixtureCompleted(entry.game));
+    return pendingUserScheduleCache;
+  };
   if(!cupCompetition.stages.length&&cupFirstRanked.length===28)createCupStage(1,cupFirstRanked);
   else rescheduleAllCupFixtures();
   restConflictCount=calculateRestConflicts();
@@ -2414,6 +2424,7 @@ export async function bootEngine({ bus } = {}) {
     });
   };
   const rebuildCalendarGames=()=>{
+    invalidateUserScheduleCache();
     seasonCalendarFixtures=[...championshipFixtures.flat(),...userKnockoutFixtures(),...copaDoBrasilFixtures].sort((a,b)=>fixtureDetails(a).date-fixtureDetails(b).date);
     calendarGames.clear();
     seasonCalendarFixtures.forEach(game=>{const key=calendarKey(fixtureDetails(game).date);if(!calendarGames.has(key))calendarGames.set(key,[]);calendarGames.get(key).push(game);});
@@ -2507,7 +2518,20 @@ export async function bootEngine({ bus } = {}) {
     getMarketDayBrief:date=>transfersEngine?.getMarketDayBrief?.(date)||null,
   });
   const {renderCalendar,openCalendarMatchReport,calendarGameResult,openDashboardCalendarView,setSelectedCalendarDate}=calendarView;
-  onCupScheduleChanged=calendarView.onCupScheduleChanged;
+  const rawOnCupScheduleChanged=calendarView.onCupScheduleChanged;
+  let cupScheduleRefreshPending=false;
+  onCupScheduleChanged=()=>{
+    if(isCalendarBatch()){
+      cupScheduleRefreshPending=true;
+      return;
+    }
+    rawOnCupScheduleChanged();
+  };
+  const flushCupScheduleRefresh=()=>{
+    if(!cupScheduleRefreshPending)return;
+    cupScheduleRefreshPending=false;
+    rawOnCupScheduleChanged();
+  };
   let advanceTransferCalendarFn=()=>({ok:false,reason:'no_club'});
   let advanceCalendarWeekFn=()=>null;
   let transfersUi=null;
@@ -5270,6 +5294,7 @@ export async function bootEngine({ bus } = {}) {
       stage=cupCompetition.stages.find(item=>!item.completed);
     }
     if(changed)playerHistory.persist();
+    if(changed)invalidateUserScheduleCache();
     return changed;
   };
   const reconcileSerieACupEntry=()=>{
@@ -5788,11 +5813,9 @@ export async function bootEngine({ bus } = {}) {
     if(!savedNewGame||isUserSeasonIdle())return null;
     if(seasonFullyComplete())return null;
     ensureCalendarMatchConsistency();
-    rebuildCalendarGames();
     if(isOnPendingMatchDay()){
       pushMatchDayBrief(userMatchOnDate(careerCalendarDate)||nextPendingUserEntry()?.game);
       refreshSeasonPresentation();
-      renderCalendar();
       return {stopped:'match'};
     }
     // Com janela aberta: mesma rotina do Dashboard (semana / Deadline Day + tick IA + relatório).
@@ -5829,7 +5852,6 @@ export async function bootEngine({ bus } = {}) {
           persistSeason(true);
           pushMatchDayBrief(pendingMatch);
           refreshSeasonPresentation();
-          renderCalendar();
           return {stopped:'match',game:pendingMatch,days:simulatedDays};
         }
         applyTrainingDay(trainingTypeForDate(nextDay));
@@ -5839,6 +5861,7 @@ export async function bootEngine({ bus } = {}) {
       }
     }finally{
       endCalendarBatch();
+      flushCupScheduleRefresh();
       if(simulatedDays>0){
         try{syncCareerRosters();}catch{/* ignore */}
         try{renderRoster();}catch{/* ignore */}
@@ -5848,8 +5871,9 @@ export async function bootEngine({ bus } = {}) {
     if(simulatedDays>0){
       persistSeason(true);
       refreshSeasonPresentation();
+    }else{
+      renderCalendar();
     }
-    renderCalendar();
     return {stopped:null,days:simulatedDays};
   };
   advanceCalendarWeekFn=advanceCalendarWeek;
