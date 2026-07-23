@@ -2,7 +2,7 @@
  * Build pública para testers.
  * Nomenclatura: Alpha V.X.YY — sobe +0.05 a cada publicação (1.00 → 1.05 → …).
  */
-export const BUILD_VERSION = 'Alpha V.2.00';
+export const BUILD_VERSION = 'Alpha V.2.05';
 
 /** Rodadas da fase de grupos da Série D (1ª fase). */
 export const SERIE_D_GROUP_ROUNDS = 10;
@@ -85,4 +85,6 @@ export const FEATURES = {
   externalTunnel: true,
   /** Mercado ativo em local e GitHub Pages. */
   transfers: readTransfersFlag(),
+  /** Copa do Mundo — desligada até CMU estável; saves preservam dados inertes. */
+  worldCup: false,
 };

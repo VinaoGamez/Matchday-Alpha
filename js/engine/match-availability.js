@@ -7,6 +7,8 @@ import { MODULE_VERSIONS } from '../core/constants.js';
  * @param {object} deps
  * @param {Function} deps.getClubs — () => clubs
  * @param {Function} deps.getUserClub — () => userClub
+ * @param {Function} [deps.getUserSideName] — () => seleção ou clube (lado humano)
+ * @param {Function} [deps.resolveClubByName] — (name) => clube ou seleção virtual
  * @param {Function} deps.getCurrentRound — () => currentRound
  * @param {Function} deps.recordPlayerMatchWorkload
  * @param {Function} deps.roundTactic
@@ -33,6 +35,8 @@ export function createMatchAvailability(deps) {
   const {
     getClubs,
     getUserClub,
+    getUserSideName,
+    resolveClubByName: resolveClubByNameDep,
     getCurrentRound,
     recordPlayerMatchWorkload,
     roundTactic,
@@ -56,9 +60,14 @@ export function createMatchAvailability(deps) {
     tacticFor,
   } = deps;
 
+  const resolveClubByName = name => {
+    if (resolveClubByNameDep) return resolveClubByNameDep(name);
+    return getClubs()[name] || null;
+  };
+
   const applyMatchWorkload = (clubName, entries, tactic) => {
     if (!clubName || !entries?.length) return;
-    const club = getClubs()[clubName];
+    const club = resolveClubByName(clubName);
     if (!club) return;
     entries.forEach(entry => {
       const player = club.roster.find(candidate => candidate.name === entry.name);
@@ -73,7 +82,7 @@ export function createMatchAvailability(deps) {
     const userDisciplineLines = [];
     const userOpponent = matchFixture.home === userClub ? matchFixture.away : matchFixture.away === userClub ? matchFixture.home : null;
     [['home', matchFixture.home], ['away', matchFixture.away]].forEach(([side, clubName]) => {
-      const club = clubs[clubName];
+      const club = resolveClubByName(clubName);
       if (!club) return;
       applyMatchWorkload(clubName, game.workload?.[side], game.tactics?.[side] || roundTactic(club));
       (game.discipline?.[side] || []).forEach(entry => {
@@ -115,22 +124,38 @@ export function createMatchAvailability(deps) {
 
   const commitLiveAvailability = () => {
     if (getAvailabilityCommitted() || !getMatchStarted() || !getLiveMatchGame()) return;
-    const clubs = getClubs(), userClub = getUserClub(), currentRound = getCurrentRound();
+    const userClub = getUserClub(), currentRound = getCurrentRound();
     const liveMatchGame = getLiveMatchGame(), matchDiscipline = getMatchDiscipline(), liveMinutesPlayed = getLiveMinutesPlayed(), liveOpeningLineup = getLiveOpeningLineup();
+    const userSideName = getUserSideName?.() || userClub;
     const userDisciplineLines = [];
-    const userOpponent = liveMatchGame.home === userClub ? liveMatchGame.away : liveMatchGame.home;
-    const opponentClub = liveMatchGame.home === userClub ? liveMatchGame.away : liveMatchGame.home;
-    [['home', userClub], ['away', opponentClub]].forEach(([side, clubName]) => {
-      const club = clubs[clubName];
-      matchDiscipline[side].forEach(entry => userDisciplineLines.push(...applyDisciplineToPlayer(club.roster.find(player => player.name === entry.name), entry, currentRound, clubName, liveMatchGame)));
-      const entries = [...liveMinutesPlayed[side].entries()].filter(([, mins]) => mins > 0).map(([name, mins]) => ({ name, minutes: mins, started: liveOpeningLineup[side].includes(name) }));
+    const userSide = liveMatchGame.home === userSideName ? 'home' : 'away';
+    const oppSide = userSide === 'home' ? 'away' : 'home';
+    const userClubName = liveMatchGame[userSide];
+    const oppClubName = liveMatchGame[oppSide];
+    [[userSide, userClubName], [oppSide, oppClubName]].forEach(([side, clubName]) => {
+      const club = resolveClubByName(clubName);
+      if (!club?.roster) return;
+      matchDiscipline[side].forEach(entry =>
+        userDisciplineLines.push(
+          ...applyDisciplineToPlayer(
+            club.roster.find(player => player.name === entry.name),
+            entry,
+            currentRound,
+            clubName,
+            liveMatchGame,
+          ),
+        ),
+      );
+      const entries = [...liveMinutesPlayed[side].entries()]
+        .filter(([, mins]) => mins > 0)
+        .map(([name, mins]) => ({ name, minutes: mins, started: liveOpeningLineup[side].includes(name) }));
       applyMatchWorkload(clubName, entries, tacticFor(side));
     });
     if (userDisciplineLines.length) {
       pushDisciplineDigest(
         userDisciplineLines,
         currentRound,
-        userOpponent ? `vs ${userOpponent}` : `Rodada ${currentRound}`,
+        oppClubName ? `vs ${oppClubName}` : `Rodada ${currentRound}`,
         liveMatchGame,
       );
     }

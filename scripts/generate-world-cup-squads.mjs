@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NATIONAL_TEAMS, nationalTeamPower } from '../js/engine/national-teams.js';
 import { rollPlayerName, dedupeRosterNames } from '../js/engine/player-names.js';
+import { rollNationalTeamPlayerAge } from '../js/engine/national-team-player.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outPath = path.join(root, 'public', 'data', 'world-cup-2026-squads.json');
@@ -133,7 +134,7 @@ function destaqueSlotCount(code) {
 function buildTeamSquad(code, meta) {
   const rng = mulberry32(meta.fifaRank * 997 + code.charCodeAt(0) * 13);
   const teamPower = nationalTeamPower(meta.block);
-  const pool = meta.namePool || 'Brasil';
+  const pool = meta.namePool || meta.name || 'Brasil';
   const craques = [...(CRAQUE_ROSTER[code] || [])];
   const destaqueFixed = Array.isArray(DESTAQUE_NAMES[code]) ? [...DESTAQUE_NAMES[code]] : [];
   let destaqueSlots = destaqueSlotCount(code) - destaqueFixed.length;
@@ -165,6 +166,9 @@ function buildTeamSquad(code, meta) {
       name,
       pos,
       ovr: ovrForPlayer({ teamPower, pos, craque, destaque, rng }),
+      nationality: meta.name,
+      nationalityIso: meta.iso,
+      age: rollNationalTeamPlayerAge({ pos, craque, destaque }, rng),
       nationalTeamOnly: true,
     };
     if (craque) player.craque = true;

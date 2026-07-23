@@ -1,5 +1,6 @@
 import { MODULE_VERSIONS } from '../../core/constants.js';
 import { defaultClubCrestInitials } from '../../ui/club-label.js';
+import { teamCrestHtml } from '../../ui/team-crest.js';
 
 const MESSAGE_LIMIT = 200;
 /** Mensagens não lidas com esta idade (dias de calendário) são marcadas como lidas. */
@@ -34,11 +35,23 @@ export const isMedicalActionRequired = message =>
 /** Proposta de transferência pendente. */
 export const isTransferActionRequired = message =>
   isActionRequiredMessage(message) &&
-  (message.category === 'transfer' || message.type === 'incoming-offer');
+  (message.category === 'transfer' || message.type === 'incoming-offer') &&
+  message.meta?.offerKind !== 'national-team';
+
+/** Convite para comandar seleção na Copa do Mundo. */
+export const isNationalTeamOfferMessage = message => {
+  if (!message) return false;
+  if (message.type === 'national-team-offer') return true;
+  return message.meta?.offerKind === 'national-team';
+};
+
+export const isNationalTeamActionRequired = message =>
+  isActionRequiredMessage(message) && isNationalTeamOfferMessage(message);
 
 /** Mensagem de proposta (pendente ou já respondida) — usa o layout novo do leitor. */
 export const isIncomingOfferMessage = message => {
   if (!message) return false;
+  if (isNationalTeamOfferMessage(message)) return false;
   if (message.type === 'incoming-offer') return true;
   if (message.meta?.offerId) return true;
   if (message.meta?.offerType === 'buy' || message.meta?.offerType === 'loan') return true;
@@ -105,6 +118,37 @@ const bodyToHtml = body =>
     .split('\n')
     .map(line => escapeHtml(line.trim()))
     .join('<br>');
+
+const escAttr = value =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+
+/** Corpo da proposta: nome destacado/clicável + quebra após o ponto do jogador. */
+const formatOfferTextHtml = (offerText, message) => {
+  const playerName = message?.meta?.playerName;
+  const playerId = message?.meta?.playerId;
+  if (!playerName || !offerText.includes(playerName)) return bodyToHtml(offerText);
+
+  const idx = offerText.indexOf(playerName);
+  const before = offerText.slice(0, idx);
+  let after = offerText.slice(idx + playerName.length);
+
+  let period = '';
+  if (after.startsWith('.')) {
+    period = '.';
+    after = after.slice(1).replace(/^\s+/, '');
+  }
+
+  const playerEl = playerId
+    ? `<button type="button" class="message-reader-offer-player is-card-trigger" data-open-player-card data-player-id="${escAttr(playerId)}" aria-label="Ver card de ${escapeHtml(playerName)}">${escapeHtml(playerName)}</button>`
+    : `<strong class="message-reader-offer-player">${escapeHtml(playerName)}</strong>`;
+
+  const line1 = `${escapeHtml(before)}${playerEl}${period}`;
+  if (!after) return line1;
+  return `${line1}<br><span class="message-reader-offer-tail">${escapeHtml(after)}</span>`;
+};
 
 const MONTH_ABBR_TO_NUM = {
   JAN: '01',
@@ -206,6 +250,8 @@ const formatMatchdayBody = body => {
  * @param {Function} [deps.onMedicalActionRequired]
  * @param {Function} [deps.onTransferActionRequired]
  * @param {Function} [deps.onTransferOfferRespond]
+ * @param {Function} [deps.onNationalTeamActionRequired]
+ * @param {Function} [deps.onViewNationalTeam]
  */
 export function createMessagesFeature(deps) {
   const {
@@ -217,7 +263,10 @@ export function createMessagesFeature(deps) {
     onPush,
     onMedicalActionRequired,
     onTransferActionRequired,
+    onNationalTeamActionRequired,
     onTransferOfferRespond,
+    onNationalTeamOfferRespond,
+    onViewNationalTeam,
   } = deps;
   const getCareerDateIso = typeof deps.getCareerDateIso === 'function' ? deps.getCareerDateIso : null;
   const getCareerDate =
@@ -306,16 +355,24 @@ export function createMessagesFeature(deps) {
   const syncTransferOfferActions = message => {
     const actions = $('#messageReaderTransferActions');
     if (!actions) return;
-    const show =
+    const ntOffer =
+      isNationalTeamActionRequired(message) &&
+      !!message?.meta?.offerId &&
+      typeof onNationalTeamOfferRespond === 'function';
+    const transferOffer =
       isTransferActionRequired(message) &&
       !!message?.meta?.offerId &&
       typeof onTransferOfferRespond === 'function';
+    const show = ntOffer || transferOffer;
     actions.classList.toggle('hidden', !show);
     actions.dataset.offerId = show ? message.meta.offerId : '';
+    actions.dataset.offerKind = ntOffer ? 'national-team' : transferOffer ? 'transfer' : '';
     const expire = $('#messageReaderOfferExpire');
     if (expire) {
-      if (show && message.meta?.expiresRound) {
+      if (show && transferOffer && message.meta?.expiresRound) {
         expire.innerHTML = `<span>Expira na rodada ${escapeHtml(message.meta.expiresRound)}.</span><span>Responda com urgência.</span>`;
+      } else if (show && ntOffer) {
+        expire.innerHTML = '<span>Compromisso paralelo ao seu clube na Copa do Mundo.</span>';
       } else {
         expire.textContent = '';
       }
@@ -383,6 +440,7 @@ export function createMessagesFeature(deps) {
     const body = $('#messageReaderBody');
 
     const offerMessage = isIncomingOfferMessage(message);
+    const nationalTeamOfferMessage = isNationalTeamOfferMessage(message);
     const matchdayMessage = isMatchdayMessage(message);
     const competitionShortMeta = usesCompetitionShortMeta(message);
     const head = $('.message-reader-head');
@@ -392,6 +450,8 @@ export function createMessagesFeature(deps) {
       if (offerMessage) {
         const competition = message.meta?.competition || 'Mercado';
         meta.innerHTML = `<span>RODADA ${escapeHtml(message.round)}</span><span>${escapeHtml(competition)}</span>`;
+      } else if (nationalTeamOfferMessage) {
+        meta.innerHTML = `<span>${escapeHtml(message.meta?.competition || 'Copa do Mundo 2026')}</span>`;
       } else if (competitionShortMeta) {
         const shortMeta = competitionShortReaderMeta(message);
         meta.innerHTML = `<span>${escapeHtml(shortMeta.competition)}</span><span>${escapeHtml(shortMeta.roundLabel)}</span>`;
@@ -409,7 +469,14 @@ export function createMessagesFeature(deps) {
       // Título especial só enquanto a proposta ainda exige resposta.
       // Após aceitar/recusar, mostra o resultado (ex.: "Proposta recusada").
       const pendingOffer = offerMessage && isTransferActionRequired(message);
-      if (pendingOffer && isLoanOfferMessage(message)) {
+      const pendingNationalTeamOffer =
+        nationalTeamOfferMessage && isNationalTeamActionRequired(message);
+      if (pendingNationalTeamOffer) {
+        title.classList.remove('is-loan-title');
+        title.textContent = message.meta?.nationalTeamName
+          ? `CONVITE — ${String(message.meta.nationalTeamName).toUpperCase()}`
+          : 'CONVITE SELEÇÃO';
+      } else if (pendingOffer && isLoanOfferMessage(message)) {
         title.classList.add('is-loan-title');
         title.innerHTML = '<span>PROPOSTA DE</span><span>EMPRÉSTIMO</span>';
       } else if (pendingOffer) {
@@ -443,9 +510,24 @@ export function createMessagesFeature(deps) {
               <div class="message-reader-offer-main">
                 <div class="message-reader-offer-team">
                   <strong class="club-link" data-club="${escapeHtml(fromClub)}" role="button" tabindex="0">${escapeHtml(fromClub)}</strong>
-                  <button type="button" class="message-reader-ver-time" data-club="${escapeHtml(fromClub)}">Ver Time</button>
                 </div>
-                <p>${bodyToHtml(offerText)}</p>
+                <p>${formatOfferTextHtml(offerText, message)}</p>
+              </div>
+            </div>`
+          : formatOfferTextHtml(offerText, message);
+      } else if (nationalTeamOfferMessage) {
+        const teamName = message.meta?.nationalTeamName || '';
+        const teamCode = message.meta?.nationalTeamCode || '';
+        const offerText = stripOfferUrgencyLines(message.body);
+        body.innerHTML = teamName
+          ? `<div class="message-reader-offer-panel">
+              ${teamCrestHtml(teamName, { className: 'message-reader-offer-crest' })}
+              <div class="message-reader-offer-main">
+                <div class="message-reader-offer-team">
+                  <strong>${escapeHtml(teamName)}</strong>
+                  <button type="button" class="message-reader-ver-time" data-national-team-code="${escAttr(teamCode)}" aria-label="Ver elenco de ${escapeHtml(teamName)}">Ver Time</button>
+                </div>
+                <div class="message-reader-offer-copy">${bodyToHtml(offerText)}</div>
               </div>
             </div>`
           : bodyToHtml(offerText);
@@ -702,6 +784,7 @@ export function createMessagesFeature(deps) {
     onPush?.(message);
     if (isMedicalActionRequired(message)) onMedicalActionRequired?.(message);
     if (isTransferActionRequired(message)) onTransferActionRequired?.(message);
+    if (isNationalTeamActionRequired(message)) onNationalTeamActionRequired?.(message);
     return message;
   };
 
@@ -734,14 +817,34 @@ export function createMessagesFeature(deps) {
     onClick('#messageReaderModal', event => {
       if (event.target.id === 'messageReaderModal') closeMessageReader();
     });
+    onClick('#messageReaderBody', event => {
+      const button = event.target.closest('.message-reader-ver-time[data-national-team-code]');
+      if (!button) return;
+      const code = button.dataset.nationalTeamCode;
+      if (code && typeof onViewNationalTeam === 'function') onViewNationalTeam(code);
+    });
     onClick('#messageReaderOfferAccept', () => {
-      const offerId = $('#messageReaderTransferActions')?.dataset?.offerId;
-      if (!offerId || typeof onTransferOfferRespond !== 'function') return;
+      const actions = $('#messageReaderTransferActions');
+      const offerId = actions?.dataset?.offerId;
+      if (!offerId) return;
+      if (actions?.dataset?.offerKind === 'national-team') {
+        if (typeof onNationalTeamOfferRespond !== 'function') return;
+        onNationalTeamOfferRespond({ offerId, accept: true });
+        return;
+      }
+      if (typeof onTransferOfferRespond !== 'function') return;
       onTransferOfferRespond({ offerId, accept: true });
     });
     onClick('#messageReaderOfferReject', () => {
-      const offerId = $('#messageReaderTransferActions')?.dataset?.offerId;
-      if (!offerId || typeof onTransferOfferRespond !== 'function') return;
+      const actions = $('#messageReaderTransferActions');
+      const offerId = actions?.dataset?.offerId;
+      if (!offerId) return;
+      if (actions?.dataset?.offerKind === 'national-team') {
+        if (typeof onNationalTeamOfferRespond !== 'function') return;
+        onNationalTeamOfferRespond({ offerId, accept: false });
+        return;
+      }
+      if (typeof onTransferOfferRespond !== 'function') return;
       onTransferOfferRespond({ offerId, accept: false });
     });
   };

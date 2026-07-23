@@ -10,7 +10,10 @@
 .player-loan-tag{display:inline-block;padding:1px 5px;border-radius:3px;border:1px solid #2f7a4a;background:#143522;color:#8fefb0;font:800 9px 'DM Sans',sans-serif;letter-spacing:.35px;line-height:1.25;vertical-align:middle;flex-shrink:0}
 .player-loan-tag-club{max-width:min(180px,100%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
 .player-specialist-star{flex:none;display:inline-flex;align-items:center;justify-content:center;margin-left:2px;color:#c0c7d1;font-size:13px;line-height:1;text-shadow:0 0 1px #8a929c,0 1px 2px #0008;filter:drop-shadow(0 0 1px #e8eef6aa)}
+.player-specialist-star--silver{color:#d4dce8;text-shadow:0 0 2px #9aa8bc,0 1px 3px #000a}
+.player-specialist-star--gold{color:#f0c040;text-shadow:0 0 2px #b8860b,0 1px 3px #000a;filter:drop-shadow(0 0 2px #ffd70088)}
 .player-specialist-star:hover{color:#e4e9f0}
+.player-specialist-star--gold:hover{color:#ffe066}
 .player-yellow-group{display:inline-flex;align-items:center;gap:3px}
 .player-yellow-group+.player-yellow-group{margin-left:2px;padding-left:5px;border-left:1px solid #ffc94f66}
 .player-badge{display:inline-block;flex:none;vertical-align:middle}

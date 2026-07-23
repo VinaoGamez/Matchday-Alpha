@@ -66,8 +66,8 @@ function normKey(name) {
 
 export function isoForNationality(nation, isoOverride) {
   if (isoOverride) {
-    const code = String(isoOverride).trim().toUpperCase();
-    return /^[A-Z]{2}$/.test(code) ? code : null;
+    const code = String(isoOverride).trim().toLowerCase();
+    return /^[a-z]{2,3}$/.test(code) ? code : null;
   }
   const key = normKey(nation);
   return NATION_ISO[key] || null;
@@ -76,7 +76,7 @@ export function isoForNationality(nation, isoOverride) {
 /** PNG local — CSP do 5081 bloqueia img externa; emoji de bandeira often não renderiza no Windows. */
 export function flagImageUrl(iso2) {
   const iso = String(iso2 || '').toLowerCase();
-  if (!/^[a-z]{2}$/.test(iso)) return null;
+  if (!/^[a-z]{2,3}$/.test(iso)) return null;
   return `./flags/${iso}.png`;
 }
 

@@ -6,7 +6,7 @@ import { teamCrestWithHumanHtml } from '../../ui/team-crest.js';
 import { formatMatchRating as defaultFormatMatchRating } from '../../engine/player-match-stats.js';
 import { formatMatchMinuteLabel } from '../../engine/match-clock.js';
 import { isDateInTransferWindow, getTransferWindowPhase } from '../../engine/transfers.js';
-import { sortCalendarCompetitionCodes, calendarCompetitionLabel, isWorldCupYear } from '../../engine/season-calendar-mold.js';
+import { sortCalendarCompetitionCodes, calendarCompetitionLabel, isWorldCupSeasonActive } from '../../engine/season-calendar-mold.js';
 import { isWorldCupFixture } from '../../engine/world-cup-calendar.js';
 import { tipKey, buildPlayerTipIndex, ownGoalTipCount } from './match-report-tips.js';
 import goalBallUrl from '../../../assets/ui/goal-ball.png?url';
@@ -102,6 +102,15 @@ export function createCalendarViewFeature(deps) {
 
   const getCalendarCursor = () => calendarCursor;
   const getSelectedCalendarDate = () => selectedCalendarDate;
+
+  const pickSelectedDateForMonth = month => {
+    const careerSeason = getCareerSeason();
+    const today = getCareerCalendarDate();
+    if (today.getFullYear() === careerSeason && today.getMonth() === month) {
+      return new Date(today);
+    }
+    return new Date(careerSeason, month, 1, 12);
+  };
 
   const setSelectedCalendarDate = date => {
     selectedCalendarDate = new Date(date);
@@ -863,7 +872,7 @@ export function createCalendarViewFeature(deps) {
     const careerSeason = getCareerSeason();
     const nextMonth = calendarCursor.getMonth() + direction;
     calendarCursor = new Date(careerSeason, Math.max(0, Math.min(11, nextMonth)), 1);
-    selectedCalendarDate = new Date(calendarCursor);
+    selectedCalendarDate = pickSelectedDateForMonth(calendarCursor.getMonth());
     renderCalendar();
   };
 
@@ -873,7 +882,7 @@ export function createCalendarViewFeature(deps) {
     const championshipFixtures = getChampionshipFixtures();
     const copaDoBrasilFixtures = getCopaFixtures();
     const restConflictCount = getRestConflictCount();
-    const worldCupLegend = isWorldCupYear(careerSeason)
+    const worldCupLegend = isWorldCupSeasonActive(careerSeason)
       ? '<span><i class="comp-cmu"></i>CMU · COPA DO MUNDO</span>'
       : '';
 
@@ -917,8 +926,9 @@ export function createCalendarViewFeature(deps) {
       const button = event.target.closest('[data-calendar-month]');
       if (!button) return;
       const careerSeason = getCareerSeason();
-      calendarCursor = new Date(careerSeason, Number(button.dataset.calendarMonth), 1);
-      selectedCalendarDate = new Date(calendarCursor);
+      const month = Number(button.dataset.calendarMonth);
+      calendarCursor = new Date(careerSeason, month, 1);
+      selectedCalendarDate = pickSelectedDateForMonth(month);
       renderCalendar();
     });
     onClick('#calendarPrevious', () => moveCalendarMonth(-1));

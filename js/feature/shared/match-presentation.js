@@ -1,3 +1,5 @@
+import { resolveNationalTeam } from '../../engine/national-teams.js';
+import { WORLD_CUP_COMPETITION } from '../../engine/world-cup-calendar.js';
 import { isKnockoutShootoutCompetition } from '../../engine/knockout-shootout.js';
 
 export const divisionDisplayName = division => {
@@ -27,6 +29,8 @@ export const matchCompetitionRoundLabel = (game, userDivision, currentRound = 1,
   return `Rodada ${round} de 38`;
 };
 
+export const isWorldCupFixture = game => game?.competition === WORLD_CUP_COMPETITION;
+
 export const clubStandingContext = (
   clubName,
   clubs,
@@ -37,7 +41,11 @@ export const clubStandingContext = (
   serieDGroupRounds = 10,
 ) => {
   const club = clubs?.[clubName];
-  if (!club) return '';
+  if (!club) {
+    const nt = resolveNationalTeam(clubName);
+    if (nt) return `Copa do Mundo · FIFA ${nt.fifaRank}º`;
+    return '';
+  }
   const division = club.division || 'A';
   const base = divisionDisplayName(division);
   let label = base;
@@ -57,6 +65,9 @@ export const matchCompetitionPhaseLabel = (
   serieDGroups,
   { currentRound = 1, userSerieDGroupIndex = 0, serieDGroupRounds = 10 } = {},
 ) => {
+  if (isWorldCupFixture(game)) {
+    return joinMatchMeta('Copa do Mundo', game.phase || game.leg) || 'Copa do Mundo';
+  }
   if (game?.competition === 'COPA DO BRASIL') {
     return joinMatchMeta(game.phase, game.leg) || 'Copa do Brasil';
   }
@@ -87,6 +98,9 @@ export const matchCompetitionPhaseLabel = (
 /** Texto do `<em>` ao lado do título (rodada/fase) — espelha o card Próxima Partida. */
 export const matchCompetitionRoundEmLabel = (game, userDivision, userSerieDGroupIndex = 0) => {
   if (!game) return '';
+  if (isWorldCupFixture(game)) {
+    return game.phase || game.leg || 'COPA DO MUNDO';
+  }
   if (game.competition === 'COPA DO BRASIL') {
     return `${game.phase || 'COPA'} · ${game.leg || ''}`.replace(/\s·\s$/, '');
   }

@@ -174,6 +174,21 @@ export function savePlayerHistoryStore(store, options = {}) {
     matchLogs: pruneMatchLogsForSeason(store.matchLogs, store.season ?? null, budget),
     seasonArchives: pruneArchives(store.seasonArchives),
   };
+  let rawSize = 0;
+  try {
+    rawSize = JSON.stringify(payload).length;
+  } catch {
+    rawSize = 0;
+  }
+  if (rawSize > 180_000) {
+    payload.matchLogs = pruneMatchLogsForSeason(
+      payload.matchLogs,
+      store.season ?? null,
+      Math.max(24, Math.floor(budget / 4)),
+    );
+    payload.players = prunePlayers(payload.players, 1500);
+    payload.seasonArchives = [];
+  }
   let ok = writeJson(SAVE_KEYS.playerHistory, payload);
   if (ok) return applyOk(payload);
   // Quota: corta logs pela metade e tenta de novo.
@@ -226,6 +241,13 @@ export function createPlayerHistoryEngine(deps = {}) {
       store.season ?? null,
       resolveBudget(),
     );
+    store.players = prunePlayers(store.players);
+    store.seasonArchives = pruneArchives(store.seasonArchives);
+    try {
+      localStorage.removeItem(SAVE_KEYS.liveMatch);
+    } catch {
+      /* ignore */
+    }
     return savePlayerHistoryStore(store, { matchLogBudget: resolveBudget() });
   };
 

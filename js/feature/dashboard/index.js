@@ -2,8 +2,11 @@ import { MODULE_VERSIONS, SERIE_D_GROUP_ROUNDS } from '../../core/constants.js';
 import { formatKnockoutFixtureScore, isKnockoutShootoutCompetition as isKnockoutGame } from '../../engine/knockout-shootout.js';
 import { applyCompetitionBadge, competitionBadgeMarkup, resolveCompetitionBadge } from '../../ui/competition-badge.js';
 import { setHumanBadgeOnCrest } from '../../ui/human-badge.js';
+import { applyTeamCrestToElement } from '../../ui/team-crest.js';
+import { resolveNationalTeam } from '../../engine/national-teams.js';
 import {
   clubStandingContext,
+  isWorldCupFixture,
   matchCompetitionPhaseLabel,
   matchCompetitionRoundEmLabel,
 } from '../shared/match-presentation.js';
@@ -20,6 +23,14 @@ export function createDashboardFeature(deps) {
     $$,
     onClick,
     getUserClub,
+    getUserNationalTeamName,
+    getUserNationalTeamCode,
+    isWorldCupDashboardActive,
+    getDashboardStandingsFocus,
+    getWorldCupCompetition,
+    getWorldCupFixtures,
+    getWorldCupGroupTable,
+    getUserNationalTeamClub,
     getUserDivision,
     getCurrentRound,
     getCareerSeason,
@@ -365,7 +376,29 @@ export function createDashboardFeature(deps) {
     });
   };
 
+  const wcDashboardActive = () =>
+    typeof isWorldCupDashboardActive === 'function' && isWorldCupDashboardActive();
+
+  const standingsFocus = () =>
+    typeof getDashboardStandingsFocus === 'function' ? getDashboardStandingsFocus() : 'club';
+
+  const isWorldCupUserGame = (game, ntName) =>
+    !!(isWorldCupFixture(game) && ntName && (game.home === ntName || game.away === ntName));
+
+  const userUpcomingSchedule = () =>
+    typeof pendingUserSchedule === 'function' ? pendingUserSchedule() : [];
+
   const dashboardUpcomingGames = () => {
+    if (standingsFocus() === 'worldcup') {
+      const ntName = getUserNationalTeamName?.() || '';
+      const { letter } =
+        typeof getWorldCupGroupTable === 'function' ? getWorldCupGroupTable() : { letter: null };
+      const fixtures = (typeof getWorldCupFixtures === 'function' ? getWorldCupFixtures() : [])
+        .filter(game => !isFixtureCompleted(game))
+        .filter(game => !letter || game.group === letter || game.home === ntName || game.away === ntName)
+        .slice(0, DASHBOARD_TABLE_ROWS);
+      if (fixtures.length) return fixtures;
+    }
     const futureMatches = getFutureMatches();
     const roundGames = (futureMatches || []).filter(game => !isFixtureCompleted(game));
     const userClub = getUserClub();
@@ -378,9 +411,31 @@ export function createDashboardFeature(deps) {
   };
 
   const renderDashboardMiniTable = () => {
+    const standingsLabel = $('#openChampionship');
+    if (standingsFocus() === 'worldcup') {
+      const { letter, rows } =
+        typeof getWorldCupGroupTable === 'function' ? getWorldCupGroupTable() : { letter: null, rows: [] };
+      const ntName = getUserNationalTeamName?.() || '';
+      if (standingsLabel) {
+        standingsLabel.innerHTML = letter
+          ? `GRUPO ${letter} · COPA DO MUNDO <em>VER COPA →</em>`
+          : `COPA DO MUNDO <em>VER COPA →</em>`;
+      }
+      $('#miniTable').innerHTML = (rows || [])
+        .slice(0, DASHBOARD_TABLE_ROWS)
+        .map(
+          (row, index) =>
+            `<div class="standing-row ${row.name === ntName ? 'highlight' : ''}" data-national-team="${row.code || ''}" role="button" tabindex="0"><span>${index + 1}</span><span class="club-link">${row.name}</span><span>${row.played || 0}</span><span>${row.gd >= 0 ? '+' : ''}${row.gd || 0}</span><span>${row.points || 0}</span></div>`,
+        )
+        .join('');
+      return;
+    }
     const userClub = getUserClub();
     const userDivision = getUserDivision();
     const clubs = getClubs();
+    if (standingsLabel) {
+      standingsLabel.innerHTML = `BRASILEIRÃO SÉRIE ${userDivision} <em>VER CAMPEONATO →</em>`;
+    }
     $('#miniTable').innerHTML = getDisplayedLeagueRows()
       .slice(0, DASHBOARD_TABLE_ROWS)
       .map(
@@ -391,10 +446,17 @@ export function createDashboardFeature(deps) {
   };
 
   const renderDashboardUpcoming = () => {
+    const bindFixtureLink = name => {
+      const nt = resolveNationalTeam(name);
+      if (nt) {
+        return `<b class="club-link" data-national-team="${nt.code}" role="button" tabindex="0">${name}</b>`;
+      }
+      return `<b class="club-link" data-club="${name}" role="button" tabindex="0">${name}</b>`;
+    };
     $('#upcomingMatches').innerHTML = dashboardUpcomingGames()
       .map(game => {
         const isUser = isUserFixture(game);
-        return `<div class="dashboard-fixture-row ${isUser ? 'user-game' : ''}"><span class="fixture-home"><b class="club-link" data-club="${game.home}" role="button" tabindex="0">${game.home}</b>${isUser ? '<small class="user-game-tag">SEU JOGO</small>' : ''}</span><span class="fixture-vs">×</span><span class="fixture-away club-link" data-club="${game.away}" role="button" tabindex="0">${game.away}</span></div>`;
+        return `<div class="dashboard-fixture-row ${isUser ? 'user-game' : ''}"><span class="fixture-home">${bindFixtureLink(game.home)}${isUser ? '<small class="user-game-tag">SEU JOGO</small>' : ''}</span><span class="fixture-vs">×</span><span class="fixture-away">${bindFixtureLink(game.away)}</span></div>`;
       })
       .join('');
   };
@@ -403,12 +465,22 @@ export function createDashboardFeature(deps) {
     pendingUserSchedule().slice(0, CLUB_UPCOMING_ROWS).map(entry => entry.game);
   };
 
-  /** Nome clicável → abre scout/elenco (handler global `[data-club]`). */
+  /** Nome clicável → abre scout/elenco (handler global `[data-club]` / seleções). */
   const bindClubLink = (el, clubName, { label } = {}) => {
     if (!el) return;
     const clubs = getClubs();
-    const valid = !!(clubName && clubs?.[clubName]);
+    const nt = resolveNationalTeam(clubName);
     el.textContent = label ?? clubName ?? '—';
+    if (nt) {
+      el.classList.add('club-link');
+      el.dataset.nationalTeam = nt.code;
+      delete el.dataset.club;
+      el.setAttribute('role', 'button');
+      el.tabIndex = 0;
+      return;
+    }
+    delete el.dataset.nationalTeam;
+    const valid = !!(clubName && clubs?.[clubName]);
     if (valid) {
       el.classList.add('club-link');
       el.dataset.club = clubName;
@@ -433,6 +505,11 @@ export function createDashboardFeature(deps) {
   const syncNextMatchCrest = (nameEl, clubName, isHuman, { away = false, initials = null } = {}) => {
     const crest = resolveNextMatchCrest(nameEl);
     if (!crest) return;
+    if (resolveNationalTeam(clubName)) {
+      applyTeamCrestToElement(crest, clubName, { away });
+      setHumanBadgeOnCrest(crest, !!isHuman);
+      return;
+    }
     const label =
       initials ||
       String(clubName || '')
@@ -444,8 +521,16 @@ export function createDashboardFeature(deps) {
         .toUpperCase() ||
       '—';
     crest.textContent = label;
+    crest.classList.remove('crest--flag');
     crest.classList.toggle('away', !!away);
     setHumanBadgeOnCrest(crest, !!isHuman);
+  };
+
+  const nextMatchPositionLabel = teamName => {
+    if (getClubs()?.[teamName]) return `${displayedClubPosition(teamName)}º colocado`;
+    const nt = resolveNationalTeam(teamName);
+    if (nt) return `FIFA ${nt.fifaRank}º`;
+    return '—';
   };
 
   const renderUserMatchPresentation = () => {
@@ -503,7 +588,9 @@ export function createDashboardFeature(deps) {
     if (simBtn) simBtn.classList.toggle('hidden', !idle);
     if (inspectBtn) inspectBtn.classList.toggle('hidden', idle || fullyComplete || !display);
 
-    const userUpcomingGames = pendingUserSchedule().slice(0, CLUB_UPCOMING_ROWS).map(entry => entry.game);
+    const userUpcomingGames = userUpcomingSchedule()
+      .slice(0, CLUB_UPCOMING_ROWS)
+      .map(entry => entry.game);
     const serieDGroups = getSerieDGroups?.() || [];
 
     if (idle) {
@@ -523,10 +610,14 @@ export function createDashboardFeature(deps) {
       setNextMatchMeta(['Sem partidas pendentes', 'Simule o restante da temporada']);
     } else if (display) {
       const { game, details } = display;
-      const atHome = game.home === userClub;
       const isCup = game.competition === 'COPA DO BRASIL';
-      const homeClub = clubs[game.home];
-      const awayClub = clubs[game.away];
+      const userNationalTeam =
+        typeof getUserNationalTeamName === 'function' ? getUserNationalTeamName() : null;
+      const isUserNationalSide = teamName =>
+        !!(isWorldCupFixture(game) && userNationalTeam && teamName === userNationalTeam);
+      const userHomeSide = isWorldCupFixture(game) ? isUserNationalSide(game.home) : game.home === userClub;
+      const userAwaySide = isWorldCupFixture(game) ? isUserNationalSide(game.away) : game.away === userClub;
+      const atHome = userHomeSide;
       const daysUntil = daysUntilNextFixtureFromToday();
       const restDays = restDaysUntilNextFixture();
       const leagueNext = leagueUserGameForRound(currentRound);
@@ -590,15 +681,15 @@ export function createDashboardFeature(deps) {
       );
       bindClubLink($('#nextMatchHome'), game.home);
       bindClubLink($('#nextMatchAway'), game.away);
-      $('#nextMatchHomePosition').textContent = `${displayedClubPosition(homeClub.name)}º colocado`;
-      $('#nextMatchAwayPosition').textContent = `${displayedClubPosition(awayClub.name)}º colocado`;
+      $('#nextMatchHomePosition').textContent = nextMatchPositionLabel(game.home);
+      $('#nextMatchAwayPosition').textContent = nextMatchPositionLabel(game.away);
       setNextMatchPhase(matchCompetitionPhaseLabel(game, userDivision, serieDGroups, presentationOpts()));
       setNextMatchTeamContext(
         clubStandingContext(game.home, clubs, serieDGroups, game, userDivision, getCurrentRound() || 1, SERIE_D_GROUP_ROUNDS),
         clubStandingContext(game.away, clubs, serieDGroups, game, userDivision, getCurrentRound() || 1, SERIE_D_GROUP_ROUNDS),
       );
-      syncNextMatchCrest($('#nextMatchHome'), game.home, game.home === userClub);
-      syncNextMatchCrest($('#nextMatchAway'), game.away, game.away === userClub, { away: true });
+      syncNextMatchCrest($('#nextMatchHome'), game.home, userHomeSide);
+      syncNextMatchCrest($('#nextMatchAway'), game.away, userAwaySide, { away: true });
       setNextMatchMeta(
         onMatchDay
           ? [
@@ -634,7 +725,9 @@ export function createDashboardFeature(deps) {
     $('#clubUpcomingMatches').innerHTML = userUpcomingGames.length
       ? userUpcomingGames
           .map(game => {
-            const atHome = game.home === userClub;
+            const atHome = isWorldCupFixture(game)
+              ? !!(isUserFixture?.(game) && resolveNationalTeam(game.home))
+              : game.home === userClub;
             const details = fixtureDetails(game);
             const isCup = game.competition === 'COPA DO BRASIL';
             const isKo = isKnockoutShootoutCompetition(game);
@@ -668,10 +761,10 @@ export function createDashboardFeature(deps) {
     $$('[data-leader-tab]').forEach(button => button.classList.toggle('active', button.dataset.leaderTab === leaderMode));
   };
 
-  const userMatchResultLetter = game => {
-    const userClub = getUserClub();
-    if (game.shootoutWinner) return game.shootoutWinner === userClub ? 'V' : 'D';
-    const atHome = game.home === userClub;
+  const userMatchResultLetter = (game, sideName) => {
+    const side = sideName || getUserClub();
+    if (game.shootoutWinner) return game.shootoutWinner === side ? 'V' : 'D';
+    const atHome = game.home === side;
     const own = Number(atHome ? game.homeGoals : game.awayGoals);
     const opponent = Number(atHome ? game.awayGoals : game.homeGoals);
     return own > opponent ? 'V' : own < opponent ? 'D' : 'E';
@@ -679,19 +772,25 @@ export function createDashboardFeature(deps) {
 
   const userCompletedMatchResults = () => {
     const userClub = getUserClub();
+    const ntName = getUserNationalTeamName?.() || '';
     const seasonRoundHistory = getSeasonRoundHistory();
     const copaDoBrasilFixtures = getCopaFixtures();
     const nationalCompetitions = getNationalCompetitions();
+    const worldCupFixtures =
+      wcDashboardActive() && typeof getWorldCupFixtures === 'function' ? getWorldCupFixtures() : [];
     const entries = [];
     const seen = new Set();
     const register = (game, meta) => {
-      if (!game || !(game.home === userClub || game.away === userClub)) return;
+      const isNt = isWorldCupUserGame(game, ntName);
+      const isClub = game.home === userClub || game.away === userClub;
+      if (!game || (!isNt && !isClub)) return;
       const scored = game.completed || game.homeGoals != null || game.awayGoals != null;
       if (!scored) return;
       const key = `${game.home}|${game.away}|${game.round || ''}|${game.leg || ''}|${game.phase || ''}|${meta.competition}`;
       if (seen.has(key)) return;
       seen.add(key);
-      const result = userMatchResultLetter(game);
+      const side = isNt ? ntName : userClub;
+      const result = userMatchResultLetter(game, side);
       entries.push({ ...game, result, points: result === 'V' ? 3 : result === 'E' ? 1 : 0, ...meta });
     };
     seasonRoundHistory.forEach(round =>
@@ -707,6 +806,17 @@ export function createDashboardFeature(deps) {
       .forEach(game =>
         register(game, { competition: 'knockout', label: `Série D · ${game.leg || 'Eliminatórias'}`, sortDate: fixtureDetails(game).date })
       );
+    if (wcDashboardActive()) {
+      worldCupFixtures
+        .filter(game => game.completed || game.homeGoals != null)
+        .forEach(game =>
+          register(game, {
+            competition: 'worldcup',
+            label: `Copa · ${game.phase || 'Grupos'}`,
+            sortDate: fixtureDetails(game).date,
+          }),
+        );
+    }
     return entries.sort((a, b) => a.sortDate - b.sortDate);
   };
 
@@ -714,6 +824,8 @@ export function createDashboardFeature(deps) {
     const seasonRoundHistory = getSeasonRoundHistory();
     const copaDoBrasilFixtures = getCopaFixtures();
     const nationalCompetitions = getNationalCompetitions();
+    const worldCupFixtures =
+      wcDashboardActive() && typeof getWorldCupFixtures === 'function' ? getWorldCupFixtures() : [];
     const entries = [];
     const seen = new Set();
     const register = (game, meta) => {
@@ -738,11 +850,23 @@ export function createDashboardFeature(deps) {
       .forEach(game =>
         register(game, { competition: 'knockout', label: `Série D · ${game.leg || 'Eliminatórias'}`, sortDate: fixtureDetails(game).date })
       );
+    if (wcDashboardActive()) {
+      worldCupFixtures.forEach(game =>
+        register(game, {
+          competition: 'worldcup',
+          label: `Copa · ${game.phase || 'Grupos'}`,
+          sortDate: fixtureDetails(game).date,
+        }),
+      );
+    }
     return entries.sort((a, b) => a.sortDate - b.sortDate);
   };
 
   const dashboardRecentLabel = game => {
     if (!game) return '—';
+    if (game.competition === 'worldcup' || isWorldCupFixture(game)) {
+      return `COPA · ${game.phase || 'GRUPOS'}`;
+    }
     if (game.competition === 'cup') return `COPA · ${game.phase || 'DO BRASIL'}${game.leg ? ` · ${game.leg}` : ''}`;
     if (game.competition === 'knockout') return `SÉRIE D · ${game.leg || 'ELIMINATÓRIAS'}`;
     return `RODADA ${game.round || '—'}`;

@@ -1,26 +1,78 @@
-/* Escudos de seleção = bandeira do país */
+/* Seleções = bandeira retangular (nunca círculo de escudo de clube) */
 
-.crest.crest--flag {
-  background: #0f1f18;
-  border: 1px solid #2a4a3a;
+.crest.crest--flag,
+i.crest--flag,
+.crest--flag {
+  aspect-ratio: 3 / 2;
+  border-radius: 5px !important;
+  background: transparent !important;
+  border: none !important;
   overflow: hidden;
   padding: 0;
+  color: transparent;
+  font-size: 0 !important;
+  line-height: 0;
+  display: block;
+  place-items: stretch;
 }
 
-.crest.crest--flag img {
+.crest.crest--flag.away,
+i.crest--flag.away {
+  background: transparent !important;
+  border: none !important;
+}
+
+.crest.crest--flag img,
+i.crest--flag img,
+.crest--flag img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
   border-radius: inherit;
+  image-rendering: auto;
 }
 
-.crest.crest--flag.away {
-  border-color: #3a5a48;
+/* Dashboard — próxima partida: mesma presença visual do escudo 76×76 */
+.view#dashboard .match .teams > div > i.crest--flag,
+.view#dashboard .match .teams > div > .human-badge-host:has(> i.crest--flag) {
+  width: 114px !important;
+  height: 76px !important;
+  box-shadow: 0 4px 14px #00000033;
 }
 
+.view#dashboard .match .teams > div > .human-badge-host > i.crest--flag {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Modal ao vivo — bandeira proporcional ao escudo 46×46 */
+#matchModal .live-team i.crest--flag,
+#matchModal .live-team .human-badge-host:has(> i.crest--flag) {
+  width: 69px !important;
+  height: 46px !important;
+  box-shadow: 0 2px 8px #00000033;
+}
+
+#matchModal .live-team .human-badge-host > i.crest--flag {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Contextos compactos */
 .tl-crest.crest--flag,
 .championship-page-tie-crest.crest--flag,
 .national-ranking-row-crest.crest--flag {
-  background: #0f1f18;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 3px !important;
+}
+
+.message-reader-offer-panel .message-reader-offer-crest.crest--flag {
+  width: 78px !important;
+  height: 52px !important;
+  border-radius: 4px !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: 0 2px 8px #00000033;
 }

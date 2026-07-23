@@ -105,6 +105,83 @@ export const PLAYER_NAME_POOLS = {
       'Schmid', 'Schneider', 'Schulz', 'Schwarz', 'Vogel', 'Weber', 'Werner', 'Wolf', 'Zimmermann',
     ],
   },
+  Alemanha: {
+    first: [
+      'Alexander', 'Andreas', 'Benjamin', 'Christian', 'Daniel', 'Fabian', 'Felix', 'Florian', 'Jan', 'Jonas',
+      'Julian', 'Karl', 'Leon', 'Lukas', 'Marco', 'Martin', 'Max', 'Niklas', 'Sebastian', 'Simon', 'Thomas',
+    ],
+    last: [
+      'Bauer', 'Becker', 'Fischer', 'Hoffmann', 'Keller', 'Klein', 'Koch', 'Lang', 'Meyer', 'Richter',
+      'Schmid', 'Schneider', 'Schulz', 'Schwarz', 'Vogel', 'Weber', 'Werner', 'Wolf', 'Zimmermann',
+    ],
+  },
+  França: {
+    first: [
+      'Adrien', 'Alexandre', 'Antoine', 'Arthur', 'Aurélien', 'Benjamin', 'Clément', 'Florian', 'Hugo', 'Jules',
+      'Kylian', 'Lucas', 'Matteo', 'Maxime', 'Nicolas', 'Olivier', 'Paul', 'Raphaël', 'Théo', 'Vincent',
+    ],
+    last: [
+      'Bernard', 'Blanc', 'Bonnet', 'Dupont', 'Durand', 'Fournier', 'Garnier', 'Girard', 'Laurent', 'Lefebvre',
+      'Leroy', 'Martin', 'Mercier', 'Moreau', 'Petit', 'Roux', 'Simon', 'Thomas', 'Vincent',
+    ],
+  },
+  Espanha: {
+    first: [
+      'Alejandro', 'Álvaro', 'Carlos', 'Daniel', 'David', 'Diego', 'Fernando', 'Iago', 'Jorge', 'José',
+      'Marcos', 'Miguel', 'Nico', 'Pablo', 'Pedro', 'Rodrigo', 'Sergio', 'Unai', 'Víctor',
+    ],
+    last: [
+      'Castro', 'Díaz', 'Fernández', 'García', 'González', 'Hernández', 'Jiménez', 'López', 'Martínez', 'Moreno',
+      'Muñoz', 'Navarro', 'Pérez', 'Ramírez', 'Rodríguez', 'Romero', 'Ruiz', 'Sánchez', 'Torres',
+    ],
+  },
+  Inglaterra: {
+    first: [
+      'Ben', 'Callum', 'Charlie', 'Declan', 'Harry', 'Jack', 'James', 'Joe', 'Jordan', 'Jude', 'Kyle',
+      'Luke', 'Marcus', 'Mason', 'Phil', 'Raheem', 'Reece', 'Trent', 'Tyler',
+    ],
+    last: [
+      'Brown', 'Clark', 'Evans', 'Hall', 'Johnson', 'Jones', 'Miller', 'Moore', 'Robinson', 'Smith',
+      'Taylor', 'Thomas', 'Walker', 'White', 'Wilson', 'Wright', 'Young',
+    ],
+  },
+  Holanda: {
+    first: [
+      'Bas', 'Daan', 'Daley', 'Denzel', 'Frenkie', 'Jasper', 'Luuk', 'Matthijs', 'Memphis', 'Steven',
+      'Teun', 'Tim', 'Virgil', 'Wout', 'Xavi',
+    ],
+    last: [
+      'Bakker', 'Blind', 'De Jong', 'De Ligt', 'Depay', 'Dijk', 'Jansen', 'Mulder', 'Peters', 'Visser',
+      'Vries', 'Willems',
+    ],
+  },
+  Portugal: {
+    first: [
+      'André', 'Bernardo', 'Bruno', 'Diogo', 'Francisco', 'Gonçalo', 'João', 'Nuno', 'Pedro', 'Rafael',
+      'Ricardo', 'Rúben', 'Tiago', 'Vítor',
+    ],
+    last: [
+      'Almeida', 'Carvalho', 'Costa', 'Fernandes', 'Ferreira', 'Gomes', 'Martins', 'Mendes', 'Oliveira', 'Pereira',
+      'Ribeiro', 'Silva', 'Sousa',
+    ],
+  },
+  Croácia: {
+    first: [
+      'Ante', 'Borna', 'Domagoj', 'Ivan', 'Josip', 'Lovro', 'Luka', 'Marcelo', 'Mario', 'Mateo', 'Nikola',
+      'Petar', 'Stipe', 'Tomislav', 'Vedran',
+    ],
+    last: [
+      'Babić', 'Brozović', 'Kovačić', 'Lovren', 'Mandžukić', 'Modrić', 'Perišić', 'Rebić', 'Vida', 'Vrsaljko',
+    ],
+  },
+  Bélgica: {
+    first: [
+      'Axel', 'Charles', 'Dries', 'Eden', 'Jan', 'Kevin', 'Leander', 'Romelu', 'Thibaut', 'Thomas', 'Yannick',
+    ],
+    last: [
+      'Castagne', 'De Bruyne', 'Hazard', 'Lukaku', 'Mertens', 'Tielemans', 'Vertonghen', 'Witsel',
+    ],
+  },
   África: {
     first: [
       'Abdou', 'Amadou', 'Boubacar', 'Cheikh', 'Ibrahim', 'Issa', 'Karim', 'Mamadou', 'Moussa', 'Ousmane',

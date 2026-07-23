@@ -1094,10 +1094,13 @@ main > .view.active {
   min-width: 0;
   color: #edf8f5;
   font: 700 16px 'DM Sans', sans-serif;
+}
+
+.message-reader-offer-team strong.club-link {
   cursor: pointer;
 }
 
-.message-reader-offer-team strong:hover {
+.message-reader-offer-team strong.club-link:hover {
   color: #63d9ff;
 }
 
@@ -1118,6 +1121,53 @@ main > .view.active {
   border-color: #63d9ff;
   background: #1c5061;
   color: #f2fcff;
+}
+
+.message-reader-offer-panel .message-reader-offer-crest.crest {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid #63d9ff66;
+  box-shadow: inset 0 0 0 1px #63d9ff22;
+}
+
+.message-reader-offer-panel .message-reader-offer-crest.crest img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.message-reader-offer-copy {
+  margin: 0;
+  color: #d5e6e4;
+  font: 500 15px/1.55 'DM Sans', sans-serif;
+}
+
+.message-reader-offer-player {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: #edf8f5;
+  font: 800 1.08em 'DM Sans', sans-serif;
+  line-height: 1.45;
+  cursor: pointer;
+  text-decoration: none;
+  vertical-align: baseline;
+}
+
+.message-reader-offer-player:hover,
+.message-reader-offer-player:focus-visible {
+  color: #63d9ff;
+  outline: none;
+}
+
+.message-reader-offer-tail {
+  display: inline-block;
+  margin-top: 2px;
+  color: #c8ddd8;
 }
 
 .message-reader-offer-main p {
@@ -1835,6 +1885,15 @@ main > .view.active {
   place-items: center;
   margin: 0;
   min-height: 120px;
+}
+
+/* Comando da seleção na Copa — esconde UI do clube */
+body.national-team-command .nav[data-view='office'],
+body.national-team-command .nav[data-view='stadium'],
+body.national-team-command .nav[data-view='youth'],
+body.national-team-command .header-budget-wrap,
+body.national-team-command .side-mini-cards {
+  display: none !important;
 }
 
 .view#dashboard .stadium-card.office-entry-card {

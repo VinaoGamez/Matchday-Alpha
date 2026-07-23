@@ -5,6 +5,22 @@
  */
 export const RELEASE_NOTES = [
   {
+    version: 'Alpha V.2.05',
+    date: '2026-07-23',
+    publishedAt: '2026-07-23T19:20:00-03:00',
+    title: 'Matchday Football foi atualizado',
+    topics: [
+      {
+        label: 'Copa do Mundo',
+        items: [
+          'A Copa do Mundo (CMU) foi desligada temporariamente enquanto estabilizamos o modo seleções.',
+          'Por hora o jogo continua o foco só no clube (Brasileirão + Copa do Brasil).',
+          'Seus saves continuam válidos — dados da copa ficam guardados, sem aparecer no jogo.',
+        ],
+      },
+    ],
+  },
+  {
     version: 'Alpha V.2.00',
     date: '2026-07-23',
     publishedAt: '2026-07-23T15:10:00-03:00',

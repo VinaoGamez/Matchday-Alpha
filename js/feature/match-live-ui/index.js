@@ -3,8 +3,10 @@ import { MODULE_VERSIONS } from '../../core/constants.js';
 import { applyCompetitionBadge } from '../../ui/competition-badge.js';
 import { setHumanBadgeOnCrest } from '../../ui/human-badge.js';
 import { applyTeamCrestToElement, teamCrestHtml } from '../../ui/team-crest.js';
+import { resolveNationalTeam } from '../../engine/national-teams.js';
 import {
   clubStandingContext,
+  isWorldCupFixture,
   matchCompetitionPhaseLabel,
 } from '../shared/match-presentation.js';
 import { bindBoardRosterHover } from '../../ui/board-roster-hover.js';
@@ -83,6 +85,7 @@ export function createMatchLiveUiFeature(deps) {
     getVolumeSamples,
     getVolumeIncidents,
     getUserClub,
+    getUserNationalTeamName,
     getUserAtHome,
     getUserDivision,
     getCurrentRound,
@@ -314,7 +317,38 @@ export function createMatchLiveUiFeature(deps) {
     const clubs = typeof getClubs === 'function' ? getClubs() || {} : {};
     const homeClub = game.home;
     const awayClub = game.away;
-    const userHome = homeClub === getUserClub();
+    const userClub = typeof getUserClub === 'function' ? getUserClub() : '';
+    const userNationalTeam =
+      typeof getUserNationalTeamName === 'function' ? getUserNationalTeamName() : null;
+    const isUserNationalSide = teamName =>
+      !!(isWorldCupFixture(game) && userNationalTeam && teamName === userNationalTeam);
+    const userHome = isWorldCupFixture(game) ? isUserNationalSide(homeClub) : homeClub === userClub;
+    const userAway = isWorldCupFixture(game) ? isUserNationalSide(awayClub) : awayClub === userClub;
+    const bindTeamNameLink = (el, teamName, isUserSide) => {
+      if (!el) return;
+      el.textContent = String(teamName || '').toUpperCase();
+      el.classList.add('club-link');
+      el.classList.toggle('user-club-live', !!isUserSide);
+      el.setAttribute('role', 'button');
+      el.tabIndex = 0;
+      const nt = resolveNationalTeam(teamName);
+      if (nt) {
+        el.dataset.nationalTeam = nt.code;
+        delete el.dataset.club;
+      } else {
+        delete el.dataset.nationalTeam;
+        el.dataset.club = teamName;
+      }
+    };
+    const positionLabel = teamName => {
+      if (resolveNationalTeam(teamName)) {
+        const nt = resolveNationalTeam(teamName);
+        return nt ? `FIFA ${nt.fifaRank}º` : '—';
+      }
+      return typeof displayedClubPosition === 'function'
+        ? `${displayedClubPosition(teamName)}º colocado`
+        : '—';
+    };
     applyCompetitionBadge('#liveMatchCompetition', game, { userDivision });
     const phaseEl = $('#liveMatchCompetitionPhase');
     const venueEl = $('#liveMatchVenue');
@@ -345,32 +379,16 @@ export function createMatchLiveUiFeature(deps) {
     }
     if (awayCrest) {
       applyTeamCrestToElement(awayCrest, awayClub, { away: true });
-      setHumanBadgeOnCrest(awayCrest, !userHome);
+      setHumanBadgeOnCrest(awayCrest, userAway);
     }
     const homeNameEl = $('#liveHomeName');
     const awayNameEl = $('#liveAwayName');
-    if (homeNameEl) {
-      homeNameEl.textContent = homeClub.toUpperCase();
-      homeNameEl.classList.add('club-link');
-      homeNameEl.dataset.club = homeClub;
-      homeNameEl.setAttribute('role', 'button');
-      homeNameEl.tabIndex = 0;
-      homeNameEl.classList.toggle('user-club-live', userHome);
-    }
-    if (awayNameEl) {
-      awayNameEl.textContent = awayClub.toUpperCase();
-      awayNameEl.classList.add('club-link');
-      awayNameEl.dataset.club = awayClub;
-      awayNameEl.setAttribute('role', 'button');
-      awayNameEl.tabIndex = 0;
-      awayNameEl.classList.toggle('user-club-live', !userHome);
-    }
-    const positionOf = clubName =>
-      typeof displayedClubPosition === 'function' ? displayedClubPosition(clubName) : '—';
+    bindTeamNameLink(homeNameEl, homeClub, userHome);
+    bindTeamNameLink(awayNameEl, awayClub, userAway);
     const homePositionEl = $('#liveHomePosition');
     const awayPositionEl = $('#liveAwayPosition');
-    if (homePositionEl) homePositionEl.textContent = `${positionOf(homeClub)}º colocado`;
-    if (awayPositionEl) awayPositionEl.textContent = `${positionOf(awayClub)}º colocado`;
+    if (homePositionEl) homePositionEl.textContent = positionLabel(homeClub);
+    if (awayPositionEl) awayPositionEl.textContent = positionLabel(awayClub);
     const homeContextEl = $('#liveHomeContext');
     const awayContextEl = $('#liveAwayContext');
     const standingContext = (clubName) =>

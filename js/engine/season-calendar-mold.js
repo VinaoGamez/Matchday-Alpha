@@ -7,12 +7,19 @@
  * Novas competições: registrar em FUTURE_COMPETITION_MOLD + COMPETITION_WEEK_SLOT_MAP.
  */
 
+import { FEATURES } from '../core/constants.js';
+
 /** Ano-âncora da Copa do Mundo (ciclo FIFA quadrienal). */
 export const WORLD_CUP_ANCHOR_YEAR = 2026;
 
 export function isWorldCupYear(seasonYear) {
   const y = Number(seasonYear) || WORLD_CUP_ANCHOR_YEAR;
   return y >= WORLD_CUP_ANCHOR_YEAR && (y - WORLD_CUP_ANCHOR_YEAR) % 4 === 0;
+}
+
+/** Ano de copa com CMU ligada no build (FEATURES.worldCup). */
+export function isWorldCupSeasonActive(seasonYear) {
+  return FEATURES.worldCup === true && isWorldCupYear(seasonYear);
 }
 
 /** Janelas padrão de Data FIFA (amistosos) — bloqueiam calendário de clubes quando ativas. */
@@ -108,7 +115,7 @@ export const SEASON_BLACKOUTS = Object.freeze([
 export function getSeasonBlackouts(seasonYear) {
   const year = Number(seasonYear) || WORLD_CUP_ANCHOR_YEAR;
   const list = [...SEASON_BLACKOUTS];
-  if (isWorldCupYear(year)) {
+  if (isWorldCupSeasonActive(year)) {
     list.push({
       id: 'world_cup',
       code: 'CMU',
@@ -351,7 +358,7 @@ export const COMPETITION_CALENDAR_MOLD = Object.freeze({
 export function listFutureCompetitionMold({ seasonYear = null } = {}) {
   return Object.values(FUTURE_COMPETITION_MOLD).filter(spec => {
     if (spec.competitionId === 'world_cup' && seasonYear != null) {
-      return isWorldCupYear(seasonYear);
+      return isWorldCupSeasonActive(seasonYear);
     }
     return true;
   });

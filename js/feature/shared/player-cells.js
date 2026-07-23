@@ -1,13 +1,15 @@
 import { clamp } from '../../ui/dom.js';
 import { resolvePlayerId } from '../../engine/player-identity.js';
-import { isPenaltySavingSpecialist, isSetPieceSpecialist, setPieceSpecialistTitle } from '../../engine/player-generation.js';
+import { isPenaltySavingSpecialist, isSetPieceSpecialist, setPieceSpecialistTitle, isCraque, isDestaque } from '../../engine/player-generation.js';
 
 /** Campo vazio em tabelas de atributos. */
 export const outfield = value => value || '—';
 
 /** Barra de cansaço padrão para tabelas e listagens. */
-export const fatigueCell = player =>
-  `<span class="table-fatigue"><i><b style="width:${clamp(player.fatigue, 0, 100)}%"></b></i>${Math.round(player.fatigue)}%</span>`;
+export const fatigueCell = player => {
+  const fatigue = Number.isFinite(Number(player?.fatigue)) ? Number(player.fatigue) : 100;
+  return `<span class="table-fatigue"><i><b style="width:${clamp(fatigue, 0, 100)}%"></b></i>${Math.round(fatigue)}%</span>`;
+};
 
 const hasMatchOverlay = liveState =>
   !!liveState &&
@@ -138,7 +140,15 @@ export function createPlayerCells({
     return `<span class="player-loan-line"><small class="player-loan-tag" title="Emprestado${from} até o fim da temporada">EMPR.</small>${club}</span>`;
   };
 
-  const specialistStar = player => {
+  const playerStarBadge = player => {
+    if (isCraque(player)) {
+      const title = 'Craque · estrela dourada';
+      return `<span class="player-specialist-star player-specialist-star--gold" title="${title}" aria-label="${title}">★</span>`;
+    }
+    if (isDestaque(player)) {
+      const title = 'Destaque · estrela prata';
+      return `<span class="player-specialist-star player-specialist-star--silver" title="${title}" aria-label="${title}">★</span>`;
+    }
     if (isSetPieceSpecialist(player)) {
       const title = setPieceSpecialistTitle(player);
       return `<span class="player-specialist-star" title="${title}" aria-label="${title}">★</span>`;
@@ -167,7 +177,7 @@ export function createPlayerCells({
       openCard && playerId
         ? ` role="button" tabindex="0" class="player-name-text is-card-trigger" data-open-player-card data-player-id="${escAttr(playerId)}"${clubName ? ` data-player-club="${escAttr(clubName)}"` : ''}`
         : ' class="player-name-text"';
-    return `<b class="player-name-cell${loanLine ? ' has-loan' : ''}"><span class="player-name-line">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span${cardAttrs}>${name}</span>${specialistStar(player)}${badges}</span>${loanLine}</b>`;
+    return `<b class="player-name-cell${loanLine ? ' has-loan' : ''}"><span class="player-name-line">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span${cardAttrs}>${name}</span>${playerStarBadge(player)}${badges}</span>${loanLine}</b>`;
   };
 
   return { playerNameCell, playerStatusBadges };

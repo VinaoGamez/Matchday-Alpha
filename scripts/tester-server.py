@@ -58,6 +58,9 @@ BLOCKED_SUFFIXES = (
     '.gitignore', '.env', '.example',
 )
 
+# JSON permitido fora de assets/ (dados jogáveis servidos em dist/data/).
+ALLOWED_JSON_PREFIXES = ('assets/', 'data/')
+
 BLOCKED_QUERY_KEYS = re.compile(
     r'(^|&)(engineTest|cupAudit|autoBenchmark|benchmark)(=|&|$)',
     re.I,
@@ -142,9 +145,9 @@ class TesterHandler(SimpleHTTPRequestHandler):
             return True
         if self.dist_mode and any(lower.startswith(prefix) for prefix in SOURCE_PREFIXES_WHEN_DIST):
             return True
+        if lower.endswith('.json'):
+            return not any(lower.startswith(prefix) for prefix in ALLOWED_JSON_PREFIXES)
         if any(lower.endswith(suffix) for suffix in BLOCKED_SUFFIXES):
-            return True
-        if lower.endswith('.json') and not lower.startswith('assets/'):
             return True
         if '/../' in f'/{lower}/' or lower.startswith('../'):
             return True
