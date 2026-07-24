@@ -1,6 +1,11 @@
 /* from feature/shared/player-cells.js injectPlayerStatusCss */
 .player-name-cell{display:flex;align-items:center;gap:8px;min-width:0;font-weight:700}
 .player-name-cell.has-loan{flex-direction:column;align-items:flex-start;gap:3px}
+.player-name-cell.has-injury{flex-direction:column;align-items:flex-start;gap:3px}
+.player-injury-line{display:flex;align-items:center;gap:5px;min-width:0;max-width:100%}
+.player-injury-tag{display:inline-block;max-width:min(280px,100%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:1px 0;color:#ff8993;font:600 10px/1.25 'DM Sans',sans-serif;letter-spacing:.02em}
+#tactics .tactic-player-row.unavailable .player-injury-tag{color:#ff6370}
+#squad .player-row.unavailable .player-injury-tag,#squad .player-row .player-injury-tag{color:#ff8993}
 .player-name-line{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%}
 .player-name-prefix,.starter-number{color:#63d9ff;font-weight:700;flex-shrink:0}
 .player-name-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}

@@ -269,6 +269,7 @@ export async function bootEngine({ bus } = {}) {
   const rnd = (min, max) => min + gameRandom() * (max - min);
   const int = (min, max) => Math.floor(rnd(min, max + 1));
   let currentRound;
+  const careerDateHolder = { date: null };
   const injuryEngine = createInjuryEngine({
     rnd,
     int,
@@ -464,6 +465,8 @@ export async function bootEngine({ bus } = {}) {
     injuryInAcutePhase,
     injuryInRestrictedPhase,
     injurySeverityLabel,
+    injuryAvailabilityLabel,
+    getCareerCalendarDate: () => careerDateHolder.date,
     YELLOW_SUSPENSION_LIMIT,
     getYellowAccumulation,
     activeSuspensions,
@@ -1767,10 +1770,12 @@ export async function bootEngine({ bus } = {}) {
   };
   const fixtureDate=round=>fixtureDateFor(userDivision,round);
   let careerCalendarDate=seasonStartDate();
+  careerDateHolder.date=careerCalendarDate;
   if(validSavedSeason&&savedSeason.careerCalendarDate){
     const [year,month,day]=savedSeason.careerCalendarDate.split('-').map(Number);
     if(year&&month&&day)careerCalendarDate=new Date(year,month-1,day,12);
   }
+  careerDateHolder.date=careerCalendarDate;
   let nationalTeamOffersSentYear=validSavedSeason&&savedSeason.nationalTeamOffersSentYear!=null?Number(savedSeason.nationalTeamOffersSentYear):null;
   let onCareerCalendarAdvanced=()=>{};
   let calendarBatchDepth=0;
@@ -1781,6 +1786,7 @@ export async function bootEngine({ bus } = {}) {
     if(!date)return;
     careerCalendarDate=new Date(date);
     careerCalendarDate.setHours(12,0,0,0);
+    careerDateHolder.date=careerCalendarDate;
     autoMarkStaleMessages?.();
     onCareerCalendarAdvanced();
   };

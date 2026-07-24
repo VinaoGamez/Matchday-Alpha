@@ -22,10 +22,45 @@ const hasMatchOverlay = liveState =>
  * Elenco: todas as competições com grupos separados.
  * liveState acrescenta cartão/lesão desta partida — não esconde o histórico do foco.
  */
+function escapeAttr(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+function formatInjuryReturnDate(date) {
+  if (!date || Number.isNaN(date.getTime())) return '';
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = date.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '').toUpperCase();
+  return `${day} ${month}`;
+}
+
+function projectInjuryReturnDate(injury, careerDate, injuryInRestrictedPhase) {
+  if (!injury || !careerDate) return null;
+  const base = new Date(careerDate);
+  base.setHours(12, 0, 0, 0);
+  if (injuryInRestrictedPhase?.(injury)) {
+    const rtp = injury.returnToPlay;
+    const daysLeft = Math.max(0, (rtp?.daysUntilFullFitness ?? 0) - (rtp?.daysCompleted ?? 0));
+    if (daysLeft <= 0) return null;
+    const projected = new Date(base);
+    projected.setDate(projected.getDate() + daysLeft);
+    return projected;
+  }
+  const days = Number(injury.daysRemaining) || 0;
+  if (days <= 0) return null;
+  const projected = new Date(base);
+  projected.setDate(projected.getDate() + days);
+  return projected;
+}
+
 export function createPlayerCells({
   injuryInAcutePhase,
   injuryInRestrictedPhase,
   injurySeverityLabel,
+  injuryAvailabilityLabel,
+  getCareerCalendarDate,
   YELLOW_SUSPENSION_LIMIT,
   getYellowAccumulation,
   activeSuspensions,
@@ -100,8 +135,9 @@ export function createPlayerCells({
       const grade = injury.grade ?? (injury.severity === 'Grave' ? 3 : injury.severity === 'Mediana' ? 2 : 1);
       const severity = injury.severity || injurySeverityLabel(grade);
       const tone = grade >= 3 ? 'severe' : grade === 2 ? 'moderate' : 'mild';
+      const legend = buildInjuryLegend(injury);
       parts.push(
-        `<i class="player-badge player-badge-injury ${tone}" aria-hidden="true" title="Lesão ${severity}"></i>`,
+        `<i class="player-badge player-badge-injury ${tone}" aria-hidden="true" title="${escapeAttr(legend || `Lesão ${severity}`)}"></i>`,
       );
     }
 
@@ -128,6 +164,31 @@ export function createPlayerCells({
 
     // Empréstimo fica em linha própria (playerLoanLine) — não compete com o nome.
     return parts.length ? `<span class="player-status-badges">${parts.join('')}</span>` : '';
+  };
+
+  const buildInjuryLegend = injury => {
+    if (!injury) return '';
+    const name = String(injury.name || '').trim();
+    const label = name && !/^les[aã]o (leve|mediana|grave)$/i.test(name)
+      ? name
+      : injuryAvailabilityLabel?.(injury) || name || 'Lesão';
+    const careerDate = getCareerCalendarDate?.();
+    const returnDate = projectInjuryReturnDate(injury, careerDate, injuryInRestrictedPhase);
+    const returnText = returnDate
+      ? formatInjuryReturnDate(returnDate)
+      : injury.daysRemaining
+        ? `${injury.daysRemaining} ${injury.daysRemaining === 1 ? 'dia' : 'dias'}`
+        : '';
+    return returnText ? `${label} · volta ${returnText}` : label;
+  };
+
+  /** Legenda de lesão — linha abaixo do nome (Elenco / Táticas). */
+  const playerInjuryLine = player => {
+    const injury = player?.injury;
+    if (!injury || (!injuryInAcutePhase(injury) && !injuryInRestrictedPhase(injury))) return '';
+    const legend = buildInjuryLegend(injury);
+    if (!legend) return '';
+    return `<span class="player-injury-line"><small class="player-injury-tag" title="${escapeAttr(legend)}">${legend}</small></span>`;
   };
 
   /** Tags EMPR. + clube — só Elenco (showLoan). Linha abaixo do nome. */
@@ -166,19 +227,16 @@ export function createPlayerCells({
     { prefix = '', liveState = null, allCompetitions = false, showLoan = false, openCard = false, clubName = '' } = {},
   ) => {
     const loanLine = showLoan ? playerLoanLine(player) : '';
+    const injuryLine = playerInjuryLine(player);
     const badges = playerStatusBadges(player, liveState, { allCompetitions, showLoan: false });
     const playerId = resolvePlayerId(player) || '';
-    const escAttr = v =>
-      String(v ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/"/g, '&quot;')
-        .replace(/</g, '&lt;');
+    const cellMods = [loanLine && 'has-loan', injuryLine && 'has-injury'].filter(Boolean).join(' ');
     const cardAttrs =
       openCard && playerId
-        ? ` role="button" tabindex="0" class="player-name-text is-card-trigger" data-open-player-card data-player-id="${escAttr(playerId)}"${clubName ? ` data-player-club="${escAttr(clubName)}"` : ''}`
+        ? ` role="button" tabindex="0" class="player-name-text is-card-trigger" data-open-player-card data-player-id="${escapeAttr(playerId)}"${clubName ? ` data-player-club="${escapeAttr(clubName)}"` : ''}`
         : ' class="player-name-text"';
-    return `<b class="player-name-cell${loanLine ? ' has-loan' : ''}"><span class="player-name-line">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span${cardAttrs}>${name}</span>${playerStarBadge(player)}${badges}</span>${loanLine}</b>`;
+    return `<b class="player-name-cell${cellMods ? ` ${cellMods}` : ''}"><span class="player-name-line">${prefix ? `<span class="player-name-prefix">${prefix}</span>` : ''}<span${cardAttrs}>${name}</span>${playerStarBadge(player)}${badges}</span>${injuryLine}${loanLine}</b>`;
   };
 
-  return { playerNameCell, playerStatusBadges };
+  return { playerNameCell, playerStatusBadges, playerInjuryLine };
 }
